@@ -48,7 +48,7 @@ export default function App(){
   const hMU=()=>{if(Math.abs(dragX)>80)doSwipe(dragX>0?'right':'left');else setDragX(0);setDragging(false);dragStart.current=null}
   const handleAuth=async()=>{
     setAuthLoading(true);setAuthErr('')
-    try{if(authMode==='signin')await sb.auth.signInWithPassword({email,password});else await sb.auth.signUp({email,password})}catch(e){setAuthErr(e.message)}
+    try{let res;if(authMode==='signin'){res=await sb.auth.signInWithPassword({email,password})}else{res=await sb.auth.signUp({email,password})};if(res.error)setAuthErr(res.error.message)}catch(e){setAuthErr(e.message)}
     setAuthLoading(false)
   }
   const cardRot=swipeDir==='right'?15:swipeDir==='left'?-15:dragging?dragX*0.05:0
