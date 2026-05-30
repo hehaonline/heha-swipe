@@ -126,7 +126,7 @@ export default function App(){
             </div>
           )}
         </div>
-      </>;}
+      </>}
       {tab==='favs'&&<div style={{flex:1,overflowY:'auto',padding:16}}>
         {favs.length===0?<div style={{textAlign:'center',marginTop:60,color:'#888'}}>No saves yet — swipe right to save ❤️</div>:
         favs.map(p=><div key={p.id} onClick={()=>setDetail(p)} style={{background:'#fff',borderRadius:16,padding:16,marginBottom:12,cursor:'pointer',boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}><div style={{display:'flex',gap:12,alignItems:'center'}}><div style={{fontSize:32}}>{p.emoji||'🌿'}</div><div><div style={{fontWeight:700,color:BK}}>{p.name}</div><div style={{color:'#888',fontSize:13}}>{p.location}</div></div></div></div>)
