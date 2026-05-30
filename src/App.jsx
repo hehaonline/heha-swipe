@@ -1,7 +1,8 @@
 import{useState,useEffect,useRef}from'react'
 import{createClient}from'@supabase/supabase-js'
 const sb=createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY)
-const G='#1e4d1e',OR='#e07a2a',LT='#f5f0e8',BK='#111',RD='#c0392b'
+const G='#3F8C5A'
+const CAT={Restaurant:{g:'linear-gradient(135deg,#2d6a4f,#1b4332)',i:'🥗'},Vendor:{g:'linear-gradient(135deg,#7a5c00,#c9850a)',i:'🛍'},Coach:{g:'linear-gradient(135deg,#1a4a6e,#2563a8)',i:'🧠'},Service:{g:'linear-gradient(135deg,#6b3a8a,#9b59b6)',i:'✨'},Activity:{g:'linear-gradient(135deg,#7a3500,#c96f45)',i:'🏃'}},OR='#FF8A2A',DG='#173F2A',SG='#DDEBDD',CL='#C96F45',GD='#F4C95D',CH='#1E1E1E',TP='#7C746A',DV='#E8E3DB',OW='#FAF7F1',LT='#f5f0e8',BK='#111',RD='#c0392b'
 const inp={width:'100%',padding:'14px',borderRadius:12,border:'1.5px solid #ddd',fontSize:15,marginBottom:10,boxSizing:'border-box',outline:'none'}
 const btn=(bg='#111',col='#fff')=>({width:'100%',padding:'15px',borderRadius:30,border:'none',background:bg,color:col,fontSize:16,fontWeight:700,cursor:'pointer',marginBottom:12})
 export default function App(){
@@ -17,6 +18,12 @@ export default function App(){
   const[swipeDir,setSwipeDir]=useState(null)
   const[heartAnim,setHeartAnim]=useState(false)
   const[authMode,setAuthMode]=useState('role')
+const[userRole,setUserRole]=useState(null)
+const[partner,setPartner]=useState(null)
+const[bizTab,setBizTab]=useState('dash')
+const[stats,setStats]=useState({s:0,sw:0,ic:0})
+const[savers,setSavers]=useState([])
+const[sent,setSent]=useState({})
   const[email,setEmail]=useState('')
   const[password,setPassword]=useState('')
   const[authErr,setAuthErr]=useState('')
@@ -34,8 +41,8 @@ export default function App(){
     const{data:{subscription}}=sb.auth.onAuthStateChange((_,s)=>{setUser(s?.user??null);setLoading(false)})
     return()=>subscription.unsubscribe()
   },[])
-  useEffect(()=>{if(user)loadProfile();if(user)loadPartners()},[user,filterCat])
-  const loadProfile=async()=>{
+  useEffect(()=>{if(user){loadProfile();detectRole()}},[user,filterCat])
+  const detectRole=async()=>{const{data}=await sb.from('partners').select('*').eq('user_id',user.id).maybeSingle();if(data){setUserRole('partner');setPartner(data);const[{count:s},{count:sw}]=await Promise.all([sb.from('saves').select('*',{count:'exact',head:true}).eq('partner_id',data.id),sb.from('swipe_events').select('*',{count:'exact',head:true}).eq('partner_id',data.id)]);setStats({s:s||0,sw:sw||0,ic:0});const{data:sv}=await sb.from('saves').select('user_id,profiles(email)').eq('partner_id',data.id).limit(20);if(sv)setSavers(sv)}else{setUserRole('customer');loadPartners()}};const loadProfile=async()=>{
     const{data}=await sb.from('profiles').select('*').eq('id',user.id).single()
     setProfile(data)
   }
@@ -87,7 +94,8 @@ export default function App(){
     return(<div style={S}><div style={{width:'100%'}}><div style={{textAlign:'center',marginBottom:28}}><div style={{fontSize:52}}>🌿</div><div style={{fontSize:26,fontWeight:800,color:BK}}>HEHA<span style={{color:OR}}>·</span>swipe</div></div>{authMode==='signup'&&<button onClick={()=>setAuthMode('role')} style={{background:'none',border:'none',fontSize:20,cursor:'pointer',marginBottom:8,color:'#555',display:'flex',alignItems:'center',gap:4}}>&#8592; Back</button>}<input style={inp} placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}/><input style={inp} type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)}/>{authErr&&<div style={{color:RD,fontSize:13,marginBottom:10}}>{authErr}</div>}<button onClick={handleAuth} disabled={authLoading} style={btn(authLoading?'#ccc':BK)}>{authLoading?'Loading...':authMode==='signin'?'Sign in':'Create account'}</button><div style={{textAlign:'center'}}><button onClick={()=>setAuthMode(authMode==='signin'?'signup':'signin')} style={{background:'none',border:'none',color:'#888',fontSize:14,cursor:'pointer'}}>{authMode==='signin'?'No account? Sign up':'Have account? Sign in'}</button></div></div></div>)
   }
   if(loading)return null
-  const signOut=()=>{setAuthMode('role');sb.auth.signOut()}
+  const signOut=()=>{setUserRole(null);setPartner(null);setAuthMode('role');sb.auth.signOut()}
+const sendIce=async(uid)=>{setSent(s=>({...s,[uid]:true}));setStats(st=>({...st,ic:(st.ic||0)+1}))}
   if(screen==='main')return(
     <div style={{fontFamily:'sans-serif',maxWidth:390,margin:'0 auto',height:'100vh',display:'flex',flexDirection:'column',background:LT,userSelect:'none'}}>
       <div style={{background:G,color:'#fff',padding:'14px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
@@ -105,7 +113,7 @@ export default function App(){
               {swipeDir==='right'&&<div style={{position:'absolute',top:20,left:20,color:'#2ecc71',border:'3px solid #2ecc71',borderRadius:8,padding:'4px 12px',fontSize:20,fontWeight:800,transform:'rotate(-15deg)',opacity:.9}}>SAVE ❤️</div>}
               {swipeDir==='left'&&<div style={{position:'absolute',top:20,right:20,color:RD,border:'3px solid '+RD,borderRadius:8,padding:'4px 12px',fontSize:20,fontWeight:800,transform:'rotate(15deg)',opacity:.9}}>SKIP</div>}
               <div onClick={()=>setDetail(cur)} style={{cursor:'pointer'}}>
-                <div style={{fontSize:48,textAlign:'center',marginBottom:8}}>{cur.emoji||'🌿'}</div>
+                <div style={{fontSize:48,textAlign:'center',marginBottom:8}}>{CAT[cur.category]?.i||'🌿'}</div>
                 <div style={{fontWeight:800,fontSize:20,color:BK}}>{cur.name}</div>
                 {cur.partner_type&&<div style={{display:'inline-block',background:LT,color:G,borderRadius:20,padding:'2px 10px',fontSize:12,fontWeight:700,marginTop:4}}>{cur.partner_type}</div>}
                 <div style={{color:'#555',fontSize:14,marginTop:8,lineHeight:1.5}}>{cur.bio}</div>
