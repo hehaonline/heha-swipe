@@ -1,7 +1,9 @@
 import{useState,useEffect,useRef}from'react'
 import{createClient}from'@supabase/supabase-js'
 const sb=createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY)
-const G='#1e4d1e',OR='#e07a2a',LT='#f5f0e8',BK='#111'
+const G='#1e4d1e',OR='#e07a2a',LT='#f5f0e8',BK='#111',RD='#c0392b'
+const inp={width:'100%',padding:'14px',borderRadius:12,border:'1.5px solid #ddd',fontSize:15,marginBottom:10,boxSizing:'border-box',outline:'none'}
+const btn=(bg='#111',col='#fff')=>({width:'100%',padding:'15px',borderRadius:30,border:'none',background:bg,color:col,fontSize:16,fontWeight:700,cursor:'pointer',marginBottom:12})
 export default function App(){
   const[user,setUser]=useState(null)
   const[loading,setLoading]=useState(true)
@@ -14,85 +16,183 @@ export default function App(){
   const[dragging,setDragging]=useState(false)
   const[swipeDir,setSwipeDir]=useState(null)
   const[heartAnim,setHeartAnim]=useState(false)
-  const[authMode,setAuthMode]=useState('signin')
+  const[authMode,setAuthMode]=useState('role')
   const[email,setEmail]=useState('')
   const[password,setPassword]=useState('')
   const[authErr,setAuthErr]=useState('')
   const[authLoading,setAuthLoading]=useState(false)
   const[screen,setScreen]=useState('main')
-  const[step,setStep]=useState(0)
-  const[pd,setPd]=useState({name:'',category:'',location:'',contact:'',instagram:'',bio:'',services:'',contribution:39})
+  const[profile,setProfile]=useState(null)
+  const[bizName,setBizName]=useState('')
+  const[bizCat,setBizCat]=useState('Restaurant')
+  const[bizCity,setBizCity]=useState('')
+  const[bizDesc,setBizDesc]=useState('')
   const dragStart=useRef(null)
+  const CATS=['All','Restaurant','Vendor','Coach','Service','Activity']
+  const BIZ_CATS=['Restaurant','Vendor','Coach','Service','Activity']
   useEffect(()=>{
     const{data:{subscription}}=sb.auth.onAuthStateChange((_,s)=>{setUser(s?.user??null);setLoading(false)})
     return()=>subscription.unsubscribe()
   },[])
-  useEffect(()=>{if(user)loadPartners()},[user,filterCat])
-  const loadPartners=async()=>{
-    try{
-      let q=sb.from('partners').select('*,featured_items(id,name,description,price,emoji),partner_services(id,name,price)').eq('status','live')
-      if(filterCat!=='All')q=q.eq('category',filterCat)
-      const{data,error}=await q
-      if(!error)setDeck(data||[])
-    }catch(e){console.log(e)}
+  useEffect(()=>{if(user)loadProfile();if(user)loadPartners()},[user,filterCat])
+  const loadProfile=async()=>{
+    const{data}=await sb.from('profiles').select('*').eq('id',user.id).single()
+    setProfile(data)
   }
+  const loadPartners=async()=>{
+    let q=sb.from('partners').select('*,featured_items(id,name,description,price,emoji),partner_services(id,name,price)').eq('status','live')
+    if(filterCat!=='All')q=q.eq('category',filterCat)
+    const{data,error}=await q
+    if(!error)setDeck(data||[])
+  }
+  const cardRot=swipeDir==='right'?15:swipeDir==='left'?-15:dragging?dragX*0.05:0
+  const cur=deck[0]
   const doSwipe=async(dir)=>{
-    const c=deck[0];if(!c)return
+    if(dir==='right'){setHeartAnim(true);setTimeout(()=>setHeartAnim(false),800);setFavs(f=>f.find(x=>x.id===cur.id)?f:[...f,cur]);if(user)await sb.from('saves').upsert({user_id:user.id,partner_id:cur.id})}
+    if(user)await sb.from('swipe_events').insert({user_id:user.id,partner_id:cur.id,direction:dir}).catch(()=>{})
     setSwipeDir(dir)
-    if(dir==='right'){setHeartAnim(true);setTimeout(()=>setHeartAnim(false),800);setFavs(f=>f.find(x=>x.id===c.id)?f:[...f,c]);if(user)await sb.from('saves').upsert({user_id:user.id,partner_id:c.id})}
-    if(user)await sb.from('swipe_events').insert({user_id:user.id,partner_id:c.id,direction:dir}).catch(()=>{})
-    setTimeout(()=>{setDeck(d=>d.slice(1));setSwipeDir(null);setDragX(0)},280)
+    setTimeout(()=>{setDeck(d=>d.slice(1));setSwipeDir(null);setDragX(0);setDragging(false);dragStart.current=null},280)
   }
   const hMD=e=>{dragStart.current=e.clientX;setDragging(true)}
   const hMM=e=>{if(dragging&&dragStart.current)setDragX(e.clientX-dragStart.current)}
   const hMU=()=>{if(Math.abs(dragX)>80)doSwipe(dragX>0?'right':'left');else setDragX(0);setDragging(false);dragStart.current=null}
   const handleAuth=async()=>{
     setAuthLoading(true);setAuthErr('')
-    try{let res;if(authMode==='signin'){res=await sb.auth.signInWithPassword({email,password})}else{res=await sb.auth.signUp({email,password})};if(res.error)setAuthErr(res.error.message)}catch(e){setAuthErr(e.message)}
+    try{
+      let res
+      if(authMode==='signin'){res=await sb.auth.signInWithPassword({email,password})}
+      else{res=await sb.auth.signUp({email,password})}
+      if(res.error)setAuthErr(res.error.message)
+    }catch(e){setAuthErr(e.message)}
     setAuthLoading(false)
   }
-  const cardRot=swipeDir==='right'?15:swipeDir==='left'?-15:dragging?dragX*0.05:0
-  const cur=deck[0]
-  const CATS=['All','Restaurant','Vendor','Coach','Service','Activity']
-  if(loading)return <div style={{fontFamily:'sans-serif',maxWidth:390,margin:'0 auto',height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:LT}}><div style={{textAlign:'center'}}><div style={{fontSize:52}}>🌿</div><div style={{color:G,fontWeight:700,marginTop:12}}>Loading HEHA...</div></div></div>
-  if(!user)return(
-    <div style={{fontFamily:'sans-serif',maxWidth:390,margin:'0 auto',minHeight:'100vh',background:'#fff',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 28px'}}>
-      <div style={{fontSize:52,marginBottom:8}}>🌿</div>
-      <div style={{fontWeight:800,fontSize:28,color:BK,marginBottom:4}}>HEHA<span style={{color:OR}}>•</span>swipe</div>
-      <div style={{fontSize:14,color:'#aaa',marginBottom:36,textAlign:'center'}}>Tampa's healthy business community</div>
-      <input value={email} onChange={e=>setEmail(e.target.value)} placeholder='Email' type='email' style={{width:'100%',padding:'14px',borderRadius:12,border:'1.5px solid #ddd',fontSize:15,marginBottom:10,boxSizing:'border-box',outline:'none'}}/>
-      <input value={password} onChange={e=>setPassword(e.target.value)} placeholder='Password' type='password' style={{width:'100%',padding:'14px',borderRadius:12,border:'1.5px solid #ddd',fontSize:15,marginBottom:14,boxSizing:'border-box',outline:'none'}}/>
-      {authErr&&<div style={{color:'#ef4444',fontSize:13,marginBottom:10}}>{authErr}</div>}
-      <button onClick={handleAuth} disabled={authLoading} style={{width:'100%',padding:'15px',borderRadius:30,border:'none',background:BK,color:'#fff',fontSize:16,fontWeight:700,cursor:'pointer',marginBottom:12}}>{authLoading?'Loading...':authMode==='signin'?'Sign in':'Create account'}</button>
-      <button onClick={()=>setAuthMode(m=>m==='signin'?'signup':'signin')} style={{background:'none',border:'none',color:'#888',fontSize:14,cursor:'pointer'}}>{authMode==='signin'?'No account? Sign up':'Have account? Sign in'}</button>
-    </div>
-  )
-  return(
-    <div style={{fontFamily:'sans-serif',maxWidth:390,margin:'0 auto',minHeight:'100vh',background:LT,display:'flex',flexDirection:'column'}}>
-      {detail&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:100,display:'flex',alignItems:'flex-end',maxWidth:390,margin:'0 auto'}} onClick={()=>setDetail(null)}><div style={{background:'#fff',width:'100%',borderRadius:'20px 20px 0 0',padding:'20px',maxHeight:'85vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}><div style={{display:'flex',justifyContent:'space-between',marginBottom:12}}><div style={{fontWeight:800,fontSize:18}}>{detail.name}</div><button onClick={()=>setDetail(null)} style={{background:'#f5f5f5',border:'none',borderRadius:'50%',width:32,height:32,cursor:'pointer'}}>×</button></div><div style={{background:detail.color||G,borderRadius:12,padding:'16px',marginBottom:12,display:'flex',gap:12,alignItems:'center'}}><span style={{fontSize:36}}>{detail.photo_emoji||'🌿'}</span><div><div style={{color:'#fff',fontWeight:700}}>{detail.category}</div><div style={{color:'rgba(255,255,255,0.8)',fontSize:13}}>📍 {detail.location}</div></div></div><div style={{fontSize:14,color:'#555',lineHeight:1.6,marginBottom:12}}>{detail.bio}</div>{(detail.featured_items||[]).length>0&&<div style={{marginBottom:12}}><div style={{fontWeight:700,fontSize:14,marginBottom:8}}>Featured via HEHA</div>{(detail.featured_items||[]).map(i=><div key={i.id} style={{display:'flex',alignItems:'center',gap:10,background:LT,borderRadius:10,padding:'10px',marginBottom:6}}><span style={{fontSize:24}}>{i.emoji||'🍽️'}</span><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{i.name}</div><div style={{fontSize:12,color:'#888'}}>{i.description}</div></div><div style={{fontWeight:700,color:OR}}>{i.price===0?'Free':'$'+Number(i.price).toFixed(2)}</div></div>)}</div>}{detail.heha_partner&&<button style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:G,color:'#fff',fontSize:14,cursor:'pointer',fontWeight:700,marginTop:8}}>Order via HEHA →</button>}</div></div>}
-      <div style={{flex:1,overflowY:'auto'}}>
-        {tab==='swipe'&&<div style={{display:'flex',flexDirection:'column',minHeight:'100vh'}}>
-          <div style={{background:G,padding:'16px 20px 12px',display:'flex',alignItems:'center',justifyContent:'space-between'}}><span style={{color:'#fff',fontWeight:800,fontSize:22}}>HEHA<span style={{color:OR}}>•</span>swipe</span><button onClick={()=>sb.auth.signOut()} style={{background:'transparent',border:'1px solid rgba(255,255,255,0.3)',borderRadius:6,color:'#fff',fontSize:11,padding:'4px 8px',cursor:'pointer'}}>sign out</button></div>
-          <div style={{display:'flex',gap:6,overflowX:'auto',padding:'12px 16px 8px',scrollbarWidth:'none'}}>{CATS.map(c=><button key={c} onClick={()=>setFilterCat(c)} style={{flexShrink:0,padding:'6px 14px',borderRadius:20,border:'none',background:filterCat===c?G:'#fff',color:filterCat===c?'#fff':'#555',fontSize:12,fontWeight:filterCat===c?700:400,cursor:'pointer'}}>{c}</button>)}</div>
-          <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'0 16px 8px',position:'relative'}}>
-            {heartAnim&&<div style={{position:'absolute',top:'30%',fontSize:72,zIndex:50,pointerEvents:'none'}}>❤️</div>}
-            {deck.length===0?<div style={{textAlign:'center',padding:30}}><div style={{fontSize:48,marginBottom:14}}>🌱</div><div style={{fontWeight:800,fontSize:20,color:BK,marginBottom:6}}>No businesses yet</div><div style={{fontSize:14,color:'#888',marginBottom:20}}>Be the first to list your healthy business on HEHA</div><button onClick={()=>{setScreen('onboard');setStep(0)}} style={{background:OR,border:'none',borderRadius:25,color:'#fff',padding:'13px 28px',fontSize:14,cursor:'pointer',fontWeight:700}}>List your business</button></div>:(
-            <>{deck[1]&&<div style={{width:'88%',height:420,borderRadius:20,background:'#fff',border:'0.5px solid #ddd',position:'absolute',marginTop:8,zIndex:0}}/>}
-            <div onMouseDown={hMD} onMouseMove={hMM} onMouseUp={hMU} onMouseLeave={hMU} style={{width:'92%',borderRadius:22,background:'#fff',border:'0.5px solid #ddd',overflow:'hidden',cursor:'grab',userSelect:'none',position:'relative',zIndex:1,transform:`rotate(${cardRot}deg) translateX(${swipeDir?'':dragX}px)`,opacity:swipeDir?0:1,transition:swipeDir?'all 0.28s':dragging?'none':'transform 0.15s'}}>
-              {dragX>40&&<div style={{position:'absolute',top:20,left:16,background:'#22c55e',color:'#fff',borderRadius:8,padding:'5px 14px',fontSize:15,fontWeight:800,zIndex:10,transform:'rotate(-12deg)'}}>❤️ SAVE</div>}
-              {dragX<-40&&<div style={{position:'absolute',top:20,right:16,background:'#ef4444',color:'#fff',borderRadius:8,padding:'5px 14px',fontSize:15,fontWeight:800,zIndex:10,transform:'rotate(12deg)'}}>✕ PASS</div>}
-              <button onClick={e=>{e.stopPropagation();setDetail(cur)}} style={{position:'absolute',top:12,right:12,zIndex:10,width:34,height:34,borderRadius:'50%',background:'rgba(255,255,255,0.25)',border:'1.5px solid rgba(255,255,255,0.5)',color:'#fff',fontSize:15,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>ℹ</button>
-              <div style={{background:cur.color||G,padding:'26px 20px 18px',display:'flex',flexDirection:'column',alignItems:'center'}}><span style={{fontSize:52,marginBottom:6}}>{cur.photo_emoji||'🌿'}</span><div style={{color:'#fff',fontWeight:800,fontSize:18,textAlign:'center'}}>{cur.name}</div><div style={{color:'rgba(255,255,255,0.8)',fontSize:13,marginTop:3}}>{cur.category}</div>{cur.heha_partner&&<span style={{background:OR,color:'#fff',fontSize:10,borderRadius:4,padding:'2px 7px',marginTop:6,fontWeight:700}}>HEHA Partner</span>}</div>
-              <div style={{padding:'14px 16px'}}><div style={{fontSize:13,color:'#555',marginBottom:10,lineHeight:1.6}}>{cur.bio}</div><div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:8}}>{(cur.tags||[]).map(t=><span key={t} style={{background:LT,color:G,fontSize:11,borderRadius:5,padding:'3px 9px',fontWeight:600}}>{t}</span>)}</div><div style={{fontSize:12,color:'#aaa'}}>📍 {cur.location}</div></div>
+  const handlePartnerSignup=async()=>{
+    setAuthLoading(true);setAuthErr('')
+    try{
+      const res=await sb.auth.signUp({email,password})
+      if(res.error){setAuthErr(res.error.message);setAuthLoading(false);return}
+      if(res.data?.user){
+        await sb.from('partners').insert({name:bizName,category:bizCat,location:bizCity,bio:bizDesc,email,status:'pending',user_id:res.data.user.id}).catch(()=>{})
+        setAuthMode('pending')
+      }
+    }catch(e){setAuthErr(e.message)}
+    setAuthLoading(false)
+  }
+  if(loading)return(<div style={{fontFamily:'sans-serif',maxWidth:390,margin:'0 auto',height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:LT}}><div style={{textAlign:'center'}}><div style={{fontSize:52}}>🌿</div><div style={{color:G,fontWeight:700,marginTop:12}}>Loading HEHA...</div></div></div>)
+  if(!user){
+    const S={fontFamily:'sans-serif',maxWidth:390,margin:'0 auto',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:LT,padding:24}
+    if(authMode==='role')return(<div style={S}><div style={{width:'100%'}}><div style={{textAlign:'center',marginBottom:32}}><div style={{fontSize:52}}>🌿</div><div style={{fontSize:26,fontWeight:800,color:BK}}>HEHA<span style={{color:OR}}>·</span>swipe</div><div style={{color:'#888',fontSize:16,marginTop:4}}>Tampa's healthy business community</div></div><div style={{marginBottom:12}}><button onClick={()=>setAuthMode('signup')} style={{...btn(BK),marginBottom:8}}>I'm a customer</button><button onClick={()=>setAuthMode('partner')} style={{...btn('transparent','#555'),border:'1.5px solid #ccc',marginBottom:0}}>I'm a business / partner</button></div><div style={{textAlign:'center',marginTop:8}}><button onClick={()=>setAuthMode('signin')} style={{background:'none',border:'none',color:'#888',fontSize:14,cursor:'pointer'}}>Already have an account? Sign in</button></div></div></div>)
+    if(authMode==='pending')return(<div style={S}><div style={{width:'100%',textAlign:'center'}}><div style={{fontSize:52}}>⏳</div><div style={{fontSize:22,fontWeight:700,color:G,marginTop:16}}>Application received!</div><div style={{color:'#555',fontSize:15,marginTop:12,lineHeight:1.6}}>We'll review your listing and reach out within 48 hours. You'll be able to complete your profile and optionally sponsor the app after approval.</div><div style={{marginTop:24,padding:16,background:'#fff',borderRadius:12,border:'1px solid #eee'}}><div style={{fontSize:13,color:'#888'}}>Submitted for</div><div style={{fontWeight:700,color:BK,fontSize:16}}>{bizName}</div></div><button onClick={()=>{setAuthMode('role');setEmail('');setPassword('');setBizName('');setBizCity('');setBizDesc('')}} style={{...btn(LT,G),border:'1px solid '+G,marginTop:20}}>Back to home</button></div></div>)
+    if(authMode==='partner')return(<div style={{...S,alignItems:'flex-start',paddingTop:48}}><div style={{width:'100%'}}><button onClick={()=>setAuthMode('role')} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',marginBottom:16}}>←</button><div style={{fontSize:22,fontWeight:800,color:BK,marginBottom:4}}>List your business</div><div style={{color:'#888',fontSize:14,marginBottom:24}}>We'll review and approve within 48 hours</div><input style={inp} placeholder="Business name" value={bizName} onChange={e=>setBizName(e.target.value)}/><select style={{...inp,marginBottom:10}} value={bizCat} onChange={e=>setBizCat(e.target.value)}>{BIZ_CATS.map(c=><option key={c}>{c}</option>)}</select><input style={inp} placeholder="City (e.g. Tampa)" value={bizCity} onChange={e=>setBizCity(e.target.value)}/><textarea style={{...inp,height:80,resize:'none'}} placeholder="Short description (optional)" value={bizDesc} onChange={e=>setBizDesc(e.target.value)}/><div style={{fontSize:13,color:'#888',marginBottom:12,lineHeight:1.5}}>Your login credentials</div><input style={inp} placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}/><input style={inp} type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)}/>{authErr&&<div style={{color:RD,fontSize:13,marginBottom:10}}>{authErr}</div>}<button onClick={handlePartnerSignup} disabled={authLoading||!bizName||!email||!password} style={btn(authLoading||!bizName||!email||!password?'#ccc':G)}>{authLoading?'Submitting...':'Submit application'}</button></div></div>)
+    return(<div style={S}><div style={{width:'100%'}}><div style={{textAlign:'center',marginBottom:28}}><div style={{fontSize:52}}>🌿</div><div style={{fontSize:26,fontWeight:800,color:BK}}>HEHA<span style={{color:OR}}>·</span>swipe</div></div>{authMode==='signup'&&<button onClick={()=>setAuthMode('role')} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',marginBottom:8}}>←</button>}<input style={inp} placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}/><input style={inp} type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)}/>{authErr&&<div style={{color:RD,fontSize:13,marginBottom:10}}>{authErr}</div>}<button onClick={handleAuth} disabled={authLoading} style={btn(authLoading?'#ccc':BK)}>{authLoading?'Loading...':authMode==='signin'?'Sign in':'Create account'}</button><div style={{textAlign:'center'}}><button onClick={()=>setAuthMode(authMode==='signin'?'signup':'signin')} style={{background:'none',border:'none',color:'#888',fontSize:14,cursor:'pointer'}}>{authMode==='signin'?'No account? Sign up':'Have account? Sign in'}</button></div></div></div>)
+  }
+  if(loading)return null
+  const signOut=()=>sb.auth.signOut()
+  if(screen==='main')return(
+    <div style={{fontFamily:'sans-serif',maxWidth:390,margin:'0 auto',height:'100vh',display:'flex',flexDirection:'column',background:LT,userSelect:'none'}}>
+      <div style={{background:G,color:'#fff',padding:'14px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
+        <span style={{fontWeight:800,fontSize:17}}>HEHA<span style={{color:OR}}>·</span>swipe</span>
+        <button onClick={signOut} style={{background:'none',border:'1px solid rgba(255,255,255,0.4)',color:'#fff',borderRadius:20,padding:'4px 12px',fontSize:12,cursor:'pointer'}}>sign out</button>
+      </div>
+      {tab==='swipe'&&<>
+        <div style={{display:'flex',gap:8,padding:'10px 12px',overflowX:'auto',flexShrink:0}}>
+          {CATS.map(c=><button key={c} onClick={()=>setFilterCat(c)} style={{padding:'6px 14px',borderRadius:20,border:'none',background:filterCat===c?G:'#e8e4dc',color:filterCat===c?'#fff':BK,fontSize:13,cursor:'pointer',whiteSpace:'nowrap',fontWeight:filterCat===c?700:400}}>{c}</button>)}
+        </div>
+        <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'0 16px'}}>
+          {heartAnim&&<div style={{position:'fixed',top:'40%',left:'50%',transform:'translate(-50%,-50%)',fontSize:80,pointerEvents:'none',animation:'pop .6s ease-out',zIndex:99}}>❤️</div>}
+          {cur?(
+            <div onMouseDown={hMD} onMouseMove={hMM} onMouseUp={hMU} onMouseLeave={hMU} style={{width:'100%',maxWidth:360,background:'#fff',borderRadius:20,padding:20,boxShadow:'0 4px 24px rgba(0,0,0,0.10)',cursor:'grab',transform:`rotate(${cardRot}deg) translateX(${dragX*0.3}px)`,transition:dragging?'none':'transform .2s',position:'relative'}}>
+              {swipeDir==='right'&&<div style={{position:'absolute',top:20,left:20,color:'#2ecc71',border:'3px solid #2ecc71',borderRadius:8,padding:'4px 12px',fontSize:20,fontWeight:800,transform:'rotate(-15deg)',opacity:.9}}>SAVE ❤️</div>}
+              {swipeDir==='left'&&<div style={{position:'absolute',top:20,right:20,color:RD,border:'3px solid '+RD,borderRadius:8,padding:'4px 12px',fontSize:20,fontWeight:800,transform:'rotate(15deg)',opacity:.9}}>SKIP</div>}
+              <div onClick={()=>setDetail(cur)} style={{cursor:'pointer'}}>
+                <div style={{fontSize:48,textAlign:'center',marginBottom:8}}>{cur.emoji||'🌿'}</div>
+                <div style={{fontWeight:800,fontSize:20,color:BK}}>{cur.name}</div>
+                {cur.partner_type&&<div style={{display:'inline-block',background:LT,color:G,borderRadius:20,padding:'2px 10px',fontSize:12,fontWeight:700,marginTop:4}}>{cur.partner_type}</div>}
+                <div style={{color:'#555',fontSize:14,marginTop:8,lineHeight:1.5}}>{cur.bio}</div>
+                {cur.location&&<div style={{color:'#888',fontSize:13,marginTop:6}}>📍 {cur.location}</div>}
+                {cur.featured_items?.length>0&&<div style={{marginTop:12}}><div style={{fontWeight:700,fontSize:13,color:G,marginBottom:6}}>Featured</div>{cur.featured_items.slice(0,2).map(t=><div key={t.id} style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'4px 0',borderBottom:'1px solid #f0ede6'}}><span>{t.emoji} {t.name}</span><span style={{fontWeight:700}}>${t.price}</span></div>)}</div>}
+              </div>
+              <div style={{display:'flex',gap:12,marginTop:16}}>
+                <button onClick={()=>doSwipe('left')} style={{flex:1,height:56,borderRadius:'50%',border:'2px solid #eee',background:'#fff',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+                <button onClick={()=>doSwipe('right')} style={{flex:1,height:56,borderRadius:'50%',border:'2px solid #22c55e',background:'#fff',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>❤️</button>
+              </div>
             </div>
-            <div style={{display:'flex',gap:18,justifyContent:'center',padding:'14px 0',zIndex:2}}><button onClick={()=>doSwipe('left')} style={{width:56,height:56,borderRadius:'50%',border:'2px solid #ef4444',background:'#fff',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button><button onClick={()=>doSwipe('right')} style={{width:56,height:56,borderRadius:'50%',border:'2px solid #22c55e',background:'#fff',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>❤️</button></div></>
-            )}
+          ):(
+            <div style={{textAlign:'center',padding:40}}>
+              <div style={{fontSize:52}}>🌱</div>
+              <div style={{fontWeight:700,fontSize:18,color:BK,marginTop:12}}>No businesses yet</div>
+              <div style={{color:'#888',fontSize:14,marginTop:8}}>Be the first to list your healthy business on HEHA</div>
+              <button onClick={()=>{sb.auth.signOut();setAuthMode('partner')}} style={{...btn(G),marginTop:20,width:'auto',padding:'12px 24px'}}>List your business</button>
+            </div>
+          )}
+        </div>
+      </>;}
+      {tab==='favs'&&<div style={{flex:1,overflowY:'auto',padding:16}}>
+        {favs.length===0?<div style={{textAlign:'center',marginTop:60,color:'#888'}}>No saves yet — swipe right to save ❤️</div>:
+        favs.map(p=><div key={p.id} onClick={()=>setDetail(p)} style={{background:'#fff',borderRadius:16,padding:16,marginBottom:12,cursor:'pointer',boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}><div style={{display:'flex',gap:12,alignItems:'center'}}><div style={{fontSize:32}}>{p.emoji||'🌿'}</div><div><div style={{fontWeight:700,color:BK}}>{p.name}</div><div style={{color:'#888',fontSize:13}}>{p.location}</div></div></div></div>)
+        }
+      </div>}
+      {tab==='profile'&&<div style={{flex:1,overflowY:'auto',padding:20}}>
+        <div style={{background:'#fff',borderRadius:16,padding:20,marginBottom:12}}>
+          <div style={{fontWeight:800,fontSize:18,color:BK,marginBottom:4}}>My account</div>
+          <div style={{color:'#888',fontSize:14}}>{user.email}</div>
+        </div>
+        {profile&&<div style={{background:'#fff',borderRadius:16,padding:20,marginBottom:12}}>
+          {profile.full_name&&<div style={{marginBottom:8}}><span style={{color:'#888',fontSize:13}}>Name</span><div style={{fontWeight:600,color:BK}}>{profile.full_name}</div></div>}
+          {profile.phone&&<div style={{marginBottom:8}}><span style={{color:'#888',fontSize:13}}>Phone</span><div style={{fontWeight:600,color:BK}}>{profile.phone}</div></div>}
+          {profile.location&&<div style={{marginBottom:8}}><span style={{color:'#888',fontSize:13}}>Location</span><div style={{fontWeight:600,color:BK}}>{profile.location}</div></div>}
+          <div style={{background:LT,borderRadius:12,padding:'10px 14px',marginTop:8,borderLeft:'3px solid '+OR}}>
+            <div style={{fontSize:12,color:'#888',marginBottom:2}}>Subscription</div>
+            <div style={{fontWeight:700,color:profile.subscription_type&&profile.subscription_type!=='none'?G:'#888',fontSize:14}}>{profile.subscription_type&&profile.subscription_type!=='none'?profile.subscription_type:'No active subscription'}</div>
           </div>
         </div>}
-        {tab==='favorites'&&<div><div style={{background:G,padding:'16px 20px 12px'}}><div style={{color:'#fff',fontWeight:800,fontSize:22}}>HEHA<span style={{color:OR}}>•</span>saved</div></div><div style={{padding:16}}>{favs.length===0&&<div style={{color:'#888',fontSize:15,textAlign:'center',marginTop:60}}>Swipe right on businesses you love ❤️</div>}{favs.map(b=><div key={b.id} onClick={()=>setDetail(b)} style={{background:'#fff',borderRadius:16,border:'0.5px solid #ddd',marginBottom:10,overflow:'hidden',cursor:'pointer'}}><div style={{background:b.color||G,padding:'14px 16px',display:'flex',alignItems:'center',gap:12}}><span style={{fontSize:28}}>{b.photo_emoji||'🌿'}</span><div style={{flex:1}}><div style={{color:'#fff',fontWeight:700,fontSize:15}}>{b.name}</div><div style={{color:'rgba(255,255,255,0.75)',fontSize:12}}>{b.category}</div></div>{b.heha_partner&&<span style={{background:OR,color:'#fff',fontSize:10,borderRadius:4,padding:'2px 7px',fontWeight:700}}>HEHA</span>}</div><div style={{padding:'10px 16px',display:'flex',justifyContent:'space-between'}}><div style={{display:'flex',gap:5}}>{(b.tags||[]).slice(0,2).map(t=><span key={t} style={{background:LT,color:G,fontSize:11,borderRadius:5,padding:'3px 8px',fontWeight:600}}>{t}</span>)}</div><span style={{fontSize:12,color:G,fontWeight:700}}>View →</span></div></div>)}</div></div>}
-        {tab==='profile'&&<div style={{background:'#1a1a1a',minHeight:'100vh',padding:'24px 20px'}}><div style={{display:'flex',alignItems:'center',gap:14,marginBottom:24,paddingBottom:20,borderBottom:'0.5px solid rgba(255,255,255,0.1)'}}><div style={{width:64,height:64,borderRadius:'50%',background:G,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28}}>🌿</div><div><div style={{fontWeight:800,fontSize:18,color:'#fff'}}>{user.email?.split('@')[0]}</div><div style={{fontSize:13,color:'rgba(255,255,255,0.5)'}}>{user.email}</div></div></div><button onClick={()=>{setScreen('onboard');setStep(0)}} style={{width:'100%',padding:'15px',borderRadius:14,border:'none',background:OR,color:'#fff',fontSize:15,cursor:'pointer',fontWeight:700,marginBottom:12}}>List my business 🏪</button><button onClick={()=>sb.auth.signOut()} style={{width:'100%',padding:'15px',borderRadius:14,border:'none',background:'#2a2a2a',color:'rgba(255,255,255,0.8)',fontSize:15,cursor:'pointer',fontWeight:600,marginBottom:12}}>Log out</button><div style={{textAlign:'center',marginTop:16}}><div style={{fontSize:22}}>🌿</div><div style={{fontSize:12,color:'rgba(255,255,255,0.3)',marginTop:4}}>HEHA Swipe v1.0.0</div></div></div>}
+        <div style={{background:'#fff',borderRadius:16,padding:20,marginBottom:12}}>
+          <div style={{fontWeight:700,color:BK,marginBottom:8}}>Support local businesses</div>
+          <div style={{color:'#888',fontSize:13,lineHeight:1.6,marginBottom:12}}>95% of every dollar you contribute goes directly to the local businesses listed on HEHA. We keep 5% to keep the platform running.</div>
+          <button onClick={()=>setScreen('subscribe')} style={btn(OR)}>Choose a plan</button>
+        </div>
+        <button onClick={signOut} style={{...btn('transparent',RD),border:'1px solid '+RD}}>Sign out</button>
+      </div>}
+      <div style={{display:'flex',borderTop:'1px solid #e8e4dc',background:'#fff',flexShrink:0}}>
+        {[['swipe','🔥','Discover'],['favs','❤️','Saved'],['profile','👤','Profile']].map(([t,ic,lb])=>
+          <button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:'10px 0',border:'none',background:'none',cursor:'pointer',color:tab===t?G:'#999',fontSize:12,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+            <span style={{fontSize:20}}>{ic}</span><span style={{fontWeight:tab===t?700:400}}>{lb}</span>
+          </button>)}
       </div>
-      <div style={{background:'#fff',borderTop:'0.5px solid #eee',display:'flex',padding:'10px 0 18px',position:'sticky',bottom:0}}>{[{id:'swipe',icon:'🔥',label:'Discover'},{id:'favorites',icon:'❤️',label:favs.length?`Saved (${favs.length})`:'Saved'},{id:'profile',icon:'👤',label:'Profile'}].map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,border:'none',background:'transparent',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,padding:0}}><span style={{fontSize:20}}>{t.icon}</span><span style={{fontSize:10,color:tab===t.id?G:'#aaa',fontWeight:tab===t.id?700:400}}>{t.label}</span></button>)}</div>
+      <style>{`@keyframes pop{0%{transform:translate(-50%,-50%) scale(0)}50%{transform:translate(-50%,-50%) scale(1.3)}100%{transform:translate(-50%,-50%) scale(0) }}`}</style>
+      {detail&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'flex-end',zIndex:200}} onClick={()=>setDetail(null)}>
+          <div style={{background:'#fff',borderRadius:'24px 24px 0 0',padding:24,width:'100%',maxHeight:'80vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:56,textAlign:'center'}}>{detail.emoji||'🌿'}</div>
+            <div style={{fontWeight:800,fontSize:22,color:BK,marginTop:8}}>{detail.name}</div>
+            {detail.location&&<div style={{color:'#888',fontSize:14,marginTop:4}}>📍 {detail.location}</div>}
+            <div style={{color:'#555',fontSize:14,marginTop:12,lineHeight:1.6}}>{detail.bio}</div>
+            {detail.instagram&&<a href={'https://instagram.com/'+detail.instagram.replace('@','')} target="_blank" rel="noreferrer" style={{display:'block',color:OR,fontWeight:700,marginTop:12,textDecoration:'none'}}>📸 @{detail.instagram.replace('@','')}</a>}
+            {detail.featured_items?.length>0&&<div style={{marginTop:16}}><div style={{fontWeight:700,fontSize:15,color:G,marginBottom:8}}>Menu / items</div>{detail.featured_items.map(t=><div key={t.id} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f0ede6',fontSize:14}}><div><div style={{fontWeight:600}}>{t.emoji} {t.name}</div><div style={{color:'#888',fontSize:12,marginTop:2}}>{t.description}</div></div><div style={{fontWeight:700,color:G,marginLeft:12}}>${t.price}</div></div>)}</div>}
+            {detail.partner_services?.length>0&&<div style={{marginTop:16}}><div style={{fontWeight:700,fontSize:15,color:G,marginBottom:8}}>Services</div>{detail.partner_services.map(s=><div key={s.id} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f0ede6',fontSize:14}}><span style={{fontWeight:600}}>{s.name}</span><span style={{fontWeight:700,color:G}}>${s.price}</span></div>)}</div>}
+            <button onClick={()=>setDetail(null)} style={{...btn(G),marginTop:20}}>Close</button>
+          </div>
+        </div>
+      )}
     </div>
   )
+  if(screen==='subscribe')return(
+    <div style={{fontFamily:'sans-serif',maxWidth:390,margin:'0 auto',minHeight:'100vh',background:LT,padding:24}}>
+      <button onClick={()=>setScreen('main')} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',marginBottom:16}}>←</button>
+      <div style={{fontSize:24,fontWeight:800,color:BK,marginBottom:8}}>Support local Tampa</div>
+      <div style={{color:'#555',fontSize:15,lineHeight:1.7,marginBottom:24}}>95 cents of every dollar you put in goes directly to the local businesses you discover on HEHA. We keep just 5 cents to keep the platform running. You are not just a customer — you are a community investor.</div>
+      <div style={{background:'#fff',borderRadius:16,padding:20,marginBottom:12,border:'2px solid '+G}}>
+        <div style={{fontWeight:800,fontSize:17,color:G}}>Free tier</div>
+        <div style={{color:'#555',fontSize:14,marginTop:6,lineHeight:1.5}}>Follow <strong>@heha.online</strong> on Instagram and get full access to discover Tampa's healthiest businesses.</div>
+        <button style={{...btn(LT,G),border:'1px solid '+G,marginTop:12}}>Follow on Instagram →</button>
+      </div>
+      <div style={{background:'#fff',borderRadius:16,padding:20,marginBottom:12,border:'2px solid '+OR}}>
+        <div style={{fontWeight:800,fontSize:17,color:OR}}>Community supporter — $1+/month</div>
+        <div style={{color:'#555',fontSize:14,marginTop:6,lineHeight:1.5}}>Choose your amount. Every dollar split: 95% to local businesses, 5% to HEHA.</div>
+        <button style={{...btn(OR),marginTop:12}}>Choose my amount →</button>
+      </div>
+      <div style={{color:'#aaa',fontSize:12,textAlign:'center',marginTop:8}}>Payment processing coming soon</div>
+    </div>
+  )
+  return null
 }
