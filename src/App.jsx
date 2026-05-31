@@ -79,7 +79,7 @@ const[sent,setSent]=useState({})
       const res=await sb.auth.signUp({email,password})
       if(res.error){setAuthErr(res.error.message);setAuthLoading(false);return}
       if(res.data?.user){
-        await sb.from('partners').insert({name:bizName,category:bizCat,location:bizCity,bio:bizDesc,email,status:'pending',user_id:res.data.user.id}).catch(()=>{})
+        const {error:insertErr}=await sb.from('partners').insert({name:bizName,category:bizCat,location:bizCity,bio:bizDesc,email,status:'pending',user_id:res.data.user.id});if(insertErr){setAuthErr(insertErr.message);setAuthLoading(false);return}
         setAuthMode('pending')
       }
     }catch(e){setAuthErr(e.message)}
