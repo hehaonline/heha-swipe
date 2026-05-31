@@ -45,7 +45,7 @@ const[sent,setSent]=useState({})
     const{data:{subscription}}=sb.auth.onAuthStateChange((_,s)=>{setUser(s?.user??null);setLoading(false)})
     return()=>subscription.unsubscribe()
   },[])
-  useEffect(()=>{if(user){loadProfile();detectRole();loadDeck()}},[user,filterCat])
+  useEffect(()=>{if(user){loadProfile();detectRole();loadDeck();loadFavs()}},[user,filterCat])
   const detectRole=async()=>{const{data}=await sb.from('partners').select('*').eq('user_id',user.id).maybeSingle();if(data){setUserRole('partner');setPartner(data);const[{count:s},{count:sw}]=await Promise.all([sb.from('saves').select('*',{count:'exact',head:true}).eq('partner_id',data.id),sb.from('swipe_events').select('*',{count:'exact',head:true}).eq('partner_id',data.id)]);setStats({s:s||0,sw:sw||0,ic:0});const{data:sv}=await sb.from('saves').select('user_id,profiles(email)').eq('partner_id',data.id).limit(20);if(sv)setSavers(sv)}else{setUserRole('customer');loadPartners()}};const loadProfile=async()=>{
     const{data}=await sb.from('profiles').select('*').eq('id',user.id).single()
     setProfile(data)
@@ -68,6 +68,7 @@ const[sent,setSent]=useState({})
 const hTD=e=>{dragStart.current=e.touches[0].clientX;setDragging(true)}
 const hTM=e=>{if(dragging&&dragStart.current)setDragX(e.touches[0].clientX-dragStart.current)}
 const hTU=()=>{if(Math.abs(dragX)>80)doSwipe(dragX>0?"right":"left");else setDragX(0);setDragging(false);dragStart.current=null}
+const loadFavs=async()=>{if(!user)return;const{data,error}=await sb.from("saves").select("partner_id,partners(id,name,category,neighborhood,tagline,items,phone,website,instagram,hours)").eq("user_id",user.id);if(!error&&data)setFavs(data.map(s=>s.partners).filter(Boolean));}
 const hMD=e=>{dragStart.current=e.clientX;setDragging(true)}
   const hMM=e=>{if(dragging&&dragStart.current)setDragX(e.clientX-dragStart.current)}
   const hMU=()=>{if(Math.abs(dragX)>80)doSwipe(dragX>0?'right':'left');else setDragX(0);setDragging(false);dragStart.current=null}
