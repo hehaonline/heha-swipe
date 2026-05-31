@@ -41,7 +41,7 @@ const[sent,setSent]=useState({})
     const{data:{subscription}}=sb.auth.onAuthStateChange((_,s)=>{setUser(s?.user??null);setLoading(false)})
     return()=>subscription.unsubscribe()
   },[])
-  useEffect(()=>{if(user){loadProfile();detectRole()}},[user,filterCat])
+  useEffect(()=>{if(user){loadProfile();detectRole();loadDeck()}},[user,filterCat])
   const detectRole=async()=>{const{data}=await sb.from('partners').select('*').eq('user_id',user.id).maybeSingle();if(data){setUserRole('partner');setPartner(data);const[{count:s},{count:sw}]=await Promise.all([sb.from('saves').select('*',{count:'exact',head:true}).eq('partner_id',data.id),sb.from('swipe_events').select('*',{count:'exact',head:true}).eq('partner_id',data.id)]);setStats({s:s||0,sw:sw||0,ic:0});const{data:sv}=await sb.from('saves').select('user_id,profiles(email)').eq('partner_id',data.id).limit(20);if(sv)setSavers(sv)}else{setUserRole('customer');loadPartners()}};const loadProfile=async()=>{
     const{data}=await sb.from('profiles').select('*').eq('id',user.id).single()
     setProfile(data)
@@ -60,7 +60,7 @@ const[sent,setSent]=useState({})
     setSwipeDir(dir)
     setTimeout(()=>{setDeck(d=>d.slice(1));setSwipeDir(null);setDragX(0);setDragging(false);dragStart.current=null}const hTD=e=>{dragStart.current=e.touches[0].clientX;setDragging(true)}const hTM=e=>{if(dragging&&dragStart.current)setDragX(e.touches[0].clientX-dragStart.current)}const hTU=()=>{if(Math.abs(dragX)>80)doSwipe(dragX>0?"right":"left");else setDragX(0);setDragging(false);dragStart.current=null},280)
   }
-  const hMD=e=>{dragStart.current=e.clientX;setDragging(true)}
+  const loadDeck=async()=>{const cat=filterCat==="All"?null:filterCat;let q=sb.from("partners").select(`id,name,category,neighborhood,tagline,phone,website,instagram,items,hours,status`).eq("status","live");if(cat)q=q.eq("category",cat);const{data,error}=await q.limit(20);if(!error&&data)setDeck(data.map(p=>({...p,featured_items:Array.isArray(p.items)?p.items:[]})));}const hMD=e=>{dragStart.current=e.clientX;setDragging(true)}
   const hMM=e=>{if(dragging&&dragStart.current)setDragX(e.clientX-dragStart.current)}
   const hMU=()=>{if(Math.abs(dragX)>80)doSwipe(dragX>0?'right':'left');else setDragX(0);setDragging(false);dragStart.current=null}
   const handleAuth=async()=>{
