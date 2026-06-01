@@ -81,6 +81,25 @@ export default function AuthScreen() {
     }
   };
 
+  const sendPasswordReset = async () => {
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      if (!email.trim()) throw new Error("Enter your email address first, then tap Forgot password.");
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo,
+      });
+      if (resetError) throw resetError;
+      setMessage("Password reset email sent. Open the link and create a new password.");
+    } catch (resetError) {
+      setError(resetError.message || "Could not send password reset email.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const signInWithProvider = async (provider) => {
     setLoading(true);
     setError(null);
@@ -164,6 +183,12 @@ export default function AuthScreen() {
             {loading ? "Working…" : mode === "create" ? "Create secure account" : "Sign in with password"}
           </button>
         </form>
+
+        {mode === "signin" && (
+          <button type="button" className="text-button center" onClick={sendPasswordReset} disabled={loading}>
+            Forgot password?
+          </button>
+        )}
 
         <button type="button" className="text-button center" onClick={sendSignInEmail} disabled={!email || loading}>
           Send secure sign-in email instead
