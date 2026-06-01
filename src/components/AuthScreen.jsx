@@ -9,7 +9,7 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [authError, setAuthError] = useState("");
-  const [resendCooldown, setResendCooldown] = useState(0);
+  const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -17,18 +17,18 @@ export default function AuthScreen() {
       const params = new URLSearchParams(hash.substring(1));
       const code = params.get("error_code");
       const desc = params.get("error_description")?.replace(/\+/g, " ");
-      setAuthError(code === "otp_expired" ? "Your sign-in link has expired. Please request a new one." : desc || "Sign-in failed. Please try again.");
+      setAuthError(code === "otp_expired" ? "Your sign-in link has expired. Request a new one below." : desc || "Sign-in failed.");
       window.history.replaceState(null, "", window.location.pathname);
     }
   }, []);
 
   useEffect(() => {
-    if (resendCooldown > 0) { const t = setTimeout(() => setResendCooldown(c => c - 1), 1000); return () => clearTimeout(t); }
-  }, [resendCooldown]);
+    if (cooldown > 0) { const t = setTimeout(() => setCooldown(c => c - 1), 1000); return () => clearTimeout(t); }
+  }, [cooldown]);
 
   const send = async () => {
     setError("");
-    if (!value.trim()) { setError(`Please enter your ${mode === "email" ? "email" : "phone number"}.`); return; }
+    if (!value.trim()) { setError(`Enter your ${mode === "email" ? "email" : "phone number"}.`); return; }
     setLoading(true);
     try {
       if (mode === "email") {
@@ -39,88 +39,140 @@ export default function AuthScreen() {
         const { error: e } = await supabase.auth.signInWithOtp({ phone });
         if (e) throw e;
       }
-      setSent(true); setResendCooldown(60);
+      setSent(true); setCooldown(60);
     } catch (e) {
-      if (e.message?.includes("rate limit") || e.message?.includes("after")) { setError("Please wait before requesting another."); setResendCooldown(45); }
+      if (e.message?.includes("rate limit") || e.message?.includes("after")) { setError("Please wait before requesting another."); setCooldown(45); }
       else setError(e.message || "Something went wrong.");
     } finally { setLoading(false); }
   };
 
   const verify = async () => {
     setError("");
-    if (!otp.trim()) { setError("Please enter the code."); return; }
+    if (!otp.trim()) { setError("Enter the code."); return; }
     setLoading(true);
     try {
       const phone = value.trim().startsWith("+") ? value.trim() : `+1${value.trim().replace(/\D/g, "")}`;
       const { error: e } = await supabase.auth.verifyOtp({ phone, token: otp.trim(), type: "sms" });
       if (e) throw e;
     } catch (e) {
-      if (e.message?.includes("expired") || e.message?.includes("invalid")) { setError("Code expired or invalid. Request a new one."); setSent(false); setOtp(""); }
+      if (e.message?.includes("expired") || e.message?.includes("invalid")) { setError("Code expired. Request a new one."); setSent(false); setOtp(""); }
       else setError(e.message || "Verification failed.");
     } finally { setLoading(false); }
   };
 
-  const IS = (err) => ({ width: "100%", padding: "13px 14px", borderRadius: 10, boxSizing: "border-box", border: `1.5px solid ${err ? "#e85d2b" : "#e0dbd4"}`, fontSize: 16, outline: "none", marginBottom: 8, background: "#faf9f7", fontFamily: "system-ui" });
+  const IS = (err) => ({
+    width: "100%", padding: "14px 16px", borderRadius: 14, boxSizing: "border-box",
+    border: `2px solid ${err ? "#e85d2b" : "#eee"}`, fontSize: 16, outline: "none",
+    marginBottom: 8, background: "#fafafa", transition: "border-color 0.2s"
+  });
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f5f0eb", padding: "24px", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ marginBottom: 32, textAlign: "center" }}>
-        <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-1px", color: "#1a1a1a" }}>HEHA<span style={{ color: "#e85d2b" }}>·</span>swipe</div>
-        <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>Discover local Tampa Bay</div>
+    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "#fff" }}>
+
+      {/* Dark hero */}
+      <div style={{ background: "linear-gradient(160deg, #111 55%, #2a1a0a)", padding: "60px 28px 44px", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -60, right: -60, width: 220, height: 220, borderRadius: "50%", background: "rgba(232,93,43,0.15)" }} />
+        <div style={{ position: "absolute", bottom: 10, left: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(232,93,43,0.08)" }} />
+        <div style={{ marginBottom: 20, position: "relative" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(232,93,43,0.15)", borderRadius: 10, padding: "5px 12px", marginBottom: 18 }}>
+            <span style={{ color: "#e85d2b", fontSize: 12 }}>✦</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#e85d2b", letterSpacing: 2, textTransform: "uppercase", fontFamily: "Syne, sans-serif" }}>Tampa Bay</span>
+          </div>
+          <div style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, color: "#fff", lineHeight: 1, letterSpacing: "-1.5px" }}>
+            <div style={{ fontSize: 44 }}>HEHA</div>
+            <div style={{ fontSize: 44 }}><span style={{ color: "#e85d2b" }}>·</span>swipe</div>
+          </div>
+          <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", marginTop: 12, lineHeight: 1.6 }}>
+            Discover Tampa Bay's healthiest<br />local businesses
+          </div>
+        </div>
       </div>
-      <div style={{ background: "#fff", borderRadius: 20, padding: "28px 24px", width: "100%", maxWidth: 380, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
-        {authError && <div style={{ background: "#fff8f0", border: "1px solid #f5c5a0", borderRadius: 10, padding: "12px 14px", marginBottom: 20, fontSize: 13, color: "#8b4513", lineHeight: 1.5 }}><strong>⏱ Link expired</strong><br />{authError}</div>}
-        <div style={{ display: "flex", gap: 8, marginBottom: 20, background: "#f0ede8", borderRadius: 12, padding: 4 }}>
-          {["email", "phone"].map((m) => (
+
+      {/* Auth form */}
+      <div style={{ flex: 1, padding: "24px 24px 40px", background: "#fff" }}>
+        {authError && (
+          <div style={{ background: "#fff4f0", border: "1px solid #ffe0d6", borderRadius: 12, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "#c0392b", lineHeight: 1.5, display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <span>⏱</span><div><strong>Link expired.</strong> {authError}</div>
+          </div>
+        )}
+
+        {/* Toggle */}
+        <div style={{ display: "flex", background: "#f5f5f5", borderRadius: 14, padding: 4, marginBottom: 24 }}>
+          {["email", "phone"].map(m => (
             <button key={m} onClick={() => { setMode(m); setError(""); setValue(""); setSent(false); setOtp(""); }}
-              style={{ flex: 1, padding: "9px 0", borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: mode === m ? "#fff" : "transparent", color: mode === m ? "#1a1a1a" : "#888", boxShadow: mode === m ? "0 1px 4px rgba(0,0,0,0.1)" : "none", transition: "all 0.15s" }}>
-              {m === "email" ? "📧 Email" : "📱 Phone"}
+              style={{ flex: 1, padding: "10px 0", borderRadius: 11, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "Syne, sans-serif", background: mode === m ? "#fff" : "transparent", color: mode === m ? "#111" : "#aaa", boxShadow: mode === m ? "0 2px 8px rgba(0,0,0,0.08)" : "none", transition: "all 0.2s" }}>
+              {m === "email" ? "📧  Email" : "📱  Phone"}
             </button>
           ))}
         </div>
 
+        {/* Email → link */}
         {mode === "email" && !sent && (<>
-          <h2 style={{ margin: "0 0 6px", fontSize: 20, fontWeight: 700 }}>{authError ? "Request a new link" : "Sign in or sign up"}</h2>
-          <p style={{ margin: "0 0 16px", fontSize: 14, color: "#666" }}>We'll email you a magic link — no password needed.</p>
-          <input type="email" placeholder="you@example.com" value={value} onChange={(e) => { setValue(e.target.value); setError(""); }} onKeyDown={(e) => e.key === "Enter" && send()} style={IS(!!error)} />
-          {error && <div style={{ fontSize: 12, color: "#e85d2b", marginBottom: 6 }}>{error}</div>}
-          <button onClick={send} disabled={loading} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", marginTop: 4, background: loading ? "#ccc" : "#1a1a1a", color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}>{loading ? "Sending…" : "Send magic link →"}</button>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "#555", display: "block", marginBottom: 8 }}>Email address</label>
+          <input type="email" placeholder="you@example.com" value={value} onChange={e => { setValue(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && send()} style={IS(!!error)} autoFocus />
+          {error && <div style={{ fontSize: 12, color: "#e85d2b", marginBottom: 8 }}>{error}</div>}
+          <OrangeBtn onClick={send} loading={loading}>{loading ? "Sending…" : "Send magic link →"}</OrangeBtn>
+          <div style={{ fontSize: 12, color: "#bbb", textAlign: "center", marginTop: 12 }}>No password needed. Link expires in 1 hour.</div>
         </>)}
 
         {mode === "email" && sent && (<>
-          <div style={{ textAlign: "center", marginBottom: 20 }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>📬</div>
-            <h2 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 700 }}>Check your email</h2>
-            <p style={{ margin: 0, fontSize: 14, color: "#666", lineHeight: 1.6 }}>We sent a magic link to <strong>{value}</strong>.<br />Click it to sign in — expires in 1 hour.</p>
+          <div style={{ textAlign: "center", padding: "16px 0 20px" }}>
+            <div style={{ width: 64, height: 64, borderRadius: 20, background: "#fff4f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 16px" }}>📬</div>
+            <div style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 800, color: "#111", marginBottom: 8 }}>Check your inbox</div>
+            <div style={{ fontSize: 14, color: "#777", lineHeight: 1.7 }}>Magic link sent to<br /><strong style={{ color: "#111" }}>{value}</strong></div>
           </div>
-          <div style={{ background: "#f5f0eb", borderRadius: 10, padding: "12px 14px", fontSize: 13, color: "#888", marginBottom: 16, lineHeight: 1.5 }}>💡 Can't find it? Check your spam folder.</div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <button onClick={() => { setSent(false); setError(""); }} style={{ background: "none", border: "none", fontSize: 13, color: "#888", cursor: "pointer" }}>← Change email</button>
-            <button onClick={send} disabled={resendCooldown > 0 || loading} style={{ background: "none", border: "none", fontSize: 13, color: resendCooldown > 0 ? "#aaa" : "#e85d2b", cursor: resendCooldown > 0 ? "not-allowed" : "pointer", fontWeight: 600 }}>{resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend link"}</button>
+          <div style={{ background: "#f9f9f9", borderRadius: 12, padding: "12px 16px", fontSize: 13, color: "#999", marginBottom: 20, lineHeight: 1.5 }}>
+            💡 Can't find it? Check your spam folder.
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <button onClick={() => { setSent(false); setError(""); }} style={{ background: "none", border: "none", fontSize: 13, color: "#aaa", cursor: "pointer" }}>← Change email</button>
+            <button onClick={send} disabled={cooldown > 0} style={{ background: "none", border: "none", fontSize: 13, color: cooldown > 0 ? "#ccc" : "#e85d2b", cursor: cooldown > 0 ? "not-allowed" : "pointer", fontWeight: 700 }}>
+              {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend link"}
+            </button>
           </div>
         </>)}
 
+        {/* Phone → code */}
         {mode === "phone" && !sent && (<>
-          <h2 style={{ margin: "0 0 6px", fontSize: 20, fontWeight: 700 }}>Sign in with phone</h2>
-          <p style={{ margin: "0 0 16px", fontSize: 14, color: "#666" }}>We'll text you a 6-digit code.</p>
-          <input type="tel" placeholder="+1 (813) 000-0000" value={value} onChange={(e) => { setValue(e.target.value); setError(""); }} onKeyDown={(e) => e.key === "Enter" && send()} style={IS(!!error)} />
-          {error && <div style={{ fontSize: 12, color: "#e85d2b", marginBottom: 6 }}>{error}</div>}
-          <button onClick={send} disabled={loading} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", marginTop: 4, background: loading ? "#ccc" : "#1a1a1a", color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}>{loading ? "Sending…" : "Send 6-digit code →"}</button>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "#555", display: "block", marginBottom: 8 }}>Phone number</label>
+          <input type="tel" placeholder="+1 (813) 000-0000" value={value} onChange={e => { setValue(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && send()} style={IS(!!error)} autoFocus />
+          {error && <div style={{ fontSize: 12, color: "#e85d2b", marginBottom: 8 }}>{error}</div>}
+          <OrangeBtn onClick={send} loading={loading}>{loading ? "Sending…" : "Send 6-digit code →"}</OrangeBtn>
+          <div style={{ fontSize: 12, color: "#bbb", textAlign: "center", marginTop: 12 }}>US numbers only. Standard SMS rates apply.</div>
         </>)}
 
         {mode === "phone" && sent && (<>
-          <h2 style={{ margin: "0 0 6px", fontSize: 20, fontWeight: 700 }}>Enter your code</h2>
-          <p style={{ margin: "0 0 16px", fontSize: 14, color: "#666" }}>Sent to <strong>{value}</strong></p>
-          <input type="text" inputMode="numeric" placeholder="000000" value={otp} onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }} onKeyDown={(e) => e.key === "Enter" && verify()} style={{ ...IS(!!error), fontSize: 28, fontWeight: 700, letterSpacing: 10, textAlign: "center" }} />
-          {error && <div style={{ fontSize: 12, color: "#e85d2b", marginBottom: 6 }}>{error}</div>}
-          <button onClick={verify} disabled={loading || otp.length < 6} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", marginTop: 4, background: (loading || otp.length < 6) ? "#ccc" : "#1a1a1a", color: "#fff", fontSize: 15, fontWeight: 700, cursor: (loading || otp.length < 6) ? "not-allowed" : "pointer" }}>{loading ? "Verifying…" : "Verify code →"}</button>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
-            <button onClick={() => { setSent(false); setOtp(""); setError(""); }} style={{ background: "none", border: "none", fontSize: 13, color: "#888", cursor: "pointer" }}>← Change number</button>
-            <button onClick={send} disabled={resendCooldown > 0 || loading} style={{ background: "none", border: "none", fontSize: 13, color: resendCooldown > 0 ? "#aaa" : "#e85d2b", cursor: resendCooldown > 0 ? "not-allowed" : "pointer", fontWeight: 600 }}>{resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}</button>
+          <div style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 800, color: "#111", marginBottom: 6 }}>Enter your code</div>
+          <div style={{ fontSize: 14, color: "#777", marginBottom: 20 }}>Sent to <strong style={{ color: "#111" }}>{value}</strong></div>
+          <input type="text" inputMode="numeric" placeholder="· · · · · ·" value={otp}
+            onChange={e => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
+            onKeyDown={e => e.key === "Enter" && verify()}
+            style={{ ...IS(!!error), fontSize: 32, fontWeight: 800, letterSpacing: 12, textAlign: "center" }} autoFocus />
+          {error && <div style={{ fontSize: 12, color: "#e85d2b", marginBottom: 8 }}>{error}</div>}
+          <OrangeBtn onClick={verify} loading={loading} disabled={otp.length < 6}>{loading ? "Verifying…" : "Verify →"}</OrangeBtn>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
+            <button onClick={() => { setSent(false); setOtp(""); }} style={{ background: "none", border: "none", fontSize: 13, color: "#aaa", cursor: "pointer" }}>← Change number</button>
+            <button onClick={send} disabled={cooldown > 0} style={{ background: "none", border: "none", fontSize: 13, color: cooldown > 0 ? "#ccc" : "#e85d2b", cursor: cooldown > 0 ? "not-allowed" : "pointer", fontWeight: 700 }}>
+              {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
+            </button>
           </div>
         </>)}
       </div>
-      <div style={{ marginTop: 20, fontSize: 12, color: "#aaa", textAlign: "center" }}>By signing in, you agree to our Terms & Privacy Policy.</div>
     </div>
+  );
+}
+
+function OrangeBtn({ onClick, loading, disabled, children }) {
+  const off = loading || disabled;
+  return (
+    <button onClick={onClick} disabled={off}
+      style={{ width: "100%", padding: "15px", borderRadius: 14, border: "none", marginTop: 4,
+        background: off ? "#f0f0f0" : "linear-gradient(135deg, #e85d2b, #ff7a47)",
+        color: off ? "#bbb" : "#fff", fontSize: 15, fontWeight: 700,
+        cursor: off ? "not-allowed" : "pointer",
+        boxShadow: off ? "none" : "0 6px 20px rgba(232,93,43,0.35)",
+        fontFamily: "Syne, sans-serif", transition: "all 0.2s" }}>
+      {children}
+    </button>
   );
 }
