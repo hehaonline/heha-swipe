@@ -14,6 +14,7 @@ export default function AuthScreen() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
   const [phoneCodeSent, setPhoneCodeSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
@@ -24,6 +25,7 @@ export default function AuthScreen() {
     setMessage(null);
     setError(null);
     setOtp("");
+    setEmailCodeSent(false);
     setPhoneCodeSent(false);
   };
 
@@ -32,6 +34,7 @@ export default function AuthScreen() {
     setLoading(true);
     setError(null);
     setMessage(null);
+    setOtp("");
 
     try {
       const { error: authError } = await supabase.auth.signInWithOtp({
@@ -39,9 +42,29 @@ export default function AuthScreen() {
         options: { emailRedirectTo: redirectTo, shouldCreateUser: true },
       });
       if (authError) throw authError;
-      setMessage("Check your email for the HEHA Swipe sign-in link.");
+      setEmailCodeSent(true);
+      setMessage("We sent a secure HEHA Swipe code to your email. Enter it below to continue.");
     } catch (authError) {
-      setError(authError.message || "Could not send your sign-in link.");
+      setError(authError.message || "Could not send your email code.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyEmailCode = async (event) => {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: otp.trim(),
+        type: "email",
+      });
+      if (verifyError) throw verifyError;
+    } catch (verifyError) {
+      setError(verifyError.message || "Could not verify this email code.");
     } finally {
       setLoading(false);
     }
@@ -52,6 +75,7 @@ export default function AuthScreen() {
     setLoading(true);
     setError(null);
     setMessage(null);
+    setOtp("");
 
     try {
       const normalizedPhone = normalizePhone(phone);
@@ -122,7 +146,7 @@ export default function AuthScreen() {
           <button className={mode === "phone" ? "active" : ""} onClick={() => resetMode("phone")}>Phone</button>
         </div>
 
-        {mode === "email" ? (
+        {mode === "email" && !emailCodeSent && (
           <form onSubmit={signInWithEmail} className="auth-form">
             <label>Email address</label>
             <input
@@ -132,9 +156,27 @@ export default function AuthScreen() {
               placeholder="you@example.com"
               required
             />
-            <button className="primary-button" disabled={loading}>{loading ? "Sending…" : "Send sign-in link"}</button>
+            <button className="primary-button" disabled={loading}>{loading ? "Sending…" : "Send email code"}</button>
           </form>
-        ) : !phoneCodeSent ? (
+        )}
+
+        {mode === "email" && emailCodeSent && (
+          <form onSubmit={verifyEmailCode} className="auth-form">
+            <label>Enter your email code</label>
+            <input
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={otp}
+              onChange={(event) => setOtp(event.target.value)}
+              placeholder="123456"
+              required
+            />
+            <button className="primary-button" disabled={loading}>{loading ? "Verifying…" : "Verify and continue"}</button>
+            <button type="button" className="text-button center" onClick={() => setEmailCodeSent(false)}>Use a different email or resend</button>
+          </form>
+        )}
+
+        {mode === "phone" && !phoneCodeSent && (
           <form onSubmit={signInWithPhone} className="auth-form">
             <label>Phone number</label>
             <input
@@ -144,20 +186,23 @@ export default function AuthScreen() {
               placeholder="+18135550101"
               required
             />
-            <button className="primary-button" disabled={loading}>{loading ? "Sending…" : "Send code"}</button>
+            <button className="primary-button" disabled={loading}>{loading ? "Sending…" : "Send phone code"}</button>
           </form>
-        ) : (
+        )}
+
+        {mode === "phone" && phoneCodeSent && (
           <form onSubmit={verifyPhoneCode} className="auth-form">
             <label>Enter your SMS code</label>
             <input
               inputMode="numeric"
+              autoComplete="one-time-code"
               value={otp}
               onChange={(event) => setOtp(event.target.value)}
               placeholder="123456"
               required
             />
             <button className="primary-button" disabled={loading}>{loading ? "Verifying…" : "Verify and continue"}</button>
-            <button type="button" className="text-button center" onClick={() => setPhoneCodeSent(false)}>Send a new code</button>
+            <button type="button" className="text-button center" onClick={() => setPhoneCodeSent(false)}>Use a different phone or resend</button>
           </form>
         )}
 
