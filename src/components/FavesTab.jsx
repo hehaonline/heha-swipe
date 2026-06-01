@@ -7,6 +7,11 @@ function fallbackImage(partner) {
   return "/partner-images/clean-food.svg";
 }
 
+function galleryImages(partner) {
+  const gallery = Array.isArray(partner.gallery_urls) ? partner.gallery_urls.filter(Boolean) : [];
+  return gallery.length ? gallery : [fallbackImage(partner)];
+}
+
 function instagramUrl(handle) {
   if (!handle) return null;
   if (handle.startsWith("http")) return handle;
@@ -20,6 +25,7 @@ function itemUrl(item) {
 export default function FavesTab({ partners = [], saves = [], onUnsave }) {
   const [selectedPartner, setSelectedPartner] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
+  const [galleryIndex, setGalleryIndex] = useState(0);
 
   const saved = saves
     .map((save) => partners.find((partner) => partner.id === save.partner_id))
@@ -44,11 +50,13 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
   const openDetails = (partner) => {
     setSelectedPartner(partner);
     setSelectedItems([]);
+    setGalleryIndex(0);
   };
 
   const closeDetails = () => {
     setSelectedPartner(null);
     setSelectedItems([]);
+    setGalleryIndex(0);
   };
 
   if (selectedPartner) {
@@ -56,21 +64,36 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
     const tags = [...new Set([...(selectedPartner.offerings || []), ...(selectedPartner.tags || [])])].slice(0, 8);
     const ig = instagramUrl(selectedPartner.instagram);
     const hasSelectedItems = selectedItems.length > 0;
+    const images = galleryImages(selectedPartner);
+    const currentImage = images[galleryIndex] || fallbackImage(selectedPartner);
 
     return (
       <section className="saved-screen partner-detail-screen">
         <button className="detail-back" onClick={closeDetails}>← Saved</button>
 
         <article className="partner-detail-card">
-          <div className="detail-image-wrap">
-            <img src={fallbackImage(selectedPartner)} alt={`${selectedPartner.name} preview`} />
+          <div className="detail-image-wrap gallery-hero">
+            <img src={currentImage} alt={`${selectedPartner.name} preview`} />
             <div className="detail-avatar">{selectedPartner.photo_emoji || "🌿"}</div>
             {selectedPartner.heha_partner && <span className="detail-verified">HEHA Verified</span>}
+            {images.length > 1 && (
+              <div className="gallery-dots" aria-label="Partner photo gallery">
+                {images.map((image, index) => (
+                  <button
+                    key={`${image}-${index}`}
+                    className={galleryIndex === index ? "active" : ""}
+                    onClick={() => setGalleryIndex(index)}
+                    aria-label={`Show photo ${index + 1}`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="detail-body">
             <p className="eyebrow">{selectedPartner.category || "Local"} · {selectedPartner.neighborhood || "Tampa Bay"}</p>
             <h2>{selectedPartner.name}</h2>
+            {selectedPartner.price_range && <div className="price-range-pill">{selectedPartner.price_range}</div>}
             {selectedPartner.tagline && <p className="detail-tagline">{selectedPartner.tagline}</p>}
             {selectedPartner.bio && <p className="detail-bio">{selectedPartner.bio}</p>}
 
@@ -102,7 +125,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
                   >
                     <span>{item.emoji || "✦"}</span>
                     <strong>{name}</strong>
-                    <small>{url ? "Order ↗" : item.price ? `$${item.price}` : "Soon"}</small>
+                    <small>{url ? "Order ↗" : "Soon"}</small>
                   </button>
                 );
               })}
@@ -161,7 +184,8 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
                 {partner.heha_partner && <span>Verified</span>}
               </div>
               <p>{partner.category} · {partner.neighborhood || "Tampa Bay"}</p>
-              {partner.tagline && <small>{partner.tagline}</small>}
+              {partner.price_range && <small>{partner.price_range}</small>}
+              {!partner.price_range && partner.tagline && <small>{partner.tagline}</small>}
               <div className="saved-actions">
                 <button type="button" onClick={(event) => { event.stopPropagation(); openDetails(partner); }}>View details</button>
                 {partner.instagram && <a onClick={(event) => event.stopPropagation()} href={instagramUrl(partner.instagram)} target="_blank" rel="noreferrer">Instagram</a>}
