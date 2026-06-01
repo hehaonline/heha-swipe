@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { supabase } from "../lib/supabase";
+
 export default function ProfileTab({
   user,
   profile,
@@ -7,10 +10,62 @@ export default function ProfileTab({
   onListBusiness,
   onRefresh,
 }) {
+  const [busy, setBusy] = useState(false);
+  const [profileMessage, setProfileMessage] = useState(null);
+  const [profileError, setProfileError] = useState(null);
   const initial = (profile?.full_name?.charAt(0) || user?.email?.charAt(0) || "H").toUpperCase();
   const joinDate = user?.created_at
     ? new Date(user.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" })
     : "recently";
+
+  const resetAppProfile = async () => {
+    const confirmed = window.confirm("Reset your HEHA Swipe profile data? This clears saved partners and onboarding profile data, but does not delete your login account.");
+    if (!confirmed) return;
+
+    setBusy(true);
+    setProfileError(null);
+    setProfileMessage(null);
+
+    try {
+      await supabase.from("saves").delete().eq("user_id", user.id);
+      await supabase.from("customer_profiles").delete().eq("user_id", user.id);
+      await supabase.from("profiles").delete().eq("id", user.id);
+      localStorage.removeItem("heha_signup_role");
+      setProfileMessage("Profile reset. Sign out and sign back in to start over.");
+      onRefresh?.();
+    } catch (error) {
+      setProfileError(error.message || "Could not reset your profile.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const requestAccountDeletion = async () => {
+    const confirmed = window.confirm("Request full account deletion? HEHA will receive a deletion request. Your login may remain active until the account is removed from Supabase Auth by an admin.");
+    if (!confirmed) return;
+
+    setBusy(true);
+    setProfileError(null);
+    setProfileMessage(null);
+
+    try {
+      const { error } = await supabase.from("account_deletion_requests").insert({
+        user_id: user.id,
+        email: user.email || null,
+        reason: "User requested account deletion from HEHA Swipe profile.",
+      });
+      if (error) throw error;
+      await supabase.from("saves").delete().eq("user_id", user.id);
+      await supabase.from("customer_profiles").delete().eq("user_id", user.id);
+      await supabase.from("profiles").delete().eq("id", user.id);
+      localStorage.removeItem("heha_signup_role");
+      setProfileMessage("Deletion request created. Your HEHA Swipe data was cleared from the app tables.");
+    } catch (error) {
+      setProfileError(error.message || "Could not request account deletion.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <section className="profile-screen">
@@ -52,9 +107,14 @@ export default function ProfileTab({
         <p>HEHA keeps the Freebird Fund mission connected to growth. As the community grows, the goal is to support people transitioning toward safer, more independent living.</p>
       </div>
 
+      {profileMessage && <div className="success-banner">{profileMessage}</div>}
+      {profileError && <div className="error-banner">{profileError}</div>}
+
       <div className="profile-actions">
-        <button className="secondary-button" onClick={onRefresh}>Refresh partners</button>
-        <button className="secondary-button" onClick={onSignOut}>Sign out</button>
+        <button className="secondary-button" onClick={onRefresh} disabled={busy}>Refresh partners</button>
+        <button className="secondary-button" onClick={resetAppProfile} disabled={busy}>Reset app profile</button>
+        <button className="danger-button" onClick={requestAccountDeletion} disabled={busy}>Request account deletion</button>
+        <button className="secondary-button" onClick={onSignOut} disabled={busy}>Sign out</button>
       </div>
     </section>
   );
