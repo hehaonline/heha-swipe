@@ -19,31 +19,58 @@ export default function OnboardingScreen({ user, onComplete }) {
     setStep("access");
   };
 
-  const complete = async () => {
+  const saveProfile = async (statusOverride) => {
+    const isPartner = role === "partner";
+    const subscriptionType = isPartner
+      ? access === "supporter" ? "partner_supporter" : "partner_free"
+      : access === "supporter" ? "customer_supporter" : "customer_free";
+
+    const { error: profileError } = await supabase.from("profiles").upsert({
+      id: user.id,
+      email: user.email || null,
+      phone: user.phone || null,
+      subscription_type: subscriptionType,
+      subscription_active: access === "free" || statusOverride === "active",
+      subscription_amount: access === "supporter" ? supportAmount : 0,
+      subscription_status: statusOverride || access,
+    });
+    if (profileError) throw profileError;
+
+    await supabase.from("customer_profiles").upsert({ user_id: user.id });
+  };
+
+  const complete = async ({ forceFree = false } = {}) => {
     setLoading(true);
     setError(null);
 
     try {
-      const isPartner = role === "partner";
-      const subscriptionType = isPartner
-        ? access === "supporter" ? "partner_supporter" : "partner_free"
-        : access === "supporter" ? "customer_supporter" : "customer_free";
-
-      const { error: profileError } = await supabase.from("profiles").upsert({
-        id: user.id,
-        email: user.email || null,
-        phone: user.phone || null,
-        subscription_type: subscriptionType,
-        subscription_active: true,
-        subscription_amount: access === "supporter" ? supportAmount : 0,
-        subscription_status: access,
-      });
-      if (profileError) throw profileError;
-
-      await supabase.from("customer_profiles").upsert({ user_id: user.id });
+      if (forceFree) setAccess("free");
+      await saveProfile(forceFree ? "free" : undefined);
       onComplete?.(role || "customer");
     } catch (completeError) {
       setError(completeError.message || "Could not finish setup yet.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startSupporterCheckout = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      await saveProfile("supporter_checkout_started");
+      const stripeLink = import.meta.env.VITE_STRIPE_SUPPORTER_CHECKOUT_URL;
+      if (!stripeLink) {
+        throw new Error("Stripe checkout is not connected yet. Add VITE_STRIPE_SUPPORTER_CHECKOUT_URL in Vercel when your Stripe payment link is ready.");
+      }
+      const url = new URL(stripeLink);
+      url.searchParams.set("client_reference_id", user.id);
+      url.searchParams.set("prefilled_email", user.email || "");
+      url.searchParams.set("heha_amount", String(supportAmount));
+      window.location.href = url.toString();
+    } catch (checkoutError) {
+      setError(checkoutError.message || "Could not open Stripe checkout yet.");
     } finally {
       setLoading(false);
     }
@@ -76,6 +103,7 @@ export default function OnboardingScreen({ user, onComplete }) {
   }
 
   const isPartner = role === "partner";
+  const canStartStripe = access === "supporter";
 
   return (
     <main className="onboarding-screen">
@@ -115,11 +143,22 @@ export default function OnboardingScreen({ user, onComplete }) {
           </div>
         )}
 
-        <button className="primary-button" onClick={complete} disabled={loading}>
-          {loading ? "Setting up…" : isPartner ? "Continue to business listing" : "Start discovering"}
-        </button>
+        {canStartStripe ? (
+          <>
+            <button className="primary-button" onClick={startSupporterCheckout} disabled={loading}>
+              {loading ? "Opening Stripe…" : "Start supporter checkout"}
+            </button>
+            <button className="secondary-button" onClick={() => complete({ forceFree: true })} disabled={loading}>
+              Continue free for testing
+            </button>
+          </>
+        ) : (
+          <button className="primary-button" onClick={() => complete()} disabled={loading}>
+            {loading ? "Setting up…" : isPartner ? "Continue to business listing" : "Start discovering"}
+          </button>
+        )}
 
-        <div className="soft-note">The supporter amount is saved to your HEHA profile. Live checkout can be connected after the Stripe link or backend session is ready.</div>
+        <div className="soft-note">Stripe checkout needs your Stripe payment link in Vercel. Until then, use Free or Continue free for testing.</div>
         {error && <div className="error-banner">{error}</div>}
       </section>
     </main>
