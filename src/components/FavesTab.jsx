@@ -13,6 +13,10 @@ function instagramUrl(handle) {
   return `https://instagram.com/${handle.replace("@", "")}`;
 }
 
+function itemUrl(item) {
+  return item?.url || item?.product_url || item?.link || null;
+}
+
 export default function FavesTab({ partners = [], saves = [], onUnsave }) {
   const [selectedPartner, setSelectedPartner] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
@@ -21,10 +25,12 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
     .map((save) => partners.find((partner) => partner.id === save.partner_id))
     .filter(Boolean);
 
-  const orderText = useMemo(() => {
-    if (!selectedPartner) return "";
-    const items = selectedItems.length ? selectedItems.join(", ") : "I would like to learn what is available.";
-    return `Hi HEHA, I am interested in ordering from ${selectedPartner.name}. Items: ${items}`;
+  const selectedOrderUrl = useMemo(() => {
+    if (!selectedPartner) return null;
+    const items = Array.isArray(selectedPartner.items) ? selectedPartner.items : [];
+    if (!selectedItems.length) return null;
+    const firstSelected = items.find((item) => selectedItems.includes(item.name));
+    return itemUrl(firstSelected);
   }, [selectedPartner, selectedItems]);
 
   const toggleItem = (itemName) => {
@@ -49,6 +55,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
     const items = Array.isArray(selectedPartner.items) ? selectedPartner.items : [];
     const tags = [...new Set([...(selectedPartner.offerings || []), ...(selectedPartner.tags || [])])].slice(0, 8);
     const ig = instagramUrl(selectedPartner.instagram);
+    const hasSelectedItems = selectedItems.length > 0;
 
     return (
       <section className="saved-screen partner-detail-screen">
@@ -78,7 +85,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
         <section className="detail-section card-like">
           <div className="detail-section-heading">
             <p className="eyebrow">Select items</p>
-            <h3>{items.length ? "Build a simple order request" : "Ordering coming soon"}</h3>
+            <h3>{items.length ? "Choose what you want to order" : "Ordering coming soon"}</h3>
           </div>
 
           {items.length ? (
@@ -86,6 +93,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
               {items.map((item, index) => {
                 const name = item.name || `Item ${index + 1}`;
                 const active = selectedItems.includes(name);
+                const url = itemUrl(item);
                 return (
                   <button
                     key={`${name}-${index}`}
@@ -94,7 +102,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
                   >
                     <span>{item.emoji || "✦"}</span>
                     <strong>{name}</strong>
-                    {item.price && <small>${item.price}</small>}
+                    <small>{url ? "Order ↗" : item.price ? `$${item.price}` : "Soon"}</small>
                   </button>
                 );
               })}
@@ -104,12 +112,15 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
           )}
 
           <div className="detail-order-actions">
-            <a
-              className="primary-button"
-              href={`mailto:geronimo@heha.online?subject=${encodeURIComponent(`HEHA order request: ${selectedPartner.name}`)}&body=${encodeURIComponent(orderText)}`}
-            >
-              Request through HEHA
-            </a>
+            {selectedOrderUrl ? (
+              <a className="primary-button" href={selectedOrderUrl} target="_blank" rel="noreferrer">
+                Order selected item on HEHA
+              </a>
+            ) : (
+              <button className="primary-button" disabled>
+                {hasSelectedItems ? "HEHA product link coming soon" : "Select an item to order"}
+              </button>
+            )}
             {ig && <a className="secondary-button" href={ig} target="_blank" rel="noreferrer">Open Instagram</a>}
             {selectedPartner.website && <a className="secondary-button" href={selectedPartner.website} target="_blank" rel="noreferrer">Open website</a>}
           </div>
@@ -135,7 +146,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
       <div className="section-hero compact">
         <p className="eyebrow">Your saved map</p>
         <h2>{saved.length} healthy business{saved.length === 1 ? "" : "es"} saved</h2>
-        <p>Tap a saved business to view details, learn more, and start a simple order request.</p>
+        <p>Tap a saved business to view details, learn more, and order through HEHA when product links are available.</p>
       </div>
 
       <div className="saved-list">
