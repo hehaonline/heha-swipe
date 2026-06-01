@@ -66,7 +66,7 @@ export default function SwipeTab({
       setDeck(buildDeck(category, new Set(), true) || []);
       setSeenIds(new Set());
       setReshuffled(true);
-      window.setTimeout(() => setReshuffled(false), 2200);
+      window.setTimeout(() => setReshuffled(false), 1800);
     } else {
       setDeck(result || []);
     }
@@ -91,21 +91,19 @@ export default function SwipeTab({
   }, [partners, category]);
 
   return (
-    <section className="discover-screen">
-      {reshuffled && <div className="floating-status">Showing fresh businesses again</div>}
+    <section className="discover-screen compact-discover">
+      {reshuffled && <div className="floating-status">Fresh businesses loaded</div>}
 
-      <div className="discover-hero">
+      <div className="discover-hero compact-hero">
         <div>
-          <p className="eyebrow">From locals for locals</p>
-          <h2>Swipe through Tampa Bay's healthy scene.</h2>
-          <p>
-            Save restaurants, wellness partners, markets, coaches, and local products you want to visit, order from, or support.
-          </p>
+          <p className="eyebrow">Local healthy discovery</p>
+          <h2>Tampa Bay’s healthy scene.</h2>
+          <p>Swipe, save, and SuperSwoop the businesses you want to visit.</p>
         </div>
-        <div className="hero-chip">{activeCategoryCount} live</div>
+        <div className="hero-chip">{activeCategoryCount}</div>
       </div>
 
-      <div className="category-rail" role="tablist" aria-label="Partner categories">
+      <div className="category-rail compact-rail" role="tablist" aria-label="Partner categories">
         {CATEGORIES.map((cat) => (
           <button
             key={cat}
@@ -121,9 +119,9 @@ export default function SwipeTab({
         ))}
       </div>
 
-      {dataLoading && <div className="inline-loader">Refreshing HEHA partners…</div>}
+      {dataLoading && <div className="inline-loader">Refreshing partners…</div>}
 
-      <div className="deck-stage">
+      <div className="deck-stage compact-stage">
         {current ? (
           <>
             {deck[1] && <div className="next-card-shadow" />}
