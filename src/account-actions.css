@@ -1,0 +1,22 @@
+.danger-button {
+  width: 100%;
+  border: 1px solid #ffd0be;
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: #fff0e8;
+  color: #b84d1c;
+  font-weight: 900;
+  cursor: pointer;
+  text-align: center;
+}
+
+.danger-button:disabled,
+.secondary-button:disabled,
+.primary-button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.profile-actions .danger-button {
+  margin-top: 2px;
+}
