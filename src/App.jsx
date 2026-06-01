@@ -6,6 +6,7 @@ import PartnerWizard from "./components/PartnerWizard";
 import SwipeTab from "./components/SwipeTab";
 import FavesTab from "./components/FavesTab";
 import ProfileTab from "./components/ProfileTab";
+import PasswordResetScreen from "./components/PasswordResetScreen";
 
 const TABS = [
   { id: "swipe", label: "Discover", icon: "✦" },
@@ -16,6 +17,10 @@ const TABS = [
 const COMPLETED_SUBSCRIPTION_TYPES = [
   "instagram",
   "monthly",
+  "customer_free",
+  "customer_supporter",
+  "partner_free",
+  "partner_supporter",
   "partner_instagram",
   "partner_monthly",
   "partner",
@@ -30,9 +35,7 @@ function isOnboarded(profile) {
 }
 
 function isPartnerProfile(profile) {
-  return ["partner", "partner_instagram", "partner_monthly"].includes(
-    profile?.subscription_type
-  );
+  return profile?.subscription_type?.startsWith("partner");
 }
 
 export default function App() {
@@ -45,6 +48,7 @@ export default function App() {
   const [dataLoading, setDataLoading] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showPartnerWizard, setShowPartnerWizard] = useState(false);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [notice, setNotice] = useState(null);
   const [appError, setAppError] = useState(null);
 
@@ -58,14 +62,18 @@ export default function App() {
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecovery(true);
+      }
       if (!newSession) {
         setProfile(null);
         setPartners([]);
         setSaves([]);
         setNeedsOnboarding(false);
         setShowPartnerWizard(false);
+        setPasswordRecovery(false);
       }
     });
 
@@ -76,10 +84,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!session?.user?.id) return;
+    if (!session?.user?.id || passwordRecovery) return;
     loadData(session.user.id);
     pingNewUserWebhook(session.user);
-  }, [session?.user?.id]);
+  }, [session?.user?.id, passwordRecovery]);
 
   useEffect(() => {
     if (!session?.user) return;
@@ -267,6 +275,16 @@ export default function App() {
 
   if (loading) return <SplashScreen />;
   if (!session) return <AuthScreen />;
+  if (passwordRecovery) {
+    return (
+      <PasswordResetScreen
+        onComplete={() => {
+          setPasswordRecovery(false);
+          loadData(session.user.id);
+        }}
+      />
+    );
+  }
 
   if (needsOnboarding) {
     return (
