@@ -1,0 +1,249 @@
+/* HEHA Swipe mobile fit pass: keeps discovery cards clean, image-led, and phone-sized. */
+
+.app-shell {
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+.app-content {
+  height: 100%;
+}
+
+.compact-discover {
+  height: 100%;
+  overflow: hidden;
+  padding: 10px 14px 96px;
+}
+
+.compact-hero {
+  padding: 13px 15px;
+  border-radius: 22px;
+}
+
+.compact-hero .eyebrow {
+  margin-bottom: 5px;
+  font-size: 10px;
+}
+
+.compact-hero h2 {
+  font-size: clamp(23px, 7vw, 31px);
+  line-height: .92;
+}
+
+.compact-hero p {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.3;
+  max-width: 92%;
+}
+
+.compact-hero .hero-chip {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.compact-rail {
+  padding: 10px 0 9px;
+  gap: 7px;
+}
+
+.compact-rail button {
+  padding: 8px 11px;
+  font-size: 13px;
+}
+
+.compact-stage {
+  min-height: 0;
+  height: min(61dvh, 520px);
+  padding: 0;
+  align-items: stretch;
+}
+
+.next-card-shadow {
+  height: calc(100% - 8px);
+  width: calc(100% - 12px);
+  transform: translateY(12px) scale(.965);
+}
+
+.swipe-card.compact {
+  min-height: 0;
+  height: 100%;
+  border-radius: 30px;
+  padding: 13px;
+  gap: 9px;
+  overflow: hidden;
+  justify-content: flex-start;
+}
+
+.swipe-card.compact::after {
+  background: linear-gradient(180deg, rgba(0,0,0,.06), rgba(0,0,0,.42));
+}
+
+.card-image-wrap {
+  height: 31%;
+  min-height: 112px;
+  border-radius: 22px;
+  overflow: hidden;
+  position: relative;
+  background: rgba(255,255,255,.16);
+  border: 1px solid rgba(255,255,255,.16);
+}
+
+.card-image-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.floating-avatar {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  font-size: 27px;
+  background: rgba(255,255,255,.24);
+  border: 1px solid rgba(255,255,255,.2);
+}
+
+.image-badges {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  align-items: flex-end;
+}
+
+.image-badges span {
+  background: rgba(23,63,45,.7);
+  backdrop-filter: blur(10px);
+}
+
+.compact-main {
+  padding: 0 3px;
+}
+
+.compact-main .location-line {
+  font-size: 13px;
+  margin-bottom: 3px;
+}
+
+.compact-main h2 {
+  font-size: clamp(31px, 9vw, 43px);
+  margin: 0 0 5px;
+  letter-spacing: -.065em;
+}
+
+.compact-main .tagline {
+  font-size: clamp(16px, 4.5vw, 20px);
+  line-height: 1.22;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.compact-tags {
+  gap: 7px;
+  max-height: 36px;
+  overflow: hidden;
+}
+
+.compact-tags span {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.compact-items {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.compact-items div {
+  min-height: 62px;
+  padding: 8px 10px;
+  border-radius: 16px;
+}
+
+.compact-items strong {
+  font-size: 13px;
+}
+
+.compact-items small {
+  font-size: 12px;
+}
+
+.compact-footer {
+  margin-top: auto;
+  padding: 0 2px 2px;
+}
+
+.compact-footer button {
+  padding: 10px 15px;
+}
+
+.gesture-helper {
+  display: none;
+}
+
+.action-dock {
+  bottom: 68px;
+  gap: 18px;
+}
+
+.action-circle {
+  width: 58px;
+  height: 58px;
+}
+
+.swipe-intent {
+  top: 20px;
+  font-size: 14px;
+}
+
+@media (max-height: 720px) {
+  .compact-discover {
+    padding-top: 8px;
+  }
+
+  .compact-hero p {
+    display: none;
+  }
+
+  .compact-stage {
+    height: min(60dvh, 455px);
+  }
+
+  .card-image-wrap {
+    height: 28%;
+    min-height: 94px;
+  }
+
+  .compact-items div {
+    min-height: 54px;
+  }
+
+  .action-circle {
+    width: 54px;
+    height: 54px;
+  }
+}
+
+@media (max-width: 380px) {
+  .compact-main h2 {
+    font-size: 31px;
+  }
+
+  .compact-tags span:nth-child(n+3) {
+    display: none;
+  }
+
+  .compact-items {
+    grid-template-columns: 1fr;
+  }
+
+  .compact-items div:nth-child(n+2) {
+    display: none;
+  }
+}
