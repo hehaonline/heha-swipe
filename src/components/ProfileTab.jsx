@@ -38,7 +38,7 @@ export default function ProfileTab({ user, profile, onSignOut, onListBusiness })
           background: "#2a7c3f", color: "#fff", fontSize: 15, fontWeight: 600,
           cursor: "pointer", width: "100%"
         }}>
-        🏪 List Your Business
+        🏪 Have a healthy Business or Service? List it on HEHA Swipe →
       </button>
 
       <button onClick={onSignOut}
