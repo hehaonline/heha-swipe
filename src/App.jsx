@@ -118,7 +118,8 @@ export default function App() {
         supabase
           .from("partners")
           .select("*")
-          .eq("status", "approved")
+          .in("status", ["approved", "listed"])
+          .order("heha_partner", { ascending: false })
           .order("created_at", { ascending: false }),
         supabase.from("saves").select("*").eq("user_id", uid),
       ]);
