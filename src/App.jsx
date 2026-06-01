@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabase";
 import AuthScreen from "./components/AuthScreen";
 import OnboardingScreen from "./components/OnboardingScreen";
@@ -13,172 +13,28 @@ const TABS = [
   { id: "profile", label: "Profile", icon: "◎" },
 ];
 
-export default function App() {
-  const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [partners, setPartners] = useState([]);
-  const [saves, setSaves] = useState([]);
-  const [tab, setTab] = useState("swipe");
-  const [loading, setLoading] = useState(true);
-  const [needsOnboarding, setNeedsOnboarding] = useState(false);
-  const [showPartnerWizard, setShowPartnerWizard] = useState(false);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setSession(session);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!session?.user) return;
-    loadData();
-    pingWebhook(session.user);
-  }, [session?.user?.id]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("checkout") === "success" && session?.user) {
-      const returnRole = params.get("role");
-      window.history.replaceState(null, "", window.location.pathname);
-      setNeedsOnboarding(false);
-      if (returnRole === "partner") setShowPartnerWizard(true);
-      loadData();
-    }
-  }, [session?.user?.id]);
-
-  const loadData = async () => {
-    const uid = session.user.id;
-    const [{ data: prof }, { data: prtners }, { data: svs }] = await Promise.all([
-      supabase.from("profiles").select("*").eq("id", uid).single(),
-      supabase.from("partners").select("*").eq("status", "approved").order("created_at", { ascending: false }),
-      supabase.from("saves").select("*").eq("user_id", uid),
-    ]);
-    setProfile(prof);
-    setPartners(prtners || []);
-    setSaves(svs || []);
-    const done = ["instagram", "monthly", "partner_instagram", "partner_monthly", "partner"];
-    const isDone = prof?.subscription_type && done.some(t => prof.subscription_type === t || prof.subscription_type.startsWith(t));
-    if (!isDone) setNeedsOnboarding(true);
-    else setNeedsOnboarding(false);
-    if (["partner_monthly", "partner_instagram", "partner"].includes(prof?.subscription_type)) {
-      const { data: existing } = await supabase.from("partners").select("id").eq("owner_id", uid).maybeSingle();
-      if (!existing) setShowPartnerWizard(true);
-    }
-  };
-
-  const pingWebhook = async (user) => {
-    try {
-      const url = import.meta.env.VITE_MAKE_NEW_USER_WEBHOOK;
-      if (!url) return;
-      await fetch(url, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user.id, email: user.email || null, phone: user.phone || null, created_at: user.created_at })
-      });
-    } catch (_) {}
-  };
-
-  const handleSave = async (partner) => {
-    const uid = session.user.id;
-    const { data } = await supabase.from("saves").insert({ user_id: uid, partner_id: partner.id }).select().single();
-    if (data) setSaves(s => [...s, data]);
-    await Promise.all([
-      supabase.from("partners").update({ total_saves: (partner.total_saves || 0) + 1 }).eq("id", partner.id),
-      supabase.from("swipe_events").insert({ user_id: uid, partner_id: partner.id, direction: "right" })
-    ]);
-  };
-
-  const handlePass = async (partner) => {
-    const uid = session.user.id;
-    await Promise.all([
-      supabase.from("swipe_events").insert({ user_id: uid, partner_id: partner.id, direction: "left" }),
-      supabase.from("partners").update({ total_swipes: (partner.total_swipes || 0) + 1 }).eq("id", partner.id)
-    ]);
-  };
-
-  const handleUnsave = async (partnerId) => {
-    await supabase.from("saves").delete().eq("user_id", session.user.id).eq("partner_id", partnerId);
-    setSaves(s => s.filter(sv => sv.partner_id !== partnerId));
-  };
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setSession(null); setProfile(null); setSaves([]); setNeedsOnboarding(false);
-  };
-
-  if (loading) return (
-    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#fff", gap: 16, fontFamily: "DM Sans, sans-serif" }}>
-      <div style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: 32, letterSpacing: "-1px", color: "#111" }}>
-        HEHA<span style={{ color: "#e85d2b" }}>·</span>swipe
-      </div>
-      <div style={{ width: 48, height: 3, borderRadius: 2, background: "#f0f0f0", overflow: "hidden" }}>
-        <div style={{ height: "100%", width: "50%", background: "#e85d2b", animation: "slideRight 1.2s ease infinite" }} />
-      </div>
-    </div>
-  );
-
-  if (!session) return <AuthScreen />;
-  if (needsOnboarding) return (
-    <OnboardingScreen user={session.user} onComplete={(role) => {
-      setNeedsOnboarding(false);
-      if (role === "partner") setShowPartnerWizard(true);
-    }} />
-  );
-  if (showPartnerWizard) return (
-    <PartnerWizard user={session.user}
-      onComplete={() => { setShowPartnerWizard(false); setTab("profile"); }}
-      onCancel={() => setShowPartnerWizard(false)} />
-  );
-
-  return (
-    <div style={{ maxWidth: 480, margin: "0 auto", height: "100dvh", display: "flex", flexDirection: "column", background: "#fff", position: "relative", overflow: "hidden", fontFamily: "DM Sans, sans-serif" }}>
-
-      {/* Header */}
-      <div style={{ background: "#fff", padding: "14px 20px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f0f0f0", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: "linear-gradient(135deg, #e85d2b, #ff7a47)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, boxShadow: "0 4px 12px rgba(232,93,43,0.3)" }}>✦</div>
-          <div style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: 20, letterSpacing: "-0.5px", color: "#111" }}>
-            HEHA<span style={{ color: "#e85d2b" }}>·</span>swipe
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {tab === "swipe" && (
-            <div style={{ fontSize: 11, color: "#e85d2b", background: "#fff4f0", padding: "4px 10px", borderRadius: 20, fontWeight: 600, border: "1px solid #ffe0d6" }}>
-              📍 Tampa Bay
-            </div>
-          )}
-          <button onClick={handleSignOut} style={{ background: "none", border: "1px solid #eee", borderRadius: 20, padding: "5px 12px", fontSize: 12, color: "#aaa", cursor: "pointer" }}>
-            out
-          </button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        {tab === "swipe" && <SwipeTab partners={partners} saves={saves} onSave={handleSave} onPass={handlePass} />}
-        {tab === "faves" && <FavesTab saves={saves} partners={partners} onUnsave={handleUnsave} />}
-        {tab === "profile" && <ProfileTab user={session.user} profile={profile} onSignOut={handleSignOut} onListBusiness={() => setShowPartnerWizard(true)} />}
-      </di
-cat > src/App.jsx << 'EOF'
-import { useState, useEffect } from "react";
-import { supabase } from "./lib/supabase";
-import AuthScreen from "./components/AuthScreen";
-import OnboardingScreen from "./components/OnboardingScreen";
-import PartnerWizard from "./components/PartnerWizard";
-import SwipeTab from "./components/SwipeTab";
-import FavesTab from "./components/FavesTab";
-import ProfileTab from "./components/ProfileTab";
-
-const TABS = [
-  { id: "swipe", label: "Discover", icon: "✦" },
-  { id: "faves", label: "Saved", icon: "♥" },
-  { id: "profile", label: "Profile", icon: "◎" },
+const COMPLETED_SUBSCRIPTION_TYPES = [
+  "instagram",
+  "monthly",
+  "partner_instagram",
+  "partner_monthly",
+  "partner",
 ];
 
+function isOnboarded(profile) {
+  const type = profile?.subscription_type;
+  if (!type) return false;
+  return COMPLETED_SUBSCRIPTION_TYPES.some(
+    (acceptedType) => type === acceptedType || type.startsWith(`${acceptedType}_`)
+  );
+}
+
+function isPartnerProfile(profile) {
+  return ["partner", "partner_instagram", "partner_monthly"].includes(
+    profile?.subscription_type
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -186,162 +42,326 @@ export default function App() {
   const [saves, setSaves] = useState([]);
   const [tab, setTab] = useState("swipe");
   const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showPartnerWizard, setShowPartnerWizard] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [appError, setAppError] = useState(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!mounted) return;
+      if (error) setAppError(error.message);
+      setSession(data?.session || null);
       setLoading(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setSession(session);
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      if (!newSession) {
+        setProfile(null);
+        setPartners([]);
+        setSaves([]);
+        setNeedsOnboarding(false);
+        setShowPartnerWizard(false);
+      }
     });
-    return () => subscription.unsubscribe();
+
+    return () => {
+      mounted = false;
+      listener?.subscription?.unsubscribe?.();
+    };
   }, []);
 
   useEffect(() => {
-    if (!session?.user) return;
-    loadData();
-    pingWebhook(session.user);
+    if (!session?.user?.id) return;
+    loadData(session.user.id);
+    pingNewUserWebhook(session.user);
   }, [session?.user?.id]);
 
   useEffect(() => {
+    if (!session?.user) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("checkout") === "success" && session?.user) {
-      const returnRole = params.get("role");
-      window.history.replaceState(null, "", window.location.pathname);
-      setNeedsOnboarding(false);
-      if (returnRole === "partner") setShowPartnerWizard(true);
-      loadData();
-    }
+    const checkoutSuccess = params.get("checkout") === "success";
+    if (!checkoutSuccess) return;
+
+    const returnRole = params.get("role");
+    window.history.replaceState(null, "", window.location.pathname);
+    setNeedsOnboarding(false);
+    if (returnRole === "partner") setShowPartnerWizard(true);
+    loadData(session.user.id);
   }, [session?.user?.id]);
 
-  const loadData = async () => {
-    const uid = session.user.id;
-    const [{ data: prof }, { data: prtners }, { data: svs }] = await Promise.all([
-      supabase.from("profiles").select("*").eq("id", uid).single(),
-      supabase.from("partners").select("*").eq("status", "approved").order("created_at", { ascending: false }),
-      supabase.from("saves").select("*").eq("user_id", uid),
-    ]);
-    setProfile(prof);
-    setPartners(prtners || []);
-    setSaves(svs || []);
-    const done = ["instagram", "monthly", "partner_instagram", "partner_monthly", "partner"];
-    const isDone = prof?.subscription_type && done.some(t => prof.subscription_type === t || prof.subscription_type.startsWith(t));
-    if (!isDone) setNeedsOnboarding(true);
-    else setNeedsOnboarding(false);
-    if (["partner_monthly", "partner_instagram", "partner"].includes(prof?.subscription_type)) {
-      const { data: existing } = await supabase.from("partners").select("id").eq("owner_id", uid).maybeSingle();
-      if (!existing) setShowPartnerWizard(true);
+  const savedPartnerIds = useMemo(
+    () => new Set(saves.map((save) => save.partner_id)),
+    [saves]
+  );
+
+  const loadData = async (uid = session?.user?.id) => {
+    if (!uid) return;
+    setDataLoading(true);
+    setAppError(null);
+
+    try {
+      const [profileResult, partnerResult, saveResult] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
+        supabase
+          .from("partners")
+          .select("*")
+          .eq("status", "approved")
+          .order("created_at", { ascending: false }),
+        supabase.from("saves").select("*").eq("user_id", uid),
+      ]);
+
+      if (profileResult.error) throw profileResult.error;
+      if (partnerResult.error) throw partnerResult.error;
+      if (saveResult.error) throw saveResult.error;
+
+      const nextProfile = profileResult.data;
+      const nextPartners = partnerResult.data || [];
+      const nextSaves = saveResult.data || [];
+
+      setProfile(nextProfile);
+      setPartners(nextPartners);
+      setSaves(nextSaves);
+      setNeedsOnboarding(!isOnboarded(nextProfile));
+
+      if (isPartnerProfile(nextProfile)) {
+        const { data: existing, error } = await supabase
+          .from("partners")
+          .select("id")
+          .eq("owner_id", uid)
+          .maybeSingle();
+        if (error) throw error;
+        if (!existing) setShowPartnerWizard(true);
+      }
+    } catch (error) {
+      setAppError(error.message || "Could not load HEHA Swipe.");
+    } finally {
+      setDataLoading(false);
     }
   };
 
-  const pingWebhook = async (user) => {
+  const pingNewUserWebhook = async (user) => {
     try {
-      const url = import.meta.env.VITE_MAKE_NEW_USER_WEBHOOK;
-      if (!url) return;
-      await fetch(url, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user.id, email: user.email || null, phone: user.phone || null, created_at: user.created_at })
+      const webhookUrl = import.meta.env.VITE_MAKE_NEW_USER_WEBHOOK;
+      if (!webhookUrl) return;
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.id,
+          email: user.email || null,
+          phone: user.phone || null,
+          created_at: user.created_at,
+          source: "heha_swipe",
+        }),
       });
-    } catch (_) {}
+    } catch {
+      // Marketing webhook failures should never block app usage.
+    }
+  };
+
+  const flashNotice = (message) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(null), 2600);
+  };
+
+  const recordSwipeEvent = async (partner, direction) => {
+    const uid = session?.user?.id;
+    if (!uid || !partner?.id) return;
+
+    const { error } = await supabase.from("swipe_events").insert({
+      user_id: uid,
+      partner_id: partner.id,
+      direction,
+    });
+
+    if (error) throw error;
   };
 
   const handleSave = async (partner) => {
-    const uid = session.user.id;
-    const { data } = await supabase.from("saves").insert({ user_id: uid, partner_id: partner.id }).select().single();
-    if (data) setSaves(s => [...s, data]);
-    await Promise.all([
-      supabase.from("partners").update({ total_saves: (partner.total_saves || 0) + 1 }).eq("id", partner.id),
-      supabase.from("swipe_events").insert({ user_id: uid, partner_id: partner.id, direction: "right" })
-    ]);
+    const uid = session?.user?.id;
+    if (!uid || !partner?.id) return;
+
+    try {
+      if (!savedPartnerIds.has(partner.id)) {
+        const { data, error } = await supabase
+          .from("saves")
+          .insert({ user_id: uid, partner_id: partner.id })
+          .select()
+          .single();
+        if (error) throw error;
+        if (data) setSaves((current) => [...current, data]);
+      }
+
+      await Promise.all([
+        recordSwipeEvent(partner, "right"),
+        supabase
+          .from("partners")
+          .update({ total_saves: (partner.total_saves || 0) + 1 })
+          .eq("id", partner.id),
+      ]);
+
+      flashNotice(`${partner.name} saved to your HEHA list.`);
+    } catch (error) {
+      flashNotice(error.message || "Could not save this business yet.");
+    }
   };
 
   const handlePass = async (partner) => {
-    const uid = session.user.id;
-    await Promise.all([
-      supabase.from("swipe_events").insert({ user_id: uid, partner_id: partner.id, direction: "left" }),
-      supabase.from("partners").update({ total_swipes: (partner.total_swipes || 0) + 1 }).eq("id", partner.id)
-    ]);
+    if (!partner?.id) return;
+    try {
+      await Promise.all([
+        recordSwipeEvent(partner, "left"),
+        supabase
+          .from("partners")
+          .update({ total_swipes: (partner.total_swipes || 0) + 1 })
+          .eq("id", partner.id),
+      ]);
+    } catch {
+      // Passing should feel lightweight. We quietly preserve the user flow.
+    }
+  };
+
+  const handleSuperSwipe = async (partner) => {
+    const uid = session?.user?.id;
+    if (!uid || !partner?.id) return;
+
+    try {
+      await Promise.all([
+        recordSwipeEvent(partner, "super"),
+        supabase
+          .from("partners")
+          .update({ total_swipes: (partner.total_swipes || 0) + 1 })
+          .eq("id", partner.id),
+      ]);
+
+      flashNotice(`SuperSwoop sent for ${partner.name}. HEHA will know this one stands out.`);
+    } catch (error) {
+      flashNotice(error.message || "Could not send SuperSwoop yet.");
+    }
   };
 
   const handleUnsave = async (partnerId) => {
-    await supabase.from("saves").delete().eq("user_id", session.user.id).eq("partner_id", partnerId);
-    setSaves(s => s.filter(sv => sv.partner_id !== partnerId));
+    try {
+      const { error } = await supabase
+        .from("saves")
+        .delete()
+        .eq("user_id", session.user.id)
+        .eq("partner_id", partnerId);
+      if (error) throw error;
+      setSaves((current) => current.filter((save) => save.partner_id !== partnerId));
+      flashNotice("Removed from your saved HEHA list.");
+    } catch (error) {
+      flashNotice(error.message || "Could not remove this business yet.");
+    }
   };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    setSession(null); setProfile(null); setSaves([]); setNeedsOnboarding(false);
+    setSession(null);
   };
 
-  if (loading) return (
-    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#fff", gap: 16, fontFamily: "DM Sans, sans-serif" }}>
-      <div style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: 32, letterSpacing: "-1px", color: "#111" }}>
-        HEHA<span style={{ color: "#e85d2b" }}>·</span>swipe
-      </div>
-      <div style={{ width: 48, height: 3, borderRadius: 2, background: "#f0f0f0", overflow: "hidden" }}>
-        <div style={{ height: "100%", width: "50%", background: "#e85d2b", animation: "slideRight 1.2s ease infinite" }} />
-      </div>
-    </div>
-  );
-
+  if (loading) return <SplashScreen />;
   if (!session) return <AuthScreen />;
-  if (needsOnboarding) return (
-    <OnboardingScreen user={session.user} onComplete={(role) => {
-      setNeedsOnboarding(false);
-      if (role === "partner") setShowPartnerWizard(true);
-    }} />
-  );
-  if (showPartnerWizard) return (
-    <PartnerWizard user={session.user}
-      onComplete={() => { setShowPartnerWizard(false); setTab("profile"); }}
-      onCancel={() => setShowPartnerWizard(false)} />
-  );
+
+  if (needsOnboarding) {
+    return (
+      <OnboardingScreen
+        user={session.user}
+        onComplete={(role) => {
+          setNeedsOnboarding(false);
+          if (role === "partner") setShowPartnerWizard(true);
+          loadData(session.user.id);
+        }}
+      />
+    );
+  }
+
+  if (showPartnerWizard) {
+    return (
+      <PartnerWizard
+        user={session.user}
+        onComplete={() => {
+          setShowPartnerWizard(false);
+          setTab("profile");
+          loadData(session.user.id);
+        }}
+        onCancel={() => setShowPartnerWizard(false)}
+      />
+    );
+  }
 
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", height: "100dvh", display: "flex", flexDirection: "column", background: "#fff", position: "relative", overflow: "hidden", fontFamily: "DM Sans, sans-serif" }}>
-
-      {/* Header */}
-      <div style={{ background: "#fff", padding: "14px 20px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f0f0f0", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: "linear-gradient(135deg, #e85d2b, #ff7a47)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, boxShadow: "0 4px 12px rgba(232,93,43,0.3)" }}>✦</div>
-          <div style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: 20, letterSpacing: "-0.5px", color: "#111" }}>
-            HEHA<span style={{ color: "#e85d2b" }}>·</span>swipe
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="brand-lockup">
+          <div className="brand-mark">✦</div>
+          <div>
+            <div className="brand-name">HEHA<span>·</span>swipe</div>
+            <div className="brand-subtitle">Tampa Bay healthy discovery</div>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {tab === "swipe" && (
-            <div style={{ fontSize: 11, color: "#e85d2b", background: "#fff4f0", padding: "4px 10px", borderRadius: 20, fontWeight: 600, border: "1px solid #ffe0d6" }}>
-              📍 Tampa Bay
-            </div>
-          )}
-          <button onClick={handleSignOut} style={{ background: "none", border: "1px solid #eee", borderRadius: 20, padding: "5px 12px", fontSize: 12, color: "#aaa", cursor: "pointer" }}>
-            out
-          </button>
-        </div>
-      </div>
+        <button className="ghost-pill" onClick={() => setTab("profile")}>Get listed</button>
+      </header>
 
-      {/* Content */}
-      <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        {tab === "swipe" && <SwipeTab partners={partners} saves={saves} onSave={handleSave} onPass={handlePass} />}
-        {tab === "faves" && <FavesTab saves={saves} partners={partners} onUnsave={handleUnsave} />}
-        {tab === "profile" && <ProfileTab user={session.user} profile={profile} onSignOut={handleSignOut} onListBusiness={() => setShowPartnerWizard(true)} />}
-      </div>
+      {notice && <div className="toast-notice">{notice}</div>}
+      {appError && <div className="error-banner">{appError}</div>}
 
-      {/* Bottom nav */}
-      <div style={{ background: "#fff", borderTop: "1px solid #f0f0f0", display: "flex", flexShrink: 0, paddingBottom: "env(safe-area-inset-bottom)" }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ flex: 1, padding: "12px 0 10px", border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer", position: "relative" }}>
-            {tab === t.id && (
-              <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: 28, height: 3, borderRadius: 2, background: "#e85d2b" }} />
-            )}
-            <span style={{ fontSize: 16, color: tab === t.id ? "#e85d2b" : "#ccc", transition: "color 0.2s", fontWeight: tab === t.id ? 700 : 400 }}>{t.icon}</span>
-            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.8, color: tab === t.id ? "#e85d2b" : "#bbb", textTransform: "uppercase", fontFamily: "Syne, sans-serif" }}>{t.label}</span>
+      <main className="app-content" aria-busy={dataLoading}>
+        {tab === "swipe" && (
+          <SwipeTab
+            partners={partners}
+            saves={saves}
+            onSave={handleSave}
+            onPass={handlePass}
+            onSuperSwipe={handleSuperSwipe}
+            dataLoading={dataLoading}
+          />
+        )}
+        {tab === "faves" && (
+          <FavesTab partners={partners} saves={saves} onUnsave={handleUnsave} />
+        )}
+        {tab === "profile" && (
+          <ProfileTab
+            user={session.user}
+            profile={profile}
+            partners={partners}
+            saves={saves}
+            onSignOut={handleSignOut}
+            onListBusiness={() => setShowPartnerWizard(true)}
+            onRefresh={() => loadData(session.user.id)}
+          />
+        )}
+      </main>
+
+      <nav className="bottom-nav" aria-label="Primary navigation">
+        {TABS.map((navItem) => (
+          <button
+            key={navItem.id}
+            className={tab === navItem.id ? "active" : ""}
+            onClick={() => setTab(navItem.id)}
+          >
+            <span>{navItem.icon}</span>
+            <strong>{navItem.label}</strong>
           </button>
         ))}
+      </nav>
+    </div>
+  );
+}
+
+function SplashScreen() {
+  return (
+    <div className="splash-screen">
+      <div className="splash-card">
+        <div className="brand-mark large">✦</div>
+        <h1>HEHA<span>·</span>swipe</h1>
+        <p>Curating Tampa Bay's healthy food, wellness, movement, and local business scene.</p>
+        <div className="loading-bar"><span /></div>
       </div>
     </div>
   );
