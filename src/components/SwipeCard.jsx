@@ -1,14 +1,21 @@
 import { useMemo, useState } from "react";
 import ShareSheet from "./ShareSheet";
 
-const dragThreshold = 82;
+const dragThreshold = 72;
 
 function getPartnerTags(partner) {
   const tags = [
     ...(partner.offerings || []),
     ...(partner.tags || []),
   ].filter(Boolean);
-  return [...new Set(tags)].slice(0, 4);
+  return [...new Set(tags)].slice(0, 3);
+}
+
+function fallbackImage(partner) {
+  if (partner.image_url) return partner.image_url;
+  if (partner.category === "Wellness" || partner.category === "Service" || partner.category === "Coach") return "/partner-images/wellness.svg";
+  if (partner.category === "Vendor") return "/partner-images/market.svg";
+  return "/partner-images/clean-food.svg";
 }
 
 export default function SwipeCard({ partner, onSwipe }) {
@@ -17,10 +24,11 @@ export default function SwipeCard({ partner, onSwipe }) {
   const [showShare, setShowShare] = useState(false);
 
   const tags = useMemo(() => getPartnerTags(partner), [partner]);
-  const featuredItems = Array.isArray(partner.items) ? partner.items.slice(0, 3) : [];
-  const isSuperIntent = drag.y < -70 && Math.abs(drag.x) < 100;
-  const isSaveIntent = drag.x > 70;
-  const isPassIntent = drag.x < -70;
+  const featuredItems = Array.isArray(partner.items) ? partner.items.slice(0, 2) : [];
+  const imageUrl = fallbackImage(partner);
+  const isSuperIntent = drag.y < -62 && Math.abs(drag.x) < 95;
+  const isSaveIntent = drag.x > 62;
+  const isPassIntent = drag.x < -62;
 
   const startDrag = (clientX, clientY) => setDragStart({ x: clientX, y: clientY });
   const moveDrag = (clientX, clientY) => {
@@ -39,9 +47,9 @@ export default function SwipeCard({ partner, onSwipe }) {
 
   return (
     <article
-      className="swipe-card"
+      className="swipe-card compact"
       style={{
-        transform: `translate(${drag.x}px, ${drag.y}px) rotate(${drag.x / 20}deg)`,
+        transform: `translate(${drag.x}px, ${drag.y}px) rotate(${drag.x / 22}deg)`,
         background: partner.color || "var(--heha-green)",
       }}
       onMouseDown={(event) => startDrag(event.clientX, event.clientY)}
@@ -54,17 +62,18 @@ export default function SwipeCard({ partner, onSwipe }) {
     >
       <div className={`swipe-intent save ${isSaveIntent ? "visible" : ""}`}>SAVE</div>
       <div className={`swipe-intent pass ${isPassIntent ? "visible" : ""}`}>PASS</div>
-      <div className={`swipe-intent super ${isSuperIntent ? "visible" : ""}`}>SUPERSWOOP</div>
+      <div className={`swipe-intent super ${isSuperIntent ? "visible" : ""}`}>SUPER</div>
 
-      <div className="card-top-row">
-        <div className="partner-avatar">{partner.photo_emoji || "🌿"}</div>
-        <div className="partner-badges">
+      <div className="card-image-wrap">
+        <img src={imageUrl} alt={`${partner.name} preview`} loading="lazy" />
+        <div className="partner-avatar floating-avatar">{partner.photo_emoji || "🌿"}</div>
+        <div className="partner-badges image-badges">
           {partner.heha_partner && <span className="verified-badge">HEHA Verified</span>}
           <span>{partner.category || "Local"}</span>
         </div>
       </div>
 
-      <div className="card-main">
+      <div className="card-main compact-main">
         <p className="location-line">📍 {partner.neighborhood || partner.location || "Tampa Bay"}</p>
         <h2>{partner.name}</h2>
         {partner.tagline && <p className="tagline">{partner.tagline}</p>}
@@ -72,13 +81,13 @@ export default function SwipeCard({ partner, onSwipe }) {
       </div>
 
       {tags.length > 0 && (
-        <div className="tag-row">
+        <div className="tag-row compact-tags">
           {tags.map((tag) => <span key={tag}>{tag}</span>)}
         </div>
       )}
 
       {featuredItems.length > 0 && (
-        <div className="featured-strip">
+        <div className="featured-strip compact-items">
           {featuredItems.map((item, index) => (
             <div key={`${item.name}-${index}`}>
               <span>{item.emoji || "✦"}</span>
@@ -89,7 +98,7 @@ export default function SwipeCard({ partner, onSwipe }) {
         </div>
       )}
 
-      <div className="card-footer">
+      <div className="card-footer compact-footer">
         <div className="social-proof">
           {partner.rating ? <strong>★ {Number(partner.rating).toFixed(1)}</strong> : <strong>Curated</strong>}
           <span>{partner.review_count ? `${partner.review_count} reviews` : "by HEHA"}</span>
@@ -97,7 +106,7 @@ export default function SwipeCard({ partner, onSwipe }) {
         <button type="button" onClick={(event) => { event.stopPropagation(); setShowShare(true); }}>Share ↗</button>
       </div>
 
-      <div className="gesture-helper">Swipe right to save · up for SuperSwoop</div>
+      <div className="gesture-helper">Pass left · Save right · SuperSwoop up</div>
 
       {showShare && <ShareSheet partner={partner} onClose={() => setShowShare(false)} />}
     </article>
