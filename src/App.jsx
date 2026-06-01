@@ -305,7 +305,7 @@ export default function App() {
             <div className="brand-subtitle">Tampa Bay healthy discovery</div>
           </div>
         </div>
-        <button className="ghost-pill" onClick={() => setTab("profile")}>Get listed</button>
+        <button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
       </header>
 
       {notice && <div className="toast-notice">{notice}</div>}
