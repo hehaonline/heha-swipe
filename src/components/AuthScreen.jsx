@@ -14,7 +14,8 @@ export default function AuthScreen() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
-  const [emailCodeSent, setEmailCodeSent] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [showEmailCodeFallback, setShowEmailCodeFallback] = useState(false);
   const [phoneCodeSent, setPhoneCodeSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
@@ -25,7 +26,8 @@ export default function AuthScreen() {
     setMessage(null);
     setError(null);
     setOtp("");
-    setEmailCodeSent(false);
+    setEmailSent(false);
+    setShowEmailCodeFallback(false);
     setPhoneCodeSent(false);
   };
 
@@ -35,6 +37,7 @@ export default function AuthScreen() {
     setError(null);
     setMessage(null);
     setOtp("");
+    setShowEmailCodeFallback(false);
 
     try {
       const { error: authError } = await supabase.auth.signInWithOtp({
@@ -42,10 +45,10 @@ export default function AuthScreen() {
         options: { emailRedirectTo: redirectTo, shouldCreateUser: true },
       });
       if (authError) throw authError;
-      setEmailCodeSent(true);
-      setMessage("We sent a secure HEHA Swipe code to your email. Enter it below to continue.");
+      setEmailSent(true);
+      setMessage("Check your email and open the HEHA Swipe sign-in link to continue.");
     } catch (authError) {
-      setError(authError.message || "Could not send your email code.");
+      setError(authError.message || "Could not send your sign-in email.");
     } finally {
       setLoading(false);
     }
@@ -142,11 +145,11 @@ export default function AuthScreen() {
         </div>
 
         <div className="auth-tabs">
-          <button className={mode === "email" ? "active" : ""} onClick={() => resetMode("email")}>Email</button>
-          <button className={mode === "phone" ? "active" : ""} onClick={() => resetMode("phone")}>Phone</button>
+          <button type="button" className={mode === "email" ? "active" : ""} onClick={() => resetMode("email")}>Email</button>
+          <button type="button" className={mode === "phone" ? "active" : ""} onClick={() => resetMode("phone")}>Phone</button>
         </div>
 
-        {mode === "email" && !emailCodeSent && (
+        {mode === "email" && !emailSent && (
           <form onSubmit={signInWithEmail} className="auth-form">
             <label>Email address</label>
             <input
@@ -156,12 +159,27 @@ export default function AuthScreen() {
               placeholder="you@example.com"
               required
             />
-            <button className="primary-button" disabled={loading}>{loading ? "Sending…" : "Send email code"}</button>
+            <button className="primary-button" disabled={loading}>{loading ? "Sending…" : "Send sign-in email"}</button>
           </form>
         )}
 
-        {mode === "email" && emailCodeSent && (
-          <form onSubmit={verifyEmailCode} className="auth-form">
+        {mode === "email" && emailSent && (
+          <div className="auth-form">
+            <div className="success-banner">
+              We sent a HEHA Swipe sign-in email to <strong>{email}</strong>. Open the link in that email to continue.
+            </div>
+            <button type="button" className="primary-button" onClick={signInWithEmail} disabled={loading}>
+              {loading ? "Sending…" : "Resend sign-in email"}
+            </button>
+            <button type="button" className="text-button center" onClick={() => setEmailSent(false)}>Use a different email</button>
+            <button type="button" className="text-button center" onClick={() => setShowEmailCodeFallback((value) => !value)}>
+              {showEmailCodeFallback ? "Hide code option" : "I received a code instead"}
+            </button>
+          </div>
+        )}
+
+        {mode === "email" && emailSent && showEmailCodeFallback && (
+          <form onSubmit={verifyEmailCode} className="auth-form code-fallback-form">
             <label>Enter your email code</label>
             <input
               inputMode="numeric"
@@ -171,8 +189,7 @@ export default function AuthScreen() {
               placeholder="123456"
               required
             />
-            <button className="primary-button" disabled={loading}>{loading ? "Verifying…" : "Verify and continue"}</button>
-            <button type="button" className="text-button center" onClick={() => setEmailCodeSent(false)}>Use a different email or resend</button>
+            <button className="secondary-button" disabled={loading}>{loading ? "Verifying…" : "Verify code"}</button>
           </form>
         )}
 
@@ -209,12 +226,12 @@ export default function AuthScreen() {
         <div className="divider"><span>or continue with</span></div>
 
         <div className="provider-row">
-          <button onClick={() => signInWithProvider("google")} disabled={loading}>Google</button>
-          <button onClick={() => signInWithProvider("apple")} disabled={loading}>Apple</button>
-          <button onClick={() => signInWithProvider("facebook")} disabled={loading}>Facebook</button>
+          <button type="button" onClick={() => signInWithProvider("google")} disabled={loading}>Google</button>
+          <button type="button" onClick={() => signInWithProvider("apple")} disabled={loading}>Apple</button>
+          <button type="button" onClick={() => signInWithProvider("facebook")} disabled={loading}>Facebook</button>
         </div>
 
-        {message && <div className="success-banner">{message}</div>}
+        {message && !emailSent && <div className="success-banner">{message}</div>}
         {error && <div className="error-banner">{error}</div>}
 
         <p className="fine-print">
