@@ -10,6 +10,37 @@
   text-align: center;
 }
 
+.role-auth-card {
+  position: relative;
+  padding-top: 30px;
+}
+
+.role-switch-pill {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  border: 1px solid var(--heha-line);
+  border-radius: 999px;
+  padding: 8px 11px;
+  background: rgba(255, 250, 242, .9);
+  color: var(--heha-green-dark);
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(38, 28, 18, .08);
+}
+
+.role-auth-card .auth-hero {
+  padding-right: 110px;
+}
+
+@media (max-width: 380px) {
+  .role-auth-card .auth-hero {
+    padding-right: 0;
+    padding-top: 40px;
+  }
+}
+
 .discount-button {
   width: 100%;
   border: 1px solid #feb658;
