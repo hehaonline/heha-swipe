@@ -31,6 +31,54 @@
   text-align: center;
 }
 
+.discount-contact-form {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--heha-line);
+  border-radius: 22px;
+  background: rgba(255, 250, 242, .72);
+}
+
+.preference-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.preference-row button {
+  border: 1px solid var(--heha-line);
+  border-radius: 999px;
+  padding: 10px 8px;
+  background: #fff;
+  color: var(--heha-green-dark);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.preference-row button.active {
+  border-color: #feb658;
+  background: var(--heha-orange-soft);
+  box-shadow: 0 10px 22px rgba(254, 182, 88, .18);
+}
+
+.consent-line {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 9px;
+  align-items: start;
+  color: var(--heha-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.consent-line input {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+}
+
 .detail-listed {
   position: absolute;
   right: 14px;
@@ -42,6 +90,68 @@
   font-size: 12px;
   font-weight: 900;
   backdrop-filter: blur(8px);
+}
+
+.inbox-card {
+  border-color: rgba(254, 182, 88, .34);
+}
+
+.inbox-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+
+.inbox-heading h3 {
+  margin: 2px 0 0;
+}
+
+.inbox-heading button {
+  border: 1px solid var(--heha-line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 8px 10px;
+  color: var(--heha-green-dark);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.inbox-list {
+  display: grid;
+  gap: 10px;
+}
+
+.inbox-message {
+  border: 1px solid var(--heha-line);
+  border-radius: 16px;
+  padding: 12px;
+  background: #fff;
+}
+
+.inbox-message.unread {
+  border-color: #feb658;
+  background: #fff8ec;
+}
+
+.inbox-message strong {
+  display: block;
+  color: var(--heha-ink);
+  margin-bottom: 5px;
+}
+
+.inbox-message p {
+  margin: 0 0 7px;
+  color: var(--heha-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.inbox-message small {
+  color: var(--heha-muted);
+  font-size: 11px;
 }
 
 .danger-button:disabled,
