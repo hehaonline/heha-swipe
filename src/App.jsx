@@ -254,6 +254,28 @@ export default function App() {
     }
   };
 
+  const handleDiscountCheck = async (partner) => {
+    const uid = session?.user?.id;
+    if (!uid || !partner?.id) return;
+
+    try {
+      const { error } = await supabase.from("discount_interest_requests").insert({
+        user_id: uid,
+        partner_id: partner.id,
+        partner_name: partner.name,
+        partner_category: partner.category || null,
+        partner_neighborhood: partner.neighborhood || partner.location || null,
+        source: "saved_detail",
+      });
+      if (error) throw error;
+
+      await recordSwipeEvent(partner, "discount_interest");
+      flashNotice(`Discount interest saved for ${partner.name}. HEHA can use this to request a member offer.`);
+    } catch (error) {
+      flashNotice(error.message || "Could not save discount interest yet.");
+    }
+  };
+
   const handleUnsave = async (partnerId) => {
     try {
       const { error } = await supabase
@@ -342,7 +364,12 @@ export default function App() {
           />
         )}
         {tab === "faves" && (
-          <FavesTab partners={partners} saves={saves} onUnsave={handleUnsave} />
+          <FavesTab
+            partners={partners}
+            saves={saves}
+            onUnsave={handleUnsave}
+            onDiscountCheck={handleDiscountCheck}
+          />
         )}
         {tab === "profile" && (
           <ProfileTab
