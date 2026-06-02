@@ -23,10 +23,23 @@ function itemUrl(item) {
   return item?.url || item?.product_url || item?.link || null;
 }
 
+function hasRealWebsite(url) {
+  if (!url) return false;
+  const clean = String(url).trim().toLowerCase();
+  return clean.startsWith("http") && !clean.includes("example.com") && clean !== "https://heha.online";
+}
+
 export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscountCheck }) {
   const [selectedPartner, setSelectedPartner] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const [showDiscountForm, setShowDiscountForm] = useState(false);
+  const [discountForm, setDiscountForm] = useState({
+    user_phone: "",
+    contact_preference: "text",
+    user_note: "",
+    consent_to_contact: false,
+  });
 
   const saved = saves
     .map((save) => partners.find((partner) => partner.id === save.partner_id))
@@ -52,12 +65,25 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
     setSelectedPartner(partner);
     setSelectedItems([]);
     setGalleryIndex(0);
+    setShowDiscountForm(false);
+    setDiscountForm({ user_phone: "", contact_preference: "text", user_note: "", consent_to_contact: false });
   };
 
   const closeDetails = () => {
     setSelectedPartner(null);
     setSelectedItems([]);
     setGalleryIndex(0);
+    setShowDiscountForm(false);
+  };
+
+  const updateDiscountForm = (field, value) => {
+    setDiscountForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const submitDiscountForm = () => {
+    if (!selectedPartner) return;
+    onDiscountCheck?.(selectedPartner, discountForm);
+    setShowDiscountForm(false);
   };
 
   if (selectedPartner) {
@@ -68,6 +94,8 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
     const images = galleryImages(selectedPartner);
     const currentImage = images[galleryIndex] || fallbackImage(selectedPartner);
     const isOfficialPartner = Boolean(selectedPartner.heha_partner);
+    const website = hasRealWebsite(selectedPartner.website) ? selectedPartner.website : null;
+    const canSubmitDiscount = discountForm.user_phone.trim().length >= 7 && discountForm.consent_to_contact;
 
     return (
       <section className="saved-screen partner-detail-screen">
@@ -137,7 +165,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
             <p className="detail-bio">
               {isOfficialPartner
                 ? "This partner does not have orderable items listed yet. You can still contact them or HEHA."
-                : "This business is listed for discovery, but it is not yet an official HEHA partner. Tap below to show interest so HEHA can request a member discount or partnership."}
+                : "This business is listed for discovery, but it is not yet an official HEHA partner. HEHA can check whether a member discount, daily deal, or partnership offer is available."}
             </p>
           )}
 
@@ -150,16 +178,60 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
               <button className="primary-button" disabled>
                 {hasSelectedItems ? "HEHA product link coming soon" : "Select an item to order"}
               </button>
-            ) : (
-              <button className="discount-button" type="button" onClick={() => onDiscountCheck?.(selectedPartner)}>
-                Check for Discounts
+            ) : !showDiscountForm ? (
+              <button className="discount-button" type="button" onClick={() => setShowDiscountForm(true)}>
+                Call/Text me about discounts
               </button>
+            ) : (
+              <div className="discount-contact-form">
+                <label className="field-block">
+                  <span>Phone number</span>
+                  <input
+                    value={discountForm.user_phone}
+                    onChange={(event) => updateDiscountForm("user_phone", event.target.value)}
+                    placeholder="Your phone number"
+                    autoComplete="tel"
+                  />
+                </label>
+                <div className="preference-row" role="radiogroup" aria-label="Contact preference">
+                  {["text", "call", "either"].map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={discountForm.contact_preference === value ? "active" : ""}
+                      onClick={() => updateDiscountForm("contact_preference", value)}
+                    >
+                      {value === "text" ? "Text me" : value === "call" ? "Call me" : "Either"}
+                    </button>
+                  ))}
+                </div>
+                <label className="field-block">
+                  <span>Optional note</span>
+                  <textarea
+                    value={discountForm.user_note}
+                    onChange={(event) => updateDiscountForm("user_note", event.target.value)}
+                    placeholder="Anything specific you’re hoping for?"
+                  />
+                </label>
+                <label className="consent-line">
+                  <input
+                    type="checkbox"
+                    checked={discountForm.consent_to_contact}
+                    onChange={(event) => updateDiscountForm("consent_to_contact", event.target.checked)}
+                  />
+                  <span>I agree that HEHA may call or text me about this discount request. This is not a marketing subscription.</span>
+                </label>
+                <button className="discount-button" type="button" disabled={!canSubmitDiscount} onClick={submitDiscountForm}>
+                  Ask HEHA to check
+                </button>
+              </div>
             )}
-            {!isOfficialPartner && (
+            {!isOfficialPartner && !showDiscountForm && (
               <p className="discount-note">HEHA can use this interest to approach the business and ask for member discounts.</p>
             )}
             {ig && <a className="secondary-button" href={ig} target="_blank" rel="noreferrer">Open Instagram</a>}
-            {selectedPartner.website && <a className="secondary-button" href={selectedPartner.website} target="_blank" rel="noreferrer">Open website</a>}
+            {website && <a className="secondary-button" href={website} target="_blank" rel="noreferrer">Open website</a>}
+            {!website && !ig && <button className="secondary-button" type="button" onClick={closeDetails}>Back to saved list</button>}
           </div>
         </section>
       </section>
@@ -202,7 +274,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
               {!partner.price_range && partner.tagline && <small>{partner.tagline}</small>}
               <div className="saved-actions">
                 <button type="button" onClick={(event) => { event.stopPropagation(); openDetails(partner); }}>View details</button>
-                {!partner.heha_partner && <button type="button" onClick={(event) => { event.stopPropagation(); onDiscountCheck?.(partner); }}>Check discounts</button>}
+                {!partner.heha_partner && <button type="button" onClick={(event) => { event.stopPropagation(); openDetails(partner); setShowDiscountForm(true); }}>Check discounts</button>}
                 {partner.instagram && <a onClick={(event) => event.stopPropagation()} href={instagramUrl(partner.instagram)} target="_blank" rel="noreferrer">Instagram</a>}
               </div>
             </div>
