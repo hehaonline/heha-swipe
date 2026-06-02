@@ -30,7 +30,9 @@ export default function SwipeCard({ partner, onSwipe }) {
   const [showShare, setShowShare] = useState(false);
 
   const tags = useMemo(() => getPartnerTags(partner), [partner]);
-  const featuredItems = Array.isArray(partner.items) ? partner.items.slice(0, 2) : [];
+  const items = Array.isArray(partner.items) ? partner.items.filter(Boolean) : [];
+  const featuredItem = items[0];
+  const extraItemCount = Math.max(items.length - 1, 0);
   const imageUrl = fallbackImage(partner);
   const isSuperIntent = drag.y < -62 && Math.abs(drag.x) < 95;
   const isSaveIntent = drag.x > 62;
@@ -84,23 +86,21 @@ export default function SwipeCard({ partner, onSwipe }) {
         <h2>{partner.name}</h2>
         {partner.tagline && <p className="tagline">{partner.tagline}</p>}
         {!partner.tagline && partner.bio && <p className="tagline">{partner.bio}</p>}
+
+        {featuredItem && (
+          <div className="featured-mini-row" aria-label="Featured HEHA item preview">
+            <span className="featured-mini-pill">
+              <span>{featuredItem.emoji || "✦"}</span>
+              <strong>{featuredItem.name}</strong>
+            </span>
+            {extraItemCount > 0 && <span className="featured-count-pill">+{extraItemCount} more</span>}
+          </div>
+        )}
       </div>
 
       {tags.length > 0 && (
         <div className="tag-row compact-tags">
           {tags.map((tag) => <span key={tag}>{tag}</span>)}
-        </div>
-      )}
-
-      {featuredItems.length > 0 && (
-        <div className="featured-strip compact-items">
-          {featuredItems.map((item, index) => (
-            <div key={`${item.name}-${index}`}>
-              <span>{item.emoji || "✦"}</span>
-              <strong>{item.name}</strong>
-              {item.price && <small>{item.price}</small>}
-            </div>
-          ))}
         </div>
       )}
 
