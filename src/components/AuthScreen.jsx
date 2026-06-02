@@ -21,7 +21,8 @@ export default function AuthScreen() {
 
   const changeRole = () => {
     localStorage.removeItem("heha_signup_role");
-    setRole("");
+    setRole(role === "partner" ? "customer" : "partner");
+    localStorage.setItem("heha_signup_role", role === "partner" ? "customer" : "partner");
     setMessage(null);
     setError(null);
   };
@@ -145,13 +146,16 @@ export default function AuthScreen() {
 
   return (
     <main className="auth-screen">
-      <section className="auth-card">
+      <section className="auth-card role-auth-card">
+        <button type="button" className="role-switch-pill" onClick={changeRole}>
+          {role === "partner" ? "Customer access" : "Business access"}
+        </button>
+
         <div className="auth-hero">
           <div className="brand-mark large">✦</div>
           <p className="eyebrow">{role === "partner" ? "Business access" : "Customer access"}</p>
           <h1>{role === "partner" ? "Sign in or create your business profile." : "Sign in or create your customer profile."}</h1>
           <p>{role === "partner" ? "Secure your business listing with email and password." : "Secure your saved businesses with email and password."}</p>
-          <button type="button" className="text-button" onClick={changeRole}>Change to {role === "partner" ? "customer" : "business"}</button>
         </div>
 
         <div className="auth-tabs">
