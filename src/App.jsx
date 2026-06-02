@@ -375,12 +375,15 @@ export default function App() {
 
 function SplashScreen() {
   return (
-    <div className="splash-screen">
-      <div className="splash-card">
-        <div className="brand-mark large">✦</div>
-        <h1>HEHA<span>·</span>swipe</h1>
-        <p>Curating Tampa Bay's healthy food, wellness, movement, and local business scene.</p>
-        <div className="loading-bar"><span /></div>
+    <div className="splash-screen heha-splash">
+      <div className="heha-splash-card">
+        <div>
+          <div className="heha-script-logo" aria-label="HEHA logo">
+            <span>heha</span>
+          </div>
+          <p className="heha-powered">powered by <strong>Healthy Habit LLC</strong></p>
+          <div className="splash-loading-dots" aria-hidden="true"><span /><span /><span /></div>
+        </div>
       </div>
     </div>
   );
