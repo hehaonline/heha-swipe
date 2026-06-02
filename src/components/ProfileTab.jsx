@@ -13,6 +13,8 @@ export default function ProfileTab({
   const [busy, setBusy] = useState(false);
   const [profileMessage, setProfileMessage] = useState(null);
   const [profileError, setProfileError] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
   const [form, setForm] = useState({
     full_name: "",
     phone: "",
@@ -29,9 +31,19 @@ export default function ProfileTab({
     });
   }, [profile, user?.phone]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    loadMessages();
+  }, [user?.id]);
+
   const certifiedCount = useMemo(
     () => partners.filter((partner) => partner.heha_partner).length,
     [partners]
+  );
+
+  const unreadCount = useMemo(
+    () => messages.filter((message) => !message.is_read).length,
+    [messages]
   );
 
   const listedCount = partners.length;
@@ -42,6 +54,44 @@ export default function ProfileTab({
 
   const updateForm = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const loadMessages = async () => {
+    if (!user?.id) return;
+    setMessagesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("in_app_messages")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      setMessages(data || []);
+    } catch {
+      setMessages([]);
+    } finally {
+      setMessagesLoading(false);
+    }
+  };
+
+  const markAllMessagesRead = async () => {
+    if (!user?.id || !messages.length) return;
+    setBusy(true);
+    setProfileError(null);
+    try {
+      const { error } = await supabase
+        .from("in_app_messages")
+        .update({ is_read: true })
+        .eq("user_id", user.id)
+        .eq("is_read", false);
+      if (error) throw error;
+      await loadMessages();
+    } catch (error) {
+      setProfileError(error.message || "Could not update inbox yet.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const saveUserProfile = async () => {
@@ -135,7 +185,32 @@ export default function ProfileTab({
       <div className="metric-grid">
         <div><strong>{certifiedCount}</strong><span>HEHA certified</span></div>
         <div><strong>{listedCount}</strong><span>listed</span></div>
-        <div><strong>20%</strong><span>Freebird Fund</span></div>
+        <div><strong>{unreadCount}</strong><span>inbox</span></div>
+      </div>
+
+      <div className="profile-card card-like inbox-card">
+        <div className="inbox-heading">
+          <div>
+            <p className="eyebrow">HEHA Inbox</p>
+            <h3>Updates from HEHA</h3>
+          </div>
+          {unreadCount > 0 && <button onClick={markAllMessagesRead} disabled={busy}>Mark read</button>}
+        </div>
+        {messagesLoading ? (
+          <p>Loading inbox…</p>
+        ) : messages.length ? (
+          <div className="inbox-list">
+            {messages.map((message) => (
+              <article key={message.id} className={message.is_read ? "inbox-message" : "inbox-message unread"}>
+                <strong>{message.title}</strong>
+                <p>{message.body}</p>
+                <small>{new Date(message.created_at).toLocaleString()}</small>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p>No HEHA messages yet. Discount updates, partner replies, and future order notes can appear here.</p>
+        )}
       </div>
 
       <div className="profile-card card-like">
