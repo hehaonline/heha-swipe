@@ -1,0 +1,41 @@
+/* Keeps the post-reset onboarding choice screen stacked and clean on mobile. */
+
+.onboarding-screen {
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+}
+
+.onboarding-screen > .onboarding-hero,
+.onboarding-screen > .choice-grid,
+.onboarding-screen > .join-card {
+  width: 100%;
+  max-width: 440px;
+  flex: 0 0 auto;
+}
+
+.onboarding-screen > .choice-grid {
+  margin-top: 0;
+}
+
+.onboarding-screen .choice-card {
+  min-height: auto;
+}
+
+@media (max-width: 430px) {
+  .onboarding-screen {
+    padding: 14px;
+  }
+
+  .onboarding-screen > .onboarding-hero,
+  .onboarding-screen > .choice-grid,
+  .onboarding-screen > .join-card {
+    max-width: 100%;
+  }
+
+  .onboarding-screen .onboarding-hero,
+  .onboarding-screen .join-card {
+    padding: 22px;
+  }
+}
