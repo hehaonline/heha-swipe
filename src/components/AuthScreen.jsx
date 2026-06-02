@@ -20,9 +20,9 @@ export default function AuthScreen() {
   };
 
   const changeRole = () => {
-    localStorage.removeItem("heha_signup_role");
-    setRole(role === "partner" ? "customer" : "partner");
-    localStorage.setItem("heha_signup_role", role === "partner" ? "customer" : "partner");
+    const nextRole = role === "partner" ? "customer" : "partner";
+    localStorage.setItem("heha_signup_role", nextRole);
+    setRole(nextRole);
     setMessage(null);
     setError(null);
   };
@@ -144,18 +144,28 @@ export default function AuthScreen() {
     );
   }
 
+  const isBusiness = role === "partner";
+  const accessLabel = isBusiness ? "Business access" : "Customer access";
+  const switchLabel = isBusiness ? "Customer access" : "Business access";
+  const headline = isBusiness
+    ? "Sign in or create your business profile."
+    : "Sign in or create your HEHA explorer profile.";
+  const helperCopy = isBusiness
+    ? "Manage your business listing and become visible to local customers looking for healthier options."
+    : "Save local restaurants, wellness spaces, markets, and offers you want to remember.";
+
   return (
     <main className="auth-screen">
       <section className="auth-card role-auth-card">
         <button type="button" className="role-switch-pill" onClick={changeRole}>
-          {role === "partner" ? "Customer access" : "Business access"}
+          {switchLabel}
         </button>
 
         <div className="auth-hero">
           <div className="brand-mark large">✦</div>
-          <p className="eyebrow">{role === "partner" ? "Business access" : "Customer access"}</p>
-          <h1>{role === "partner" ? "Sign in or create your business profile." : "Sign in or create your customer profile."}</h1>
-          <p>{role === "partner" ? "Secure your business listing with email and password." : "Secure your saved businesses with email and password."}</p>
+          <p className="eyebrow">{accessLabel}</p>
+          <h1>{headline}</h1>
+          <p>{helperCopy}</p>
         </div>
 
         <div className="auth-tabs">
