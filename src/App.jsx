@@ -378,9 +378,7 @@ function SplashScreen() {
     <div className="splash-screen heha-splash">
       <div className="heha-splash-card">
         <div>
-          <div className="heha-script-logo" aria-label="HEHA logo">
-            <span>heha</span>
-          </div>
+          <img className="heha-splash-logo" src="/heha-logo.svg" alt="HEHA" />
           <p className="heha-powered">powered by <strong>Healthy Habit LLC</strong></p>
           <div className="splash-loading-dots" aria-hidden="true"><span /><span /><span /></div>
         </div>
