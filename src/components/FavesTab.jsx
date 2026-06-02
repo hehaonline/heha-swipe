@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 function fallbackImage(partner) {
   if (partner.image_url) return partner.image_url;
+  if (partner.category === "Events") return "/partner-images/events.svg";
   if (partner.category === "Wellness" || partner.category === "Service" || partner.category === "Coach") return "/partner-images/wellness.svg";
   if (partner.category === "Vendor") return "/partner-images/market.svg";
   return "/partner-images/clean-food.svg";
@@ -22,7 +23,7 @@ function itemUrl(item) {
   return item?.url || item?.product_url || item?.link || null;
 }
 
-export default function FavesTab({ partners = [], saves = [], onUnsave }) {
+export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscountCheck }) {
   const [selectedPartner, setSelectedPartner] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
   const [galleryIndex, setGalleryIndex] = useState(0);
@@ -66,6 +67,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
     const hasSelectedItems = selectedItems.length > 0;
     const images = galleryImages(selectedPartner);
     const currentImage = images[galleryIndex] || fallbackImage(selectedPartner);
+    const isOfficialPartner = Boolean(selectedPartner.heha_partner);
 
     return (
       <section className="saved-screen partner-detail-screen">
@@ -75,7 +77,8 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
           <div className="detail-image-wrap gallery-hero">
             <img src={currentImage} alt={`${selectedPartner.name} preview`} />
             <div className="detail-avatar">{selectedPartner.photo_emoji || "🌿"}</div>
-            {selectedPartner.heha_partner && <span className="detail-verified">HEHA Verified</span>}
+            {selectedPartner.heha_partner && <span className="detail-verified">HEHA Certified</span>}
+            {!selectedPartner.heha_partner && <span className="detail-listed">Listed on HEHA Swipe</span>}
             {images.length > 1 && (
               <div className="gallery-dots" aria-label="Partner photo gallery">
                 {images.map((image, index) => (
@@ -107,8 +110,8 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
 
         <section className="detail-section card-like">
           <div className="detail-section-heading">
-            <p className="eyebrow">Select items</p>
-            <h3>{items.length ? "Choose what you want to order" : "Ordering coming soon"}</h3>
+            <p className="eyebrow">{items.length ? "Select items" : isOfficialPartner ? "Ordering" : "Community interest"}</p>
+            <h3>{items.length ? "Choose what you want to order" : isOfficialPartner ? "Ordering coming soon" : "Want HEHA member discounts here?"}</h3>
           </div>
 
           {items.length ? (
@@ -131,7 +134,11 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
               })}
             </div>
           ) : (
-            <p className="detail-bio">This partner does not have orderable items listed yet. You can still contact them or HEHA.</p>
+            <p className="detail-bio">
+              {isOfficialPartner
+                ? "This partner does not have orderable items listed yet. You can still contact them or HEHA."
+                : "This business is listed for discovery, but it is not yet an official HEHA partner. Tap below to show interest so HEHA can request a member discount or partnership."}
+            </p>
           )}
 
           <div className="detail-order-actions">
@@ -139,10 +146,17 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
               <a className="primary-button" href={selectedOrderUrl} target="_blank" rel="noreferrer">
                 Order selected item on HEHA
               </a>
-            ) : (
+            ) : isOfficialPartner ? (
               <button className="primary-button" disabled>
                 {hasSelectedItems ? "HEHA product link coming soon" : "Select an item to order"}
               </button>
+            ) : (
+              <button className="discount-button" type="button" onClick={() => onDiscountCheck?.(selectedPartner)}>
+                Check for Discounts
+              </button>
+            )}
+            {!isOfficialPartner && (
+              <p className="discount-note">HEHA can use this interest to approach the business and ask for member discounts.</p>
             )}
             {ig && <a className="secondary-button" href={ig} target="_blank" rel="noreferrer">Open Instagram</a>}
             {selectedPartner.website && <a className="secondary-button" href={selectedPartner.website} target="_blank" rel="noreferrer">Open website</a>}
@@ -169,7 +183,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
       <div className="section-hero compact">
         <p className="eyebrow">Your saved map</p>
         <h2>{saved.length} healthy business{saved.length === 1 ? "" : "es"} saved</h2>
-        <p>Tap a saved business to view details, learn more, and order through HEHA when product links are available.</p>
+        <p>Tap a saved business to view details, learn more, order through HEHA, or request member discounts.</p>
       </div>
 
       <div className="saved-list">
@@ -181,13 +195,14 @@ export default function FavesTab({ partners = [], saves = [], onUnsave }) {
             <div>
               <div className="saved-title-row">
                 <h3>{partner.name}</h3>
-                {partner.heha_partner && <span>Verified</span>}
+                {partner.heha_partner ? <span>Certified</span> : <span>Listed</span>}
               </div>
               <p>{partner.category} · {partner.neighborhood || "Tampa Bay"}</p>
               {partner.price_range && <small>{partner.price_range}</small>}
               {!partner.price_range && partner.tagline && <small>{partner.tagline}</small>}
               <div className="saved-actions">
                 <button type="button" onClick={(event) => { event.stopPropagation(); openDetails(partner); }}>View details</button>
+                {!partner.heha_partner && <button type="button" onClick={(event) => { event.stopPropagation(); onDiscountCheck?.(partner); }}>Check discounts</button>}
                 {partner.instagram && <a onClick={(event) => event.stopPropagation()} href={instagramUrl(partner.instagram)} target="_blank" rel="noreferrer">Instagram</a>}
               </div>
             </div>
