@@ -24,6 +24,18 @@ const COMPLETED_SUBSCRIPTION_TYPES = [
   "partner_instagram",
   "partner_monthly",
   "partner",
+  "listed",
+];
+
+const PARTNER_SUBSCRIPTION_TYPES = [
+  "instagram",
+  "monthly",
+  "partner_free",
+  "partner_supporter",
+  "partner_instagram",
+  "partner_monthly",
+  "partner",
+  "listed",
 ];
 
 function isOnboarded(profile) {
@@ -35,7 +47,11 @@ function isOnboarded(profile) {
 }
 
 function isPartnerProfile(profile) {
-  const t = profile?.subscription_type; return t && ["instagram","monthly","partner_instagram","partner_monthly","partner","customer_free","customer_supporter","partner_free","listed"].some(v => t === v || t.startsWith(v));
+  const type = profile?.subscription_type;
+  if (!type) return false;
+  return PARTNER_SUBSCRIPTION_TYPES.some(
+    (acceptedType) => type === acceptedType || type.startsWith(`${acceptedType}_`)
+  );
 }
 
 export default function App() {
@@ -254,9 +270,14 @@ export default function App() {
     }
   };
 
-  const handleDiscountCheck = async (partner) => {
+  const handleDiscountCheck = async (partner, request = {}) => {
     const uid = session?.user?.id;
     if (!uid || !partner?.id) return;
+
+    const phone = request.user_phone?.trim() || null;
+    const preference = request.contact_preference || "text";
+    const note = request.user_note?.trim() || null;
+    const consent = Boolean(request.consent_to_contact);
 
     try {
       const { error } = await supabase.from("discount_interest_requests").insert({
@@ -265,12 +286,27 @@ export default function App() {
         partner_name: partner.name,
         partner_category: partner.category || null,
         partner_neighborhood: partner.neighborhood || partner.location || null,
+        user_phone: phone,
+        contact_preference: preference,
+        user_note: note,
+        consent_to_contact: consent,
         source: "saved_detail",
+        user_followup_status: phone && consent ? "pending" : "no_contact_requested",
       });
       if (error) throw error;
 
-      await recordSwipeEvent(partner, "discount_interest");
-      flashNotice(`Discount interest saved for ${partner.name}. HEHA can use this to request a member offer.`);
+      await Promise.allSettled([
+        recordSwipeEvent(partner, "discount_interest"),
+        supabase.from("in_app_messages").insert({
+          user_id: uid,
+          title: "Discount request received",
+          body: `HEHA saved your request for ${partner.name}. If a discount or partner offer becomes available, it can appear here in your inbox${phone && consent ? " and a team member may follow up by your selected contact method" : ""}.`,
+          related_partner_id: partner.id,
+          message_type: "discount_request",
+        }),
+      ]);
+
+      flashNotice(`Discount request saved for ${partner.name}. Check your Profile inbox for updates.`);
     } catch (error) {
       flashNotice(error.message || "Could not save discount interest yet.");
     }
