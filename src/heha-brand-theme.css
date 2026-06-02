@@ -102,33 +102,12 @@ body {
   backdrop-filter: blur(16px);
 }
 
-.heha-script-logo {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 220px;
-  height: 150px;
-}
-
-.heha-script-logo::before {
-  content: '';
-  position: absolute;
-  right: 14px;
-  top: 8px;
-  width: 120px;
-  height: 120px;
-  background: #feb658;
-}
-
-.heha-script-logo span {
-  position: relative;
-  z-index: 2;
-  font-family: 'Allura', 'Brush Script MT', cursive;
-  color: #feb658;
-  font-size: 88px;
-  line-height: 1;
-  transform: translateX(-4px);
-  text-shadow: 0 1px 0 rgba(255,255,255,.45);
+.heha-splash-logo {
+  width: min(240px, 64vw);
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  filter: drop-shadow(0 14px 34px rgba(156,108,46,.14));
 }
 
 .heha-powered {
