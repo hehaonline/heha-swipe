@@ -13,9 +13,15 @@ function getPartnerTags(partner) {
 
 function fallbackImage(partner) {
   if (partner.image_url) return partner.image_url;
+  if (partner.category === "Events") return "/partner-images/events.svg";
   if (partner.category === "Wellness" || partner.category === "Service" || partner.category === "Coach") return "/partner-images/wellness.svg";
   if (partner.category === "Vendor") return "/partner-images/market.svg";
   return "/partner-images/clean-food.svg";
+}
+
+function statusBadge(partner) {
+  if (partner.heha_partner) return "HEHA Certified";
+  return "Listed on HEHA Swipe";
 }
 
 export default function SwipeCard({ partner, onSwipe }) {
@@ -68,7 +74,7 @@ export default function SwipeCard({ partner, onSwipe }) {
         <img src={imageUrl} alt={`${partner.name} preview`} loading="lazy" />
         <div className="partner-avatar floating-avatar">{partner.photo_emoji || "🌿"}</div>
         <div className="partner-badges image-badges">
-          {partner.heha_partner && <span className="verified-badge">HEHA Verified</span>}
+          <span className={partner.heha_partner ? "verified-badge" : "listed-badge"}>{statusBadge(partner)}</span>
           <span>{partner.category || "Local"}</span>
         </div>
       </div>
@@ -100,7 +106,7 @@ export default function SwipeCard({ partner, onSwipe }) {
 
       <div className="card-footer compact-footer">
         <div className="social-proof">
-          {partner.rating ? <strong>★ {Number(partner.rating).toFixed(1)}</strong> : <strong>Curated</strong>}
+          {partner.rating ? <strong>★ {Number(partner.rating).toFixed(1)}</strong> : <strong>{partner.heha_partner ? "Certified" : "Directory"}</strong>}
           <span>{partner.review_count ? `${partner.review_count} reviews` : "by HEHA"}</span>
         </div>
         <button type="button" onClick={(event) => { event.stopPropagation(); setShowShare(true); }}>Share ↗</button>
