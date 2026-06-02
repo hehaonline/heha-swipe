@@ -222,13 +222,7 @@ export default function App() {
         if (data) setSaves((current) => [...current, data]);
       }
 
-      await Promise.all([
-        recordSwipeEvent(partner, "right"),
-        supabase
-          .from("partners")
-          .update({ total_saves: (partner.total_saves || 0) + 1 })
-          .eq("id", partner.id),
-      ]);
+      await recordSwipeEvent(partner, "right");
 
       flashNotice(`${partner.name} saved to your HEHA list.`);
     } catch (error) {
@@ -239,13 +233,7 @@ export default function App() {
   const handlePass = async (partner) => {
     if (!partner?.id) return;
     try {
-      await Promise.all([
-        recordSwipeEvent(partner, "left"),
-        supabase
-          .from("partners")
-          .update({ total_swipes: (partner.total_swipes || 0) + 1 })
-          .eq("id", partner.id),
-      ]);
+      await recordSwipeEvent(partner, "left");
     } catch {
       // Passing should feel lightweight. We quietly preserve the user flow.
     }
@@ -256,13 +244,7 @@ export default function App() {
     if (!uid || !partner?.id) return;
 
     try {
-      await Promise.all([
-        recordSwipeEvent(partner, "super"),
-        supabase
-          .from("partners")
-          .update({ total_swipes: (partner.total_swipes || 0) + 1 })
-          .eq("id", partner.id),
-      ]);
+      await recordSwipeEvent(partner, "super");
 
       flashNotice(`SuperSwoop sent for ${partner.name}. HEHA will know this one stands out.`);
     } catch (error) {
