@@ -35,7 +35,7 @@ function isOnboarded(profile) {
 }
 
 function isPartnerProfile(profile) {
-  return profile?.subscription_type?.startsWith("partner");
+  const t = profile?.subscription_type; return t && ["instagram","monthly","partner_instagram","partner_monthly","partner","customer_free","customer_supporter","partner_free","listed"].some(v => t === v || t.startsWith(v));
 }
 
 export default function App() {
