@@ -125,11 +125,15 @@ export default function SwipeCard({ partner, onSwipe }) {
     setShowPreview(true);
   };
 
-  const openPreviewFromButton = (event) => {
+  const stopButtonGesture = (event) => {
     event.stopPropagation();
     setDragStart(null);
     setDrag({ x: 0, y: 0 });
     setTouchMoved(false);
+  };
+
+  const openPreviewFromButton = (event) => {
+    stopButtonGesture(event);
     setShowPreview(true);
   };
 
@@ -190,7 +194,16 @@ export default function SwipeCard({ partner, onSwipe }) {
               {partner.rating ? <strong>★ {Number(partner.rating).toFixed(1)}</strong> : <strong>{partner.heha_partner ? "Certified" : "Directory"}</strong>}
               <span>{partner.review_count ? `${partner.review_count} reviews` : "by HEHA"}</span>
             </div>
-            <button type="button" onClick={openPreviewFromButton}>Preview</button>
+            <button
+              type="button"
+              className="preview-card-button"
+              onPointerDown={stopButtonGesture}
+              onMouseDown={stopButtonGesture}
+              onTouchStart={stopButtonGesture}
+              onClick={openPreviewFromButton}
+            >
+              Preview
+            </button>
           </div>
         </div>
 
