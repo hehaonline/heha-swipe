@@ -30,6 +30,18 @@ const shuffle = (items) => {
   return copy;
 };
 
+function partnerMatchesCategory(partner, activeCategory) {
+  if (activeCategory === "All") return true;
+  if (activeCategory === "Restaurant") {
+    const terms = [partner.category, ...(partner.tags || []), ...(partner.offerings || [])]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return partner.category === "Restaurant" || terms.includes("private chef") || terms.includes("chef");
+  }
+  return partner.category === activeCategory;
+}
+
 export default function SwipeTab({
   partners = [],
   saves = [],
@@ -48,7 +60,7 @@ export default function SwipeTab({
   const buildDeck = useCallback(
     (activeCategory, seen, isReshuffle = false) => {
       const pool = partners.filter((partner) => {
-        const matchesCategory = activeCategory === "All" || partner.category === activeCategory;
+        const matchesCategory = partnerMatchesCategory(partner, activeCategory);
         const alreadySaved = savedIds.has(partner.id);
         return matchesCategory && !alreadySaved;
       });
@@ -87,18 +99,18 @@ export default function SwipeTab({
 
   const activeCategoryCount = useMemo(() => {
     if (category === "All") return partners.length;
-    return partners.filter((partner) => partner.category === category).length;
+    return partners.filter((partner) => partnerMatchesCategory(partner, category)).length;
   }, [partners, category]);
 
   return (
     <section className="discover-screen compact-discover">
       {reshuffled && <div className="floating-status">Fresh businesses loaded</div>}
 
-      <div className="discover-hero compact-hero">
+      <div className="discover-hero compact-hero clean-hero">
         <div>
           <p className="eyebrow">Local healthy discovery</p>
           <h2>Tampa Bay’s healthy scene.</h2>
-          <p>Swipe, save, and SuperSwoop the businesses you want to visit.</p>
+          <p>Tap a card to preview. Swipe right to save businesses you want to remember.</p>
         </div>
         <div className="hero-chip">{activeCategoryCount}</div>
       </div>
@@ -121,10 +133,10 @@ export default function SwipeTab({
 
       {dataLoading && <div className="inline-loader">Refreshing partners…</div>}
 
-      <div className="deck-stage compact-stage">
+      <div className="deck-stage compact-stage clean-stage">
         {current ? (
           <>
-            {deck[1] && <div className="next-card-shadow" />}
+            {deck[1] && <div className="next-card-shadow clean-shadow" />}
             <SwipeCard partner={current} onSwipe={handleSwipe} />
           </>
         ) : (
