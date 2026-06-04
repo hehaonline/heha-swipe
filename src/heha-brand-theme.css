@@ -15,9 +15,8 @@
 
 body {
   background:
-    radial-gradient(circle at 20% 12%, rgba(254,182,88,.32), transparent 28%),
-    radial-gradient(circle at 86% 20%, rgba(248,213,161,.42), transparent 30%),
-    linear-gradient(165deg, #fefefe 0%, #fcf7e7 46%, #fbecd2 100%);
+    radial-gradient(circle at 20% 12%, rgba(254,182,88,.18), transparent 26%),
+    linear-gradient(165deg, #fefefe 0%, #fcf7e7 58%, #ffffff 100%);
 }
 
 .auth-screen,
@@ -25,15 +24,12 @@ body {
 .wizard-screen,
 .splash-screen {
   background:
-    radial-gradient(circle at 28% 18%, rgba(254,182,88,.32), transparent 32%),
-    radial-gradient(circle at 85% 28%, rgba(248,213,161,.34), transparent 28%),
-    linear-gradient(160deg, #fefefe 0%, #fcf7e7 50%, #fbecd2 100%);
+    radial-gradient(circle at 28% 18%, rgba(254,182,88,.18), transparent 32%),
+    linear-gradient(160deg, #fefefe 0%, #fcf7e7 58%, #ffffff 100%);
 }
 
 .app-shell {
-  background:
-    radial-gradient(circle at 20% 6%, rgba(254,182,88,.22), transparent 24%),
-    linear-gradient(180deg, #fefefe 0%, #fcf7e7 100%);
+  background: linear-gradient(180deg, #fff 0%, #fcf7e7 100%);
 }
 
 .app-header,
@@ -56,6 +52,7 @@ body {
   box-shadow: 0 16px 34px rgba(254,182,88,.25);
 }
 
+/* Splash screen: exact HEHA mark, longer native-style intro. */
 .splash-screen {
   padding: 0;
   align-items: center;
@@ -70,77 +67,489 @@ body {
   place-items: center;
   position: relative;
   overflow: hidden;
-}
-
-.heha-splash::before {
-  content: '';
-  position: absolute;
-  width: 620px;
-  height: 620px;
-  border-radius: 46%;
   background:
-    radial-gradient(circle at 35% 30%, rgba(254,255,255,.62), transparent 20%),
-    linear-gradient(135deg, #feb658 0%, #f8c279 44%, #f5bd72 100%);
-  filter: blur(.1px);
-  opacity: .92;
-  transform: rotate(-8deg);
+    radial-gradient(circle at 50% 44%, rgba(254, 182, 88, .16), transparent 32%),
+    linear-gradient(180deg, #ffffff 0%, #fcf7e7 100%);
 }
 
-.heha-splash-card {
-  position: relative;
-  z-index: 2;
-  width: min(82vw, 360px);
-  min-height: 430px;
-  border-radius: 44px;
-  background: rgba(254,254,254,.76);
-  border: 1px solid rgba(255,255,255,.72);
-  box-shadow: 0 28px 90px rgba(156, 108, 46, .18);
+.heha-splash-logo-wrap {
   display: grid;
   place-items: center;
-  padding: 34px;
-  text-align: center;
-  backdrop-filter: blur(16px);
+  width: min(68vw, 320px);
+  aspect-ratio: 1;
 }
 
 .heha-splash-logo {
-  width: min(240px, 64vw);
+  width: 100%;
   height: auto;
   display: block;
-  margin: 0 auto;
-  filter: drop-shadow(0 14px 34px rgba(156,108,46,.14));
+  filter: drop-shadow(0 18px 38px rgba(156,108,46,.10));
 }
 
 .heha-powered {
-  margin-top: 26px;
-  color: #7c7468;
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  bottom: calc(26px + env(safe-area-inset-bottom));
+  margin: 0;
+  text-align: center;
+  color: rgba(23, 23, 23, .48);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
 }
 
-.heha-powered strong {
-  display: block;
-  margin-top: 6px;
-  color: #171717;
-  letter-spacing: .04em;
+/* Cleaner discovery card pass. */
+.clean-hero p {
+  max-width: 280px;
 }
 
-.splash-loading-dots {
-  display: flex;
+.clean-stage {
+  min-height: 448px;
+  padding-top: 4px;
+}
+
+.clean-shadow {
+  background: rgba(254, 182, 88, .16);
+  border: 1px solid rgba(237, 220, 197, .7);
+}
+
+.swipe-card.polished-card {
+  min-height: 430px;
+  padding: 0;
+  overflow: hidden;
+  color: var(--heha-ink);
+  background: #fff !important;
+  border: 1px solid var(--heha-line);
+  box-shadow: 0 24px 54px rgba(38, 28, 18, .13);
+  justify-content: flex-start;
+}
+
+.swipe-card.polished-card::after {
+  display: none;
+}
+
+.card-category-strip {
+  min-height: 132px;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: start;
+  background:
+    radial-gradient(circle at 80% 20%, rgba(255,255,255,.54), transparent 28%),
+    linear-gradient(135deg, #fff0d9 0%, #feb658 100%);
+}
+
+.category-food .card-category-strip,
+.category-coach .card-category-strip {
+  background:
+    radial-gradient(circle at 80% 22%, rgba(255,255,255,.52), transparent 28%),
+    linear-gradient(135deg, #f7efe4 0%, #feb658 100%);
+}
+
+.category-market .card-category-strip {
+  background: linear-gradient(135deg, #fff3de 0%, #f5bd72 100%);
+}
+
+.category-wellness .card-category-strip,
+.category-service .card-category-strip {
+  background: linear-gradient(135deg, #eef7f0 0%, #9bbfa9 100%);
+}
+
+.category-events .card-category-strip {
+  background: linear-gradient(135deg, #fff0e8 0%, #f28b56 100%);
+}
+
+.strip-image-card {
+  position: relative;
+  min-height: 102px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: rgba(255,255,255,.56);
+  border: 1px solid rgba(255,255,255,.56);
+  display: grid;
+  place-items: center;
+}
+
+.strip-image-card img {
+  width: min(210px, 68%);
+  height: 96px;
+  object-fit: contain;
+}
+
+.polished-card .floating-avatar {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
+  font-size: 22px;
+  color: var(--heha-green-dark);
+  background: rgba(255,255,255,.48);
+  border: 1px solid rgba(255,255,255,.42);
+}
+
+.polished-card .partner-badges {
+  align-items: flex-end;
   gap: 7px;
+  min-width: 104px;
+}
+
+.polished-card .partner-badges span,
+.polished-card .tag-row span,
+.polished-card .verified-badge,
+.polished-card .listed-badge {
+  background: rgba(255,255,255,.72);
+  color: var(--heha-green-dark);
+  border: 1px solid rgba(255,255,255,.54);
+  font-size: 10px;
+  max-width: 132px;
+  text-align: center;
+}
+
+.clean-main {
+  padding: 16px 18px 4px;
+}
+
+.polished-card .location-line {
+  color: var(--heha-orange);
+  opacity: 1;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+.polished-card .card-main h2 {
+  color: var(--heha-ink);
+  font-size: clamp(30px, 9.4vw, 42px);
+  line-height: .94;
+  margin: 7px 0 8px;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.polished-card .tagline {
+  color: var(--heha-muted);
+  font-size: 15px;
+  line-height: 1.32;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-bottom-zone {
+  margin-top: auto;
+  padding: 6px 18px 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.clean-tags {
+  gap: 6px;
+}
+
+.clean-tags span {
+  background: var(--heha-cream) !important;
+  border-color: var(--heha-line) !important;
+  color: var(--heha-green-dark) !important;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-featured {
+  display: block;
+}
+
+.clean-featured .featured-mini-pill {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: #fff8ed;
+  border: 1px solid rgba(254,182,88,.34);
+  color: var(--heha-green-dark);
+}
+
+.clean-featured strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.clean-footer {
+  color: var(--heha-ink);
+  padding-top: 4px;
+}
+
+.clean-footer .social-proof span {
+  color: var(--heha-muted);
+}
+
+.clean-footer button {
+  background: var(--heha-green-dark);
+  color: #fff;
+}
+
+.polished-card .gesture-helper {
+  color: var(--heha-muted);
+  opacity: .9;
+  padding: 0 18px 14px;
+}
+
+/* Tap-to-preview sheet. */
+.preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: rgba(23,23,23,.34);
+  display: flex;
+  align-items: flex-end;
   justify-content: center;
-  margin-top: 26px;
 }
 
-.splash-loading-dots span {
-  width: 8px;
-  height: 8px;
+.partner-preview-sheet {
+  width: min(480px, 100%);
+  max-height: 88dvh;
+  overflow-y: auto;
+  background: #fff;
+  color: var(--heha-ink);
+  border-radius: 30px 30px 0 0;
+  box-shadow: 0 -24px 70px rgba(0,0,0,.22);
+  position: relative;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+}
+
+.preview-close {
+  position: absolute;
+  z-index: 3;
+  right: 16px;
+  top: 14px;
+  width: 38px;
+  height: 38px;
   border-radius: 999px;
-  background: #feb658;
-  animation: hehaPulse 1.1s ease-in-out infinite;
+  border: 0;
+  background: rgba(255,255,255,.82);
+  color: var(--heha-ink);
+  font-size: 24px;
+  cursor: pointer;
 }
 
-.splash-loading-dots span:nth-child(2) { animation-delay: .16s; }
-.splash-loading-dots span:nth-child(3) { animation-delay: .32s; }
+.preview-hero {
+  min-height: 198px;
+  display: grid;
+  place-items: center;
+  position: relative;
+  border-radius: 30px 30px 24px 24px;
+  background: linear-gradient(135deg, #fff3de 0%, #feb658 100%);
+  overflow: hidden;
+}
 
-@keyframes hehaPulse {
-  0%, 100% { transform: translateY(0); opacity: .42; }
-  50% { transform: translateY(-7px); opacity: 1; }
+.preview-hero img {
+  width: 72%;
+  max-height: 154px;
+  object-fit: contain;
+}
+
+.preview-category-pill,
+.preview-status-pill {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  background: rgba(255,255,255,.78);
+  border: 1px solid rgba(255,255,255,.5);
+  color: var(--heha-green-dark);
+  border-radius: 999px;
+  padding: 8px 11px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.preview-status-pill {
+  left: auto;
+  right: 60px;
+}
+
+.preview-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+}
+
+.preview-body {
+  padding: 18px;
+}
+
+.preview-body h2 {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(34px, 10vw, 46px);
+  line-height: .94;
+  letter-spacing: -.05em;
+  margin: 0 0 10px;
+}
+
+.preview-tagline {
+  color: var(--heha-green-dark);
+  font-size: 18px;
+  line-height: 1.34;
+  font-weight: 800;
+  margin: 12px 0 8px;
+}
+
+.preview-bio {
+  color: var(--heha-muted);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.preview-items {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+  padding: 14px;
+  background: var(--heha-cream);
+  border: 1px solid var(--heha-line);
+  border-radius: 18px;
+}
+
+.preview-items div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  color: var(--heha-green-dark);
+  font-weight: 800;
+}
+
+.preview-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* Detail page polish. */
+.partner-detail-screen {
+  padding-bottom: 128px;
+}
+
+.partner-detail-card,
+.detail-section {
+  background: #fff;
+  border: 1px solid var(--heha-line);
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(38, 28, 18, .09);
+}
+
+.partner-detail-card {
+  margin-top: 12px;
+}
+
+.detail-image-wrap {
+  min-height: 220px;
+  background: linear-gradient(135deg, #fff3de, #feb658);
+}
+
+.detail-image-wrap img {
+  width: 100%;
+  height: 220px;
+  object-fit: contain;
+  padding: 22px;
+}
+
+.detail-body,
+.detail-section {
+  padding: 18px;
+}
+
+.detail-body h2 {
+  margin: 0;
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(38px, 11vw, 52px);
+  line-height: .92;
+  letter-spacing: -.05em;
+  overflow-wrap: anywhere;
+}
+
+.detail-section {
+  margin-top: 16px;
+}
+
+.detail-order-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.detail-tags,
+.preview-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.detail-tags span,
+.preview-tags span,
+.price-range-pill {
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: var(--heha-cream);
+  color: var(--heha-green-dark);
+  border: 1px solid var(--heha-line);
+  font-weight: 900;
+  font-size: 12px;
+}
+
+.order-item-list {
+  display: grid;
+  gap: 10px;
+}
+
+.order-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  border: 1px solid var(--heha-line);
+  background: #fff;
+  border-radius: 18px;
+  padding: 13px;
+  color: var(--heha-green-dark);
+  cursor: pointer;
+}
+
+.order-item strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-item.active {
+  background: #fff8ed;
+}
+
+@media (max-width: 420px) {
+  .clean-stage { min-height: 426px; }
+  .swipe-card.polished-card { min-height: 405px; border-radius: 28px; }
+  .card-category-strip { min-height: 118px; padding: 12px; }
+  .strip-image-card { min-height: 92px; }
+  .strip-image-card img { height: 86px; }
+  .polished-card .card-main h2 { font-size: clamp(28px, 9.1vw, 37px); }
+  .polished-card .tagline { font-size: 14px; -webkit-line-clamp: 1; }
+  .card-bottom-zone { padding: 4px 14px 14px; gap: 7px; }
+  .action-dock { bottom: 82px; gap: 18px; }
+  .action-circle { width: 58px; height: 58px; }
+  .heha-splash-logo-wrap { width: min(72vw, 310px); }
 }
