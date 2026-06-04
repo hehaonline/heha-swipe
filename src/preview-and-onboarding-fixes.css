@@ -1,0 +1,177 @@
+/* Preview modal + onboarding Instagram follow refinements. */
+
+.preview-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 220 !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
+  width: 100% !important;
+  min-height: 100dvh !important;
+  padding: 0 !important;
+  background: rgba(25, 23, 21, .34) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+}
+
+.partner-preview-sheet {
+  position: relative !important;
+  z-index: 221 !important;
+  width: min(480px, 100%) !important;
+  max-height: 88dvh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  background: #fff !important;
+  color: var(--heha-ink) !important;
+  border: 1px solid var(--heha-line) !important;
+  border-radius: 26px 26px 0 0 !important;
+  box-shadow: 0 -24px 70px rgba(0,0,0,.20) !important;
+  animation: previewSheetRise 240ms ease-out both;
+}
+
+@keyframes previewSheetRise {
+  from { transform: translateY(28px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.preview-close {
+  position: absolute !important;
+  z-index: 230 !important;
+  top: 12px !important;
+  left: 12px !important;
+  width: 42px !important;
+  height: 42px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: rgba(255,255,255,.92) !important;
+  color: var(--heha-ink) !important;
+  box-shadow: 0 8px 18px rgba(47, 36, 22, .12) !important;
+  font-size: 24px !important;
+  font-weight: 500 !important;
+}
+
+.preview-card-button {
+  position: relative !important;
+  z-index: 8 !important;
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+}
+
+.preview-hero {
+  position: relative !important;
+  width: 100% !important;
+  min-height: 260px !important;
+  overflow: hidden !important;
+}
+
+.preview-category-pill,
+.preview-status-pill {
+  position: absolute !important;
+  z-index: 224 !important;
+}
+
+.preview-category-pill {
+  left: 14px !important;
+}
+
+.preview-status-pill {
+  right: 14px !important;
+}
+
+.preview-dots {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 12px !important;
+  z-index: 224 !important;
+  display: flex !important;
+  justify-content: center !important;
+  gap: 7px !important;
+}
+
+.preview-dots button {
+  width: 7px !important;
+  height: 7px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: rgba(255,255,255,.6) !important;
+}
+
+.preview-dots button.active {
+  background: var(--heha-orange) !important;
+}
+
+.preview-actions {
+  display: grid !important;
+  gap: 10px !important;
+  margin-top: 18px !important;
+}
+
+.preview-items {
+  display: grid !important;
+  gap: 8px !important;
+  margin-top: 14px !important;
+  padding: 13px !important;
+  border: 1px solid var(--heha-line) !important;
+  border-radius: 16px !important;
+}
+
+.preview-items > div {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  color: var(--heha-muted) !important;
+  font-size: 13px !important;
+}
+
+.instagram-follow-card {
+  display: grid !important;
+  gap: 10px !important;
+  margin: 14px 0 !important;
+  padding: 16px !important;
+  border: 1px solid var(--heha-line) !important;
+  border-radius: 20px !important;
+  background: linear-gradient(135deg, #fff, var(--heha-cream)) !important;
+  box-shadow: 0 12px 28px rgba(47, 36, 22, .06) !important;
+}
+
+.instagram-follow-card h3 {
+  margin: 0 !important;
+  color: var(--heha-ink) !important;
+  font-size: 24px !important;
+  line-height: 1.05 !important;
+  letter-spacing: -.04em !important;
+  font-weight: 850 !important;
+}
+
+.instagram-follow-card p {
+  margin: 0 !important;
+  color: var(--heha-muted) !important;
+  line-height: 1.45 !important;
+}
+
+.instagram-follow-card .instagram-button {
+  margin: 2px 0 0 !important;
+  background: linear-gradient(135deg, #111, #3b2a20) !important;
+  color: #fff !important;
+  border: 0 !important;
+}
+
+.soft-mini-note {
+  font-size: 12px !important;
+  color: rgba(116,109,102,.82) !important;
+}
+
+@media (max-width: 420px) {
+  .partner-preview-sheet {
+    max-height: 90dvh !important;
+  }
+
+  .preview-hero,
+  .preview-hero img {
+    min-height: 230px !important;
+    height: 230px !important;
+  }
+}
