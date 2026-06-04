@@ -9,9 +9,10 @@ import ProfileTab from "./components/ProfileTab";
 import PasswordResetScreen from "./components/PasswordResetScreen";
 
 const TABS = [
-  { id: "swipe", label: "Discover", icon: "✦" },
-  { id: "faves", label: "Saved", icon: "♥" },
-  { id: "profile", label: "Profile", icon: "◎" },
+  { id: "swipe", label: "Discover", icon: "⌕" },
+  { id: "faves", label: "Saved", icon: "♡" },
+  { id: "deals", label: "Deals", icon: "⌑" },
+  { id: "profile", label: "Profile", icon: "♙" },
 ];
 
 const COMPLETED_SUBSCRIPTION_TYPES = [
@@ -54,6 +55,16 @@ function isPartnerProfile(profile) {
   );
 }
 
+function SwipeLogo({ compact = false }) {
+  return (
+    <div className={compact ? "swipe-logo compact-logo" : "swipe-logo"} aria-label="HEHA Swipe">
+      <span className="swipe-logo-square" />
+      <span className="swipe-logo-heha">HEHA</span>
+      <span className="swipe-logo-word">swipe</span>
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -70,7 +81,7 @@ export default function App() {
   const [appError, setAppError] = useState(null);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setSplashReady(true), 3300);
+    const timer = window.setTimeout(() => setSplashReady(true), 3400);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -229,7 +240,6 @@ export default function App() {
       }
 
       await recordSwipeEvent(partner, "right");
-
       flashNotice(`${partner.name} saved to your HEHA list.`);
     } catch (error) {
       flashNotice(error.message || "Could not save this business yet.");
@@ -251,7 +261,6 @@ export default function App() {
 
     try {
       await recordSwipeEvent(partner, "super");
-
       flashNotice(`SuperSwoop sent for ${partner.name}. HEHA will know this one stands out.`);
     } catch (error) {
       flashNotice(error.message || "Could not send SuperSwoop yet.");
@@ -362,14 +371,8 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <div className="brand-lockup">
-          <div className="brand-mark">✦</div>
-          <div>
-            <div className="brand-name">HEHA<span>·</span>swipe</div>
-            <div className="brand-subtitle">Tampa Bay healthy discovery</div>
-          </div>
-        </div>
+      <header className="app-header luxe-header">
+        <SwipeLogo compact />
         <button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
       </header>
 
@@ -395,6 +398,7 @@ export default function App() {
             onDiscountCheck={handleDiscountCheck}
           />
         )}
+        {tab === "deals" && <DealsTab />}
         {tab === "profile" && (
           <ProfileTab
             user={session.user}
@@ -408,7 +412,7 @@ export default function App() {
         )}
       </main>
 
-      <nav className="bottom-nav" aria-label="Primary navigation">
+      <nav className="bottom-nav luxe-nav" aria-label="Primary navigation">
         {TABS.map((navItem) => (
           <button
             key={navItem.id}
@@ -426,11 +430,25 @@ export default function App() {
 
 function SplashScreen() {
   return (
-    <div className="splash-screen heha-splash">
-      <div className="heha-splash-logo-wrap">
-        <img className="heha-splash-logo" src="/heha-logo.svg" alt="HEHA" />
+    <div className="splash-screen heha-splash luxe-splash">
+      <div className="splash-logo-lockup">
+        <span className="splash-square" />
+        <span className="splash-heha">HEHA</span>
+        <span className="splash-swipe">swipe</span>
       </div>
       <p className="heha-powered">powered by Healthy Habit LLC</p>
     </div>
+  );
+}
+
+function DealsTab() {
+  return (
+    <section className="saved-screen deals-screen">
+      <div className="section-hero clean-section-hero">
+        <p className="eyebrow">Member offers</p>
+        <h2>Deals are coming soon.</h2>
+        <p>Saved discount requests and partner offers will live here once HEHA starts activating member deals.</p>
+      </div>
+    </section>
   );
 }
