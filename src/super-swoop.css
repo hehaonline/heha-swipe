@@ -1,5 +1,36 @@
 /* SuperSwoop: shooting-star style action icon + burst animation. */
 
+/* Hide old deck/drag artifacts that showed through during light taps. */
+.deck-stage .next-card-shadow,
+.luxe-stage .next-card-shadow,
+.next-card-shadow.clean-shadow,
+.next-card-shadow.luxe-shadow {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+.swipe-card .swipe-intent,
+.swipe-card .swipe-intent.visible {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.swipe-card.polished-card .partner-badges {
+  flex-direction: row !important;
+  justify-content: space-between !important;
+  align-items: flex-start !important;
+}
+
+.swipe-card.polished-card .card-main h2 {
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  overflow-wrap: anywhere !important;
+}
+
 .action-circle.super {
   position: relative !important;
   overflow: visible !important;
