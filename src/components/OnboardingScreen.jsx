@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
 
+const HEHA_INSTAGRAM_URL = import.meta.env.VITE_HEHA_INSTAGRAM_URL || "https://www.instagram.com/heha.online/";
+
 function getInitialRole() {
   return localStorage.getItem("heha_signup_role") || null;
 }
@@ -10,6 +12,7 @@ export default function OnboardingScreen({ user, onComplete }) {
   const [step, setStep] = useState(role ? "access" : "role");
   const [access, setAccess] = useState("free");
   const [supportAmount, setSupportAmount] = useState(10);
+  const [instagramStepDone, setInstagramStepDone] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -52,6 +55,11 @@ export default function OnboardingScreen({ user, onComplete }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleInstagramFollowStep = () => {
+    setInstagramStepDone(true);
+    window.open(HEHA_INSTAGRAM_URL, "_blank", "noopener,noreferrer");
   };
 
   const startSupporterCheckout = async () => {
@@ -104,6 +112,7 @@ export default function OnboardingScreen({ user, onComplete }) {
 
   const isPartner = role === "partner";
   const canStartStripe = access === "supporter";
+  const freeCustomerNeedsInstagram = !isPartner && access === "free";
 
   return (
     <main className="onboarding-screen">
@@ -114,10 +123,16 @@ export default function OnboardingScreen({ user, onComplete }) {
         <p>Start free, or choose an optional monthly supporter amount. Support helps grow the local healthy business network.</p>
 
         <div className="choice-grid plan-choice-grid">
-          <button className={access === "free" ? "choice-card active-plan" : "choice-card"} onClick={() => setAccess("free")}>
+          <button
+            className={access === "free" ? "choice-card active-plan" : "choice-card"}
+            onClick={() => {
+              setAccess("free");
+              setInstagramStepDone(false);
+            }}
+          >
             <span>🌱</span>
             <h2>Free</h2>
-            <p>Explore HEHA Swipe and save local businesses without paying today.</p>
+            <p>{isPartner ? "Create a starter listing without paying today." : "Follow HEHA on Instagram, then explore and save local businesses for free."}</p>
           </button>
           <button className={access === "supporter" ? "choice-card featured active-plan" : "choice-card featured"} onClick={() => setAccess("supporter")}>
             <span>🕊️</span>
@@ -143,6 +158,18 @@ export default function OnboardingScreen({ user, onComplete }) {
           </div>
         )}
 
+        {freeCustomerNeedsInstagram && (
+          <div className="instagram-follow-card">
+            <p className="eyebrow">Free access step</p>
+            <h3>Follow HEHA to join free.</h3>
+            <p>Tap below to open Instagram. After that, you can continue into HEHA Swipe for free.</p>
+            <button className="instagram-button" type="button" onClick={handleInstagramFollowStep}>
+              {instagramStepDone ? "Instagram opened ✓" : "Follow @heha.online on Instagram"}
+            </button>
+            <p className="soft-mini-note">For now, this is a trust-based step. Automatic Instagram follow verification can be added later.</p>
+          </div>
+        )}
+
         {canStartStripe ? (
           <>
             <button className="primary-button" onClick={startSupporterCheckout} disabled={loading}>
@@ -152,6 +179,10 @@ export default function OnboardingScreen({ user, onComplete }) {
               Continue free for testing
             </button>
           </>
+        ) : freeCustomerNeedsInstagram ? (
+          <button className="primary-button" onClick={() => complete()} disabled={loading || !instagramStepDone}>
+            {loading ? "Setting up…" : instagramStepDone ? "Start discovering" : "Follow Instagram to unlock free access"}
+          </button>
         ) : (
           <button className="primary-button" onClick={() => complete()} disabled={loading}>
             {loading ? "Setting up…" : isPartner ? "Continue to business listing" : "Start discovering"}
