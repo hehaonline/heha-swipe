@@ -7,6 +7,7 @@ import "./onboarding-fix.css";
 import "./heha-brand-theme.css";
 import "./saved-detail-cleanup.css";
 import "./super-swoop.css";
+import "./preview-and-onboarding-fixes.css";
 import App from "./App.jsx";
 
 createRoot(document.getElementById("root")).render(<StrictMode><App /></StrictMode>);
