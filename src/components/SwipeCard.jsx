@@ -199,7 +199,10 @@ export default function SwipeCard({ partner, onSwipe }) {
             setShowPreview(false);
             onSwipe?.("left");
           }}
-          onShare={() => setShowShare(true)}
+          onShare={() => {
+            setShowPreview(false);
+            setShowShare(true);
+          }}
         />
       )}
 
