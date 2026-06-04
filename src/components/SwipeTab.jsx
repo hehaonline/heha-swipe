@@ -1,24 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import SwipeCard from "./SwipeCard";
 
-const CATEGORIES = ["All", "Restaurant", "Vendor", "Wellness", "Coach", "Service", "Events"];
+const CATEGORIES = ["All", "Restaurant", "Vendor", "Wellness", "PrivateChef"];
 const CATEGORY_LABELS = {
   All: "All",
   Restaurant: "Food",
   Vendor: "Market",
   Wellness: "Wellness",
-  Coach: "Coaches",
-  Service: "Services",
-  Events: "Events",
-};
-const CAT_ICONS = {
-  All: "✦",
-  Restaurant: "🥗",
-  Vendor: "🛍️",
-  Wellness: "🧘",
-  Coach: "🏆",
-  Service: "💆",
-  Events: "🎉",
+  PrivateChef: "Private Chefs",
 };
 
 const shuffle = (items) => {
@@ -30,15 +19,22 @@ const shuffle = (items) => {
   return copy;
 };
 
+function partnerTerms(partner) {
+  return [partner.category, partner.subcategory, partner.tagline, partner.bio, ...(partner.tags || []), ...(partner.offerings || [])]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function isPrivateChef(partner) {
+  const terms = partnerTerms(partner);
+  return terms.includes("private chef") || terms.includes("chef");
+}
+
 function partnerMatchesCategory(partner, activeCategory) {
   if (activeCategory === "All") return true;
-  if (activeCategory === "Restaurant") {
-    const terms = [partner.category, ...(partner.tags || []), ...(partner.offerings || [])]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    return partner.category === "Restaurant" || terms.includes("private chef") || terms.includes("chef");
-  }
+  if (activeCategory === "PrivateChef") return isPrivateChef(partner);
+  if (activeCategory === "Restaurant") return partner.category === "Restaurant" || isPrivateChef(partner);
   return partner.category === activeCategory;
 }
 
@@ -103,19 +99,18 @@ export default function SwipeTab({
   }, [partners, category]);
 
   return (
-    <section className="discover-screen compact-discover">
+    <section className="discover-screen compact-discover luxe-discover">
       {reshuffled && <div className="floating-status">Fresh businesses loaded</div>}
 
-      <div className="discover-hero compact-hero clean-hero">
+      <div className="discover-topline">
         <div>
-          <p className="eyebrow">Local healthy discovery</p>
-          <h2>Tampa Bay’s healthy scene.</h2>
-          <p>Tap a card to preview. Swipe right to save businesses you want to remember.</p>
+          <p className="eyebrow">Discover</p>
+          <h2>Swipe healthy local.</h2>
         </div>
         <div className="hero-chip">{activeCategoryCount}</div>
       </div>
 
-      <div className="category-rail compact-rail" role="tablist" aria-label="Partner categories">
+      <div className="category-rail compact-rail luxe-rail" role="tablist" aria-label="Partner categories">
         {CATEGORIES.map((cat) => (
           <button
             key={cat}
@@ -125,30 +120,29 @@ export default function SwipeTab({
               setSeenIds(new Set());
             }}
           >
-            <span>{CAT_ICONS[cat]}</span>
             {CATEGORY_LABELS[cat]}
           </button>
         ))}
       </div>
 
-      {dataLoading && <div className="inline-loader">Refreshing partners…</div>}
+      {dataLoading && <div className="inline-loader">Refreshing businesses…</div>}
 
-      <div className="deck-stage compact-stage clean-stage">
+      <div className="deck-stage compact-stage clean-stage luxe-stage">
         {current ? (
           <>
-            {deck[1] && <div className="next-card-shadow clean-shadow" />}
+            {deck[1] && <div className="next-card-shadow clean-shadow luxe-shadow" />}
             <SwipeCard partner={current} onSwipe={handleSwipe} />
           </>
         ) : (
-          <EmptyDeck category={category} onReset={() => setCategory("All")} />
+          <EmptyDeck category={CATEGORY_LABELS[category] || category} onReset={() => setCategory("All")} />
         )}
       </div>
 
       {current && (
-        <div className="action-dock" aria-label="Swipe actions">
+        <div className="action-dock luxe-action-dock" aria-label="Swipe actions">
           <button className="action-circle pass" onClick={() => handleSwipe("left")} aria-label="Pass for now">×</button>
-          <button className="action-circle super" onClick={() => handleSwipe("super")} aria-label="SuperSwoop this partner">✦</button>
-          <button className="action-circle save" onClick={() => handleSwipe("right")} aria-label="Save this partner">♥</button>
+          <button className="action-circle super" onClick={() => handleSwipe("super")} aria-label="Preview or highlight this business">i</button>
+          <button className="action-circle save" onClick={() => handleSwipe("right")} aria-label="Save this business">♥</button>
         </div>
       )}
     </section>
@@ -157,9 +151,9 @@ export default function SwipeTab({
 
 function EmptyDeck({ category, onReset }) {
   return (
-    <div className="empty-state card-like">
-      <div className="empty-icon">🌿</div>
-      <h3>{category === "All" ? "You caught up with the current map." : `No more ${category.toLowerCase()} partners right now.`}</h3>
+    <div className="empty-state card-like luxe-empty">
+      <div className="empty-icon">♡</div>
+      <h3>{category === "All" ? "You caught up with the current map." : `No more ${String(category).toLowerCase()} right now.`}</h3>
       <p>New healthy businesses can be added weekly. Saved partners stay in your HEHA list so you can come back later.</p>
       <button className="primary-button" onClick={onReset}>Explore all categories</button>
     </div>
