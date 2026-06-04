@@ -1,13 +1,41 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import SwipeCard from "./SwipeCard";
 
-const CATEGORIES = ["All", "Restaurant", "Vendor", "Wellness", "PrivateChef"];
+const CATEGORIES = [
+  "All",
+  "Restaurant",
+  "Markets",
+  "Catering",
+  "Private Chef",
+  "Wellness",
+  "Coach",
+  "Service",
+  "Events",
+];
+
 const CATEGORY_LABELS = {
   All: "All",
   Restaurant: "Food",
-  Vendor: "Market",
+  Markets: "Markets",
+  Vendor: "Markets",
+  Catering: "Catering",
+  "Private Chef": "Private Chefs",
   Wellness: "Wellness",
-  PrivateChef: "Private Chefs",
+  Coach: "Coaches",
+  Service: "Services",
+  Events: "Events",
+};
+
+const CATEGORY_ICONS = {
+  All: "✦",
+  Restaurant: "🥗",
+  Markets: "🛒",
+  Catering: "🍱",
+  "Private Chef": "👨‍🍳",
+  Wellness: "🧘",
+  Coach: "🏆",
+  Service: "💆",
+  Events: "🎉",
 };
 
 const shuffle = (items) => {
@@ -28,13 +56,25 @@ function partnerTerms(partner) {
 
 function isPrivateChef(partner) {
   const terms = partnerTerms(partner);
-  return terms.includes("private chef") || terms.includes("chef");
+  return partner.category === "Private Chef" || terms.includes("private chef") || terms.includes("retreat chef");
+}
+
+function isCatering(partner) {
+  const terms = partnerTerms(partner);
+  return partner.category === "Catering" || terms.includes("catering") || terms.includes("staff meals") || terms.includes("food truck") || terms.includes("group orders");
+}
+
+function isMarket(partner) {
+  const terms = partnerTerms(partner);
+  return partner.category === "Markets" || partner.category === "Vendor" || terms.includes("market") || terms.includes("farmers market") || terms.includes("grocery");
 }
 
 function partnerMatchesCategory(partner, activeCategory) {
   if (activeCategory === "All") return true;
-  if (activeCategory === "PrivateChef") return isPrivateChef(partner);
-  if (activeCategory === "Restaurant") return partner.category === "Restaurant" || isPrivateChef(partner);
+  if (activeCategory === "Private Chef") return isPrivateChef(partner);
+  if (activeCategory === "Catering") return isCatering(partner);
+  if (activeCategory === "Markets") return isMarket(partner);
+  if (activeCategory === "Restaurant") return partner.category === "Restaurant" && !isPrivateChef(partner) && !isCatering(partner);
   return partner.category === activeCategory;
 }
 
@@ -120,6 +160,7 @@ export default function SwipeTab({
               setSeenIds(new Set());
             }}
           >
+            <span>{CATEGORY_ICONS[cat]}</span>
             {CATEGORY_LABELS[cat]}
           </button>
         ))}
