@@ -61,12 +61,18 @@ export default function App() {
   const [saves, setSaves] = useState([]);
   const [tab, setTab] = useState("swipe");
   const [loading, setLoading] = useState(true);
+  const [splashReady, setSplashReady] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showPartnerWizard, setShowPartnerWizard] = useState(false);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [notice, setNotice] = useState(null);
   const [appError, setAppError] = useState(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSplashReady(true), 3300);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -314,7 +320,7 @@ export default function App() {
     setSession(null);
   };
 
-  if (loading) return <SplashScreen />;
+  if (loading || !splashReady) return <SplashScreen />;
   if (!session) return <AuthScreen />;
   if (passwordRecovery) {
     return (
@@ -421,13 +427,10 @@ export default function App() {
 function SplashScreen() {
   return (
     <div className="splash-screen heha-splash">
-      <div className="heha-splash-card">
-        <div>
-          <img className="heha-splash-logo" src="/heha-logo.svg" alt="HEHA" />
-          <p className="heha-powered">powered by <strong>Healthy Habit LLC</strong></p>
-          <div className="splash-loading-dots" aria-hidden="true"><span /><span /><span /></div>
-        </div>
+      <div className="heha-splash-logo-wrap">
+        <img className="heha-splash-logo" src="/heha-logo.svg" alt="HEHA" />
       </div>
+      <p className="heha-powered">powered by Healthy Habit LLC</p>
     </div>
   );
 }
