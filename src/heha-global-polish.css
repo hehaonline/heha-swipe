@@ -1,0 +1,51 @@
+/* HEHA Swipe global polish layer
+   Aligns typography, spacing, forms, buttons, and overflow with the approved clean HEHA Swipe mockup. */
+
+:root {
+  --heha-radius-xl: 28px;
+  --heha-radius-lg: 22px;
+  --heha-radius-md: 16px;
+  --heha-page-pad: clamp(16px, 4.2vw, 22px);
+  --heha-text-tight: -.055em;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+button,
+input,
+textarea,
+select,
+a {
+  font-family: inherit !important;
+}
+
+button,
+a,
+input,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3,
+.auth
