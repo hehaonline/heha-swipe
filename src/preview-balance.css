@@ -1,4 +1,4 @@
-/* Small override: rebalance Discovery preview sheet on mobile. */
+/* Discovery preview balance override. */
 .preview-backdrop {
   align-items: flex-end !important;
   justify-content: center !important;
@@ -15,44 +15,6 @@
   margin: 0 auto !important;
 }
 
-.partner-preview-sheet::before {
-  content: '';
-  display: block;
-  width: 42px;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(25, 23, 21, .16);
-  margin: 10px auto 8px;
-}
-
 .partner-preview-sheet .preview-hero,
 .partner-preview-sheet .preview-hero img {
-  height: 205px !important;
-  min-height: 205px !important;
-  max-height: 205px !important;
-}
-
-.partner-preview-sheet .preview-body {
-  padding: 17px 18px 22px !important;
-}
-
-.partner-preview-sheet .preview-body h2 {
-  font-size: clamp(31px, 9vw, 42px) !important;
-  line-height: 1.02 !important;
-  letter-spacing: -.055em !important;
-  margin: 0 0 10px !important;
-  overflow-wrap: anywhere !important;
-}
-
-.partner-preview-sheet .preview-tagline,
-.partner-preview-sheet .preview-bio {
-  font-size: 14px !important;
-  line-height: 1.45 !important;
-  margin: 8px 0 !important;
-}
-
-.partner-preview-sheet .preview-tags,
-.partner-preview-sheet .detail-tags {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 7px !
+  height: 200
