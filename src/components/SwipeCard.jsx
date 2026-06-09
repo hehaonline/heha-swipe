@@ -184,7 +184,7 @@ export default function SwipeCard({ partner, onSwipe }) {
           <div className="partner-badges image-badges">
             <span className={partner.heha_partner ? "verified-badge" : "listed-badge"}>{statusBadge(partner)}</span>
             <span>{categoryGroup.label}</span>
-            {showingStockImage && <span className="stock-photo-pill">Stock photo</span>}
+            {showingStockImage && <span className="stock-photo-pill">Photo coming soon</span>}
           </div>
         </div>
 
@@ -276,7 +276,7 @@ function PartnerPreviewSheet({ partner, categoryGroup, images, tags, items, onCl
           <img src={currentImage} alt={`${partner.name} preview`} />
           <span className="preview-category-pill">{categoryGroup.emoji} {categoryGroup.label}</span>
           <span className="preview-status-pill">{statusBadge(partner)}</span>
-          {showingStockImage && <span className="preview-stock-pill">Stock photo placeholder</span>}
+          {showingStockImage && <span className="preview-stock-pill">Photo coming soon</span>}
           {images.length > 1 && (
             <div className="gallery-dots preview-dots">
               {images.map((image, index) => (
