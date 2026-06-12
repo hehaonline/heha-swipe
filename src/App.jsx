@@ -15,6 +15,8 @@ const TABS = [
   { id: "profile", label: "Profile", icon: "♙" },
 ];
 
+const SUPPORT_PROMPT_STORAGE_KEY = "heha_swipe_support_prompt_skipped";
+
 const COMPLETED_SUBSCRIPTION_TYPES = [
   "instagram",
   "monthly",
@@ -55,6 +57,14 @@ function isPartnerProfile(profile) {
   );
 }
 
+function getInitialSupportPromptDismissed() {
+  try {
+    return window.sessionStorage.getItem(SUPPORT_PROMPT_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 function SwipeLogo({ compact = false }) {
   return (
     <div className={compact ? "swipe-logo compact-logo" : "swipe-logo"} aria-label="HEHA Swipe">
@@ -73,6 +83,8 @@ export default function App() {
   const [tab, setTab] = useState("swipe");
   const [loading, setLoading] = useState(true);
   const [splashReady, setSplashReady] = useState(false);
+  const [supportPromptDismissed, setSupportPromptDismissed] = useState(getInitialSupportPromptDismissed);
+  const [supportPromptError, setSupportPromptError] = useState(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showPartnerWizard, setShowPartnerWizard] = useState(false);
@@ -135,6 +147,9 @@ export default function App() {
     if (returnRole === "partner") setShowPartnerWizard(true);
     if (checkoutType === "superswoop") {
       flashNotice("SuperSwoop payment received. HEHA will activate it after Stripe confirms the $2 payment.");
+    }
+    if (checkoutType === "dollar_support") {
+      flashNotice("Thank you for the $1 prototype support. Every push helps HEHA Swipe and HEHA Local move forward.");
     }
     loadData(session.user.id);
   }, [session?.user?.id]);
@@ -213,6 +228,32 @@ export default function App() {
   const flashNotice = (message) => {
     setNotice(message);
     window.setTimeout(() => setNotice(null), 2600);
+  };
+
+  const dismissSupportPrompt = () => {
+    try {
+      window.sessionStorage.setItem(SUPPORT_PROMPT_STORAGE_KEY, "true");
+    } catch {
+      // Browsers can block storage in some privacy modes. Skipping should still work.
+    }
+    setSupportPromptDismissed(true);
+  };
+
+  const handleDollarSupport = () => {
+    try {
+      const stripeLink = import.meta.env.VITE_STRIPE_DOLLAR_SUPPORT_CHECKOUT_URL;
+      if (!stripeLink) {
+        throw new Error("$1 support checkout is not connected yet. Add VITE_STRIPE_DOLLAR_SUPPORT_CHECKOUT_URL in Vercel after creating the Stripe payment link.");
+      }
+
+      dismissSupportPrompt();
+      const url = new URL(stripeLink);
+      url.searchParams.set("client_reference_id", session?.user?.id ? `dollar_support__${session.user.id}` : "dollar_support__guest");
+      url.searchParams.set("prefilled_email", session?.user?.email || "");
+      window.location.href = url.toString();
+    } catch (error) {
+      setSupportPromptError(error.message || "Could not open $1 support checkout yet.");
+    }
   };
 
   const recordSwipeEvent = async (partner, direction) => {
@@ -342,6 +383,16 @@ export default function App() {
     setSession(null);
   };
 
+  if (!supportPromptDismissed) {
+    return (
+      <SupportPromptScreen
+        error={supportPromptError}
+        onSupport={handleDollarSupport}
+        onSkip={dismissSupportPrompt}
+      />
+    );
+  }
+
   if (loading || !splashReady) return <SplashScreen />;
   if (!session) return <AuthScreen />;
   if (passwordRecovery) {
@@ -438,6 +489,47 @@ export default function App() {
         ))}
       </nav>
     </div>
+  );
+}
+
+function SupportPromptScreen({ error, onSupport, onSkip }) {
+  return (
+    <main className="splash-screen">
+      <section className="splash-card">
+        <div className="brand-mark large">H</div>
+        <p className="eyebrow">Prototype support</p>
+        <h1>Help push HEHA forward.</h1>
+        <p>
+          HEHA Swipe and HEHA Local are still early. Tap once to support the team and help us share the prototype with more local businesses, artists, and wellness partners.
+        </p>
+
+        <button
+          type="button"
+          className="primary-button"
+          onClick={onSupport}
+          style={{
+            width: "190px",
+            height: "190px",
+            borderRadius: "999px",
+            margin: "22px auto 12px",
+            display: "grid",
+            placeItems: "center",
+            fontSize: "19px",
+            lineHeight: "1.15",
+            whiteSpace: "pre-line",
+          }}
+        >
+          {"Tap to support\n$1 per push"}
+        </button>
+
+        <button className="text-button center" type="button" onClick={onSkip}>
+          Skip for now
+        </button>
+
+        <p className="soft-note">Optional. No paywall — just community support while the apps are still in prototype mode.</p>
+        {error && <div className="error-banner">{error}</div>}
+      </section>
+    </main>
   );
 }
 
