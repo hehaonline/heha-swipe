@@ -129,9 +129,13 @@ export default function App() {
     if (!checkoutSuccess) return;
 
     const returnRole = params.get("role");
+    const checkoutType = params.get("type");
     window.history.replaceState(null, "", window.location.pathname);
     setNeedsOnboarding(false);
     if (returnRole === "partner") setShowPartnerWizard(true);
+    if (checkoutType === "superswoop") {
+      flashNotice("SuperSwoop payment received. HEHA will activate it after Stripe confirms the $2 payment.");
+    }
     loadData(session.user.id);
   }, [session?.user?.id]);
 
@@ -260,10 +264,19 @@ export default function App() {
     if (!uid || !partner?.id) return;
 
     try {
-      await recordSwipeEvent(partner, "super");
-      flashNotice(`SuperSwoop sent for ${partner.name}. HEHA will know this one stands out.`);
+      const stripeLink = import.meta.env.VITE_STRIPE_SUPERSWOOP_CHECKOUT_URL;
+      if (!stripeLink) {
+        throw new Error("SuperSwoop checkout is not connected yet. Add VITE_STRIPE_SUPERSWOOP_CHECKOUT_URL in Vercel after creating the $2 Stripe payment link.");
+      }
+
+      await recordSwipeEvent(partner, "super_checkout_started");
+
+      const url = new URL(stripeLink);
+      url.searchParams.set("client_reference_id", `superswoop__${uid}__${partner.id}`);
+      url.searchParams.set("prefilled_email", session.user.email || "");
+      window.location.href = url.toString();
     } catch (error) {
-      flashNotice(error.message || "Could not send SuperSwoop yet.");
+      flashNotice(error.message || "Could not open SuperSwoop checkout yet.");
     }
   };
 
