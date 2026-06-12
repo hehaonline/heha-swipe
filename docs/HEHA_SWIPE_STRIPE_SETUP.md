@@ -1,6 +1,6 @@
 # HEHA Swipe Stripe setup
 
-This document defines the Stripe setup for HEHA Swipe subscriptions and paid SuperSwoops.
+This document defines the Stripe setup for HEHA Swipe subscriptions, paid SuperSwoops, and optional prototype/team support.
 
 ## Payment products
 
@@ -57,11 +57,38 @@ Behavior goal:
 
 Important: do not rely only on the frontend success URL to grant paid SuperSwoops. The final paid status should come from Stripe webhook verification.
 
+### 3. HEHA Prototype Support Push
+
+Purpose: optional pre-splash support prompt to create small prototype funding for the team while HEHA Swipe and HEHA Local are shared publicly.
+
+- Product name: `HEHA Prototype Support Push`
+- Price type: one-time
+- Amount: `$1.00`
+- Currency: `USD`
+- Button copy: `Tap to support — $1 per push`
+
+Recommended MVP payment link:
+
+- Create a Stripe Payment Link for the `$1.00` one-time price.
+- Add the live link to Vercel as `VITE_STRIPE_DOLLAR_SUPPORT_CHECKOUT_URL`.
+- Use this as a non-blocking pre-splash prompt with a clear Skip button.
+
+Behavior goal:
+
+1. Visitor opens HEHA Swipe.
+2. Visitor sees the optional support prompt before the normal splash screen.
+3. Visitor can tap the round `$1` support button or skip.
+4. If they support, Stripe processes the $1 payment and returns them to the app.
+5. If they skip, the regular splash/app flow continues.
+
+Important: this should stay optional during prototype sharing. It should create support, not friction.
+
 ## Required Vercel env variables
 
 ```bash
 VITE_STRIPE_SUPPORTER_CHECKOUT_URL=
 VITE_STRIPE_SUPERSWOOP_CHECKOUT_URL=
+VITE_STRIPE_DOLLAR_SUPPORT_CHECKOUT_URL=
 ```
 
 These are publishable frontend URLs only. Never place the Stripe secret key in Vite/frontend code.
@@ -77,7 +104,7 @@ For subscriptions:
 - `invoice.payment_succeeded`
 - `invoice.payment_failed`
 
-For SuperSwoops:
+For SuperSwoops and $1 support pushes:
 
 - `checkout.session.completed`
 - `payment_intent.succeeded`
@@ -121,12 +148,29 @@ Recommended statuses:
 - `failed`
 - `refunded`
 
+### New `support_pushes` table
+
+```sql
+create table if not exists public.support_pushes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid,
+  amount numeric not null default 1.00,
+  currency text not null default 'usd',
+  source text not null default 'pre_splash',
+  stripe_checkout_session_id text,
+  stripe_payment_intent_id text,
+  status text not null default 'pending',
+  created_at timestamptz not null default now(),
+  paid_at timestamptz
+);
+```
+
 ## MVP implementation decision
 
 Because HEHA Swipe is a frontend Vite app, the cleanest safe architecture is:
 
 - Frontend: calls Supabase Edge Function or opens a Stripe Payment Link.
 - Backend/Supabase Edge Function: creates Checkout Sessions and verifies Stripe webhooks.
-- Supabase database: stores the final paid subscription/SuperSwoop state.
+- Supabase database: stores the final paid subscription/SuperSwoop/support-push state.
 
-For the fastest test launch, payment links are acceptable, but final production should move to a backend Checkout Session so every SuperSwoop can be tied to the correct `user_id` and `partner_id` without manual reconciliation.
+For the fastest test launch, payment links are acceptable, but final production should move to a backend Checkout Session so every SuperSwoop and support push can be tied to the correct `user_id`, `partner_id`, and/or funding source without manual reconciliation.
