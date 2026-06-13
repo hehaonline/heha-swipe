@@ -68,15 +68,20 @@ export default function OnboardingScreen({ user, onComplete }) {
 
     try {
       await saveProfile("supporter_checkout_started");
-      const stripeLink = import.meta.env.VITE_STRIPE_SUPPORTER_CHECKOUT_URL;
-      if (!stripeLink) {
-        throw new Error("Stripe checkout is not connected yet. Add VITE_STRIPE_SUPPORTER_CHECKOUT_URL in Vercel when your Stripe payment link is ready.");
+
+      const { data, error: functionError } = await supabase.functions.invoke("create-supporter-checkout", {
+        body: {
+          amount: supportAmount,
+          role: role || "customer",
+        },
+      });
+
+      if (functionError) throw functionError;
+      if (!data?.url) {
+        throw new Error("Stripe checkout did not return a checkout URL yet. Check the Supabase Edge Function secrets and logs.");
       }
-      const url = new URL(stripeLink);
-      url.searchParams.set("client_reference_id", user.id);
-      url.searchParams.set("prefilled_email", user.email || "");
-      url.searchParams.set("heha_amount", String(supportAmount));
-      window.location.href = url.toString();
+
+      window.location.href = data.url;
     } catch (checkoutError) {
       setError(checkoutError.message || "Could not open Stripe checkout yet.");
     } finally {
@@ -173,7 +178,7 @@ export default function OnboardingScreen({ user, onComplete }) {
         {canStartStripe ? (
           <>
             <button className="primary-button" onClick={startSupporterCheckout} disabled={loading}>
-              {loading ? "Opening Stripe…" : "Start supporter checkout"}
+              {loading ? "Opening Stripe…" : `Start $${supportAmount}/mo supporter checkout`}
             </button>
             <button className="secondary-button" onClick={() => complete({ forceFree: true })} disabled={loading}>
               Continue free for testing
@@ -189,7 +194,7 @@ export default function OnboardingScreen({ user, onComplete }) {
           </button>
         )}
 
-        <div className="soft-note">Stripe checkout needs your Stripe payment link in Vercel. Until then, use Free or Continue free for testing.</div>
+        <div className="soft-note">The supporter slider creates a real monthly Stripe subscription after the Supabase Edge Function and webhook secrets are deployed.</div>
         {error && <div className="error-banner">{error}</div>}
       </section>
     </main>
