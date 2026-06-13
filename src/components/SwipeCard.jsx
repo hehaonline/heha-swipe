@@ -93,6 +93,27 @@ function itemUrl(item) {
   return item?.url || item?.product_url || item?.link || null;
 }
 
+function feeAmount(partner) {
+  const amount = Number(partner?.service_fee_amount || 0);
+  return Number.isFinite(amount) && amount > 0 ? amount.toFixed(2) : null;
+}
+
+function pricingPolicyNote(partner) {
+  const amount = feeAmount(partner);
+  if (partner?.product_price_policy === "vendor_original_price_no_markup" && amount) {
+    return `Vendor prices shown separately. HEHA delivery/service fee: $${amount}.`;
+  }
+  return partner?.pricing_notes || null;
+}
+
+function deliveryDaysNote(partner) {
+  const days = Array.isArray(partner?.delivery_days) ? partner.delivery_days.filter(Boolean) : [];
+  if (!days.length) return null;
+  const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+  const isWeekdayOnly = weekdays.every((day) => days.includes(day)) && days.length === weekdays.length;
+  return isWeekdayOnly ? "Delivery: Monday-Friday" : `Delivery: ${days.join(", ")}`;
+}
+
 export default function SwipeCard({ partner, onSwipe }) {
   const [dragStart, setDragStart] = useState(null);
   const [drag, setDrag] = useState({ x: 0, y: 0 });
@@ -107,6 +128,8 @@ export default function SwipeCard({ partner, onSwipe }) {
   const categoryGroup = getCategoryGroup(partner);
   const images = galleryImages(partner);
   const showingStockImage = isStockPlaceholder(partner, imageUrl);
+  const policyNote = pricingPolicyNote(partner);
+  const daysNote = deliveryDaysNote(partner);
   const isSuperIntent = drag.y < -62 && Math.abs(drag.x) < 95;
   const isSaveIntent = drag.x > 62;
   const isPassIntent = drag.x < -62;
@@ -184,6 +207,7 @@ export default function SwipeCard({ partner, onSwipe }) {
           <div className="partner-badges image-badges">
             <span className={partner.heha_partner ? "verified-badge" : "listed-badge"}>{statusBadge(partner)}</span>
             <span>{categoryGroup.label}</span>
+            {daysNote && <span>{daysNote}</span>}
             {showingStockImage && <span className="stock-photo-pill">Photo coming soon</span>}
           </div>
         </div>
@@ -193,6 +217,7 @@ export default function SwipeCard({ partner, onSwipe }) {
           <h2>{displayName(partner.name)}</h2>
           {partner.tagline && <p className="tagline">{partner.tagline}</p>}
           {!partner.tagline && partner.bio && <p className="tagline">{partner.bio}</p>}
+          {policyNote && <p className="soft-mini-note">{policyNote}</p>}
         </div>
 
         <div className="card-bottom-zone">
@@ -239,6 +264,8 @@ export default function SwipeCard({ partner, onSwipe }) {
           images={images}
           tags={tags}
           items={items}
+          policyNote={policyNote}
+          daysNote={daysNote}
           onClose={() => setShowPreview(false)}
           onSave={() => {
             setShowPreview(false);
@@ -260,7 +287,7 @@ export default function SwipeCard({ partner, onSwipe }) {
   );
 }
 
-function PartnerPreviewSheet({ partner, categoryGroup, images, tags, items, onClose, onSave, onPass, onShare }) {
+function PartnerPreviewSheet({ partner, categoryGroup, images, tags, items, policyNote, daysNote, onClose, onSave, onPass, onShare }) {
   const [imageIndex, setImageIndex] = useState(0);
   const currentImage = images[imageIndex] || fallbackImage(partner);
   const ig = instagramUrl(partner.instagram);
@@ -295,6 +322,8 @@ function PartnerPreviewSheet({ partner, categoryGroup, images, tags, items, onCl
           <p className="eyebrow">{partner.neighborhood || partner.location || "Tampa Bay"}</p>
           <h2>{partner.name}</h2>
           {partner.price_range && <span className="price-range-pill">{partner.price_range}</span>}
+          {daysNote && <span className="price-range-pill">{daysNote}</span>}
+          {policyNote && <p className="soft-note">{policyNote}</p>}
           {partner.tagline && <p className="preview-tagline">{partner.tagline}</p>}
           {partner.bio && <p className="preview-bio">{partner.bio}</p>}
 
