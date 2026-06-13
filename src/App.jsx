@@ -17,6 +17,52 @@ const TABS = [
 
 const SUPPORT_PROMPT_STORAGE_KEY = "heha_swipe_support_prompt_skipped";
 
+const VIBE_THEME_STYLES = {
+  earth: {
+    "--heha-orange": "#e9692c",
+    "--heha-orange-bright": "#ffb759",
+    "--heha-green": "#2f6f4e",
+    "--heha-green-dark": "#173f2d",
+  },
+  sunrise: {
+    "--heha-orange": "#f47b37",
+    "--heha-orange-bright": "#ffc35f",
+    "--heha-green": "#8a5a2b",
+    "--heha-green-dark": "#4a2f1d",
+  },
+  ocean: {
+    "--heha-orange": "#2d7f8f",
+    "--heha-orange-bright": "#7bd6e8",
+    "--heha-green": "#2b6f73",
+    "--heha-green-dark": "#153f46",
+  },
+  lavender: {
+    "--heha-orange": "#8d6fc4",
+    "--heha-orange-bright": "#c8a8ff",
+    "--heha-green": "#5f6f9e",
+    "--heha-green-dark": "#352f5f",
+  },
+  ember: {
+    "--heha-orange": "#ff6b35",
+    "--heha-orange-bright": "#ffb000",
+    "--heha-green": "#724c22",
+    "--heha-green-dark": "#241810",
+  },
+};
+
+const INTEREST_CATEGORY_MAP = {
+  Restaurants: ["restaurant", "food", "cafe", "kitchen"],
+  Markets: ["market", "vendor", "grocery", "farm", "shop"],
+  Wellness: ["wellness", "yoga", "breathwork", "massage", "holistic"],
+  Coaches: ["coach", "coaching", "trainer", "fitness"],
+  "Private chefs": ["private chef", "privatechef", "chef", "retreat chef"],
+  Catering: ["catering", "staff meals", "group orders", "meal prep"],
+  Events: ["event", "events", "festival", "market day", "popup", "pop-up"],
+  Artists: ["artist", "music", "musician", "gallery", "creative", "art"],
+  "Local brands": ["brand", "local", "maker", "creator", "vendor"],
+  Services: ["service", "services", "bodywork", "therapy", "cleaning", "eco"],
+};
+
 const COMPLETED_SUBSCRIPTION_TYPES = [
   "instagram",
   "monthly",
@@ -65,6 +111,62 @@ function getInitialSupportPromptDismissed() {
   }
 }
 
+function getVibeThemeStyle(profile) {
+  return VIBE_THEME_STYLES[profile?.vibe_theme] || VIBE_THEME_STYLES.earth;
+}
+
+function normalizeTerms(value) {
+  return String(value || "").toLowerCase();
+}
+
+function partnerSearchText(partner) {
+  return normalizeTerms([
+    partner?.name,
+    partner?.category,
+    partner?.subcategory,
+    partner?.business_type,
+    partner?.tagline,
+    partner?.bio,
+    partner?.neighborhood,
+    partner?.location,
+    ...(Array.isArray(partner?.tags) ? partner.tags : []),
+    ...(Array.isArray(partner?.offerings) ? partner.offerings : []),
+    ...(Array.isArray(partner?.items) ? partner.items.map((item) => `${item?.name || ""} ${item?.emoji || ""}`) : []),
+  ].filter(Boolean).join(" "));
+}
+
+function scorePartnerForVibe(partner, profile) {
+  const passions = Array.isArray(profile?.vibe_passions) ? profile.vibe_passions : [];
+  const interests = Array.isArray(profile?.vibe_interests) ? profile.vibe_interests : [];
+  if (!passions.length && !interests.length) return 0;
+
+  const text = partnerSearchText(partner);
+  let score = 0;
+
+  passions.forEach((passion) => {
+    const term = normalizeTerms(passion);
+    if (term && text.includes(term)) score += 5;
+    term.split(/\s+|&/).filter((piece) => piece.length > 3).forEach((piece) => {
+      if (text.includes(piece)) score += 1;
+    });
+  });
+
+  interests.forEach((interest) => {
+    const terms = INTEREST_CATEGORY_MAP[interest] || [interest];
+    if (terms.some((term) => text.includes(normalizeTerms(term)))) score += 7;
+  });
+
+  if (partner?.heha_partner) score += 2;
+  return score;
+}
+
+function personalizePartners(partners, profile) {
+  return [...partners]
+    .map((partner, index) => ({ partner, index, score: scorePartnerForVibe(partner, profile) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((entry) => entry.partner);
+}
+
 function SwipeLogo({ compact = false }) {
   return (
     <div className={compact ? "swipe-logo compact-logo" : "swipe-logo"} aria-label="HEHA Swipe">
@@ -91,6 +193,9 @@ export default function App() {
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [notice, setNotice] = useState(null);
   const [appError, setAppError] = useState(null);
+
+  const vibeThemeStyle = useMemo(() => getVibeThemeStyle(profile), [profile?.vibe_theme]);
+  const personalizedPartners = useMemo(() => personalizePartners(partners, profile), [partners, profile]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSplashReady(true), 3400);
@@ -434,7 +539,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={vibeThemeStyle}>
       <header className="app-header luxe-header">
         <SwipeLogo compact />
         <button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
@@ -446,7 +551,7 @@ export default function App() {
       <main className="app-content" aria-busy={dataLoading}>
         {tab === "swipe" && (
           <SwipeTab
-            partners={partners}
+            partners={personalizedPartners}
             saves={saves}
             onSave={handleSave}
             onPass={handlePass}
