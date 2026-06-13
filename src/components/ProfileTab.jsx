@@ -1,6 +1,52 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
+const VIBE_PASSIONS = [
+  "Clean food",
+  "Local farms",
+  "Yoga",
+  "Breathwork",
+  "Primal movement",
+  "Traditional medicine",
+  "Sea moss",
+  "Art",
+  "Music",
+  "Nature",
+  "Eco living",
+  "Community events",
+  "Peace & culture",
+  "Vanlife",
+];
+
+const VIBE_INTERESTS = [
+  "Restaurants",
+  "Markets",
+  "Wellness",
+  "Coaches",
+  "Private chefs",
+  "Catering",
+  "Events",
+  "Artists",
+  "Local brands",
+  "Services",
+];
+
+const VIBE_THEMES = [
+  { id: "earth", label: "Earth Green", emoji: "🌿" },
+  { id: "sunrise", label: "Sunrise Orange", emoji: "🌅" },
+  { id: "ocean", label: "Ocean Blue", emoji: "🌊" },
+  { id: "lavender", label: "Lavender Calm", emoji: "🪻" },
+  { id: "ember", label: "Creative Ember", emoji: "🔥" },
+];
+
+function toggleValue(list, value) {
+  return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+}
+
+function cleanArray(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
 export default function ProfileTab({
   user,
   profile,
@@ -20,6 +66,9 @@ export default function ProfileTab({
     phone: "",
     location: "",
     instagram: "",
+    vibe_passions: [],
+    vibe_interests: [],
+    vibe_theme: "earth",
   });
 
   useEffect(() => {
@@ -28,6 +77,9 @@ export default function ProfileTab({
       phone: profile?.phone || user?.phone || "",
       location: profile?.location || "",
       instagram: profile?.instagram || "",
+      vibe_passions: cleanArray(profile?.vibe_passions),
+      vibe_interests: cleanArray(profile?.vibe_interests),
+      vibe_theme: profile?.vibe_theme || "earth",
     });
   }, [profile, user?.phone]);
 
@@ -46,6 +98,7 @@ export default function ProfileTab({
     [messages]
   );
 
+  const vibeCount = form.vibe_passions.length + form.vibe_interests.length;
   const listedCount = partners.length;
   const initial = (profile?.full_name?.charAt(0) || form.full_name?.charAt(0) || user?.email?.charAt(0) || "H").toUpperCase();
   const joinDate = user?.created_at
@@ -54,6 +107,14 @@ export default function ProfileTab({
 
   const updateForm = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const togglePassion = (value) => {
+    setForm((current) => ({ ...current, vibe_passions: toggleValue(current.vibe_passions, value) }));
+  };
+
+  const toggleInterest = (value) => {
+    setForm((current) => ({ ...current, vibe_interests: toggleValue(current.vibe_interests, value) }));
   };
 
   const loadMessages = async () => {
@@ -108,11 +169,14 @@ export default function ProfileTab({
         phone: form.phone.trim() || null,
         location: form.location.trim() || null,
         instagram: cleanInstagram || null,
+        vibe_passions: form.vibe_passions,
+        vibe_interests: form.vibe_interests,
+        vibe_theme: form.vibe_theme || "earth",
         updated_at: new Date().toISOString(),
       });
 
       if (error) throw error;
-      setProfileMessage("Profile saved. This information can support future HEHA ordering and delivery.");
+      setProfileMessage("Profile saved. Your Vibe Setter will personalize colors and future recommendations.");
       onRefresh?.();
     } catch (error) {
       setProfileError(error.message || "Could not save your profile yet.");
@@ -188,6 +252,65 @@ export default function ProfileTab({
         <div><strong>{unreadCount}</strong><span>inbox</span></div>
       </div>
 
+      <div className="profile-card card-like vibe-card">
+        <p className="eyebrow">Vibe Setter</p>
+        <h3>Shape your HEHA Swipe experience.</h3>
+        <p>Pick what you care about. HEHA Swipe can use this to highlight matching businesses, artists, wellness brands, events, and future community profiles.</p>
+
+        <div className="field-stack">
+          <div className="field-block">
+            <span>Passions</span>
+            <div className="wizard-chip-grid">
+              {VIBE_PASSIONS.map((passion) => (
+                <button
+                  type="button"
+                  key={passion}
+                  className={form.vibe_passions.includes(passion) ? "selected" : ""}
+                  onClick={() => togglePassion(passion)}
+                >
+                  {passion}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="field-block">
+            <span>What do you want to discover?</span>
+            <div className="wizard-chip-grid">
+              {VIBE_INTERESTS.map((interest) => (
+                <button
+                  type="button"
+                  key={interest}
+                  className={form.vibe_interests.includes(interest) ? "selected" : ""}
+                  onClick={() => toggleInterest(interest)}
+                >
+                  {interest}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="field-block">
+            <span>Theme highlight</span>
+            <div className="wizard-chip-grid">
+              {VIBE_THEMES.map((theme) => (
+                <button
+                  type="button"
+                  key={theme.id}
+                  className={form.vibe_theme === theme.id ? "selected" : ""}
+                  onClick={() => updateForm("vibe_theme", theme.id)}
+                >
+                  <span>{theme.emoji}</span>
+                  {theme.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="soft-note">{vibeCount ? `${vibeCount} vibe signals selected. These will help tune your discovery feed.` : "Start with 3–5 selections for the best prototype recommendations."}</div>
+      </div>
+
       <div className="profile-card card-like inbox-card">
         <div className="inbox-heading">
           <div>
@@ -259,7 +382,7 @@ export default function ProfileTab({
           </label>
 
           <button className="primary-button" onClick={saveUserProfile} disabled={busy}>
-            {busy ? "Saving…" : "Save profile"}
+            {busy ? "Saving…" : "Save profile + vibe"}
           </button>
         </div>
       </div>
