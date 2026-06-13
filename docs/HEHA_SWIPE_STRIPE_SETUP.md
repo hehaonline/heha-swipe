@@ -1,38 +1,39 @@
 # HEHA Swipe Stripe setup
 
-This document defines the Stripe setup for HEHA Swipe subscriptions, paid SuperSwoops, and optional prototype/team support.
+This document defines the Stripe setup for HEHA Swipe custom supporter subscriptions, paid SuperSwoops, and optional prototype/team support.
+
+## What is now built in this branch
+
+- The monthly supporter slider in `src/components/OnboardingScreen.jsx` now calls a backend Supabase Edge Function instead of a fixed Stripe Payment Link.
+- `supabase/functions/create-supporter-checkout/index.ts` creates a real monthly Stripe subscription Checkout Session for the selected whole-dollar amount from `$1` to `$100`.
+- `supabase/functions/stripe-webhook/index.ts` verifies Stripe webhook signatures and updates `profiles` after subscription lifecycle events.
+- `supabase/migrations/202606130001_stripe_supporter_slider.sql` adds Stripe subscription fields plus tables for SuperSwoops and support pushes.
 
 ## Payment products
-
-Create these Stripe products/prices in the Stripe Dashboard.
 
 ### 1. HEHA Swipe Supporter Membership
 
 Purpose: optional monthly supporter subscription for HEHA Swipe users and partners.
 
-Recommended MVP setup:
+Current custom-slider setup:
 
-- Product name: `HEHA Swipe Supporter Membership`
-- Price type: recurring
-- Billing interval: monthly
-- MVP amount: `$10/month` unless HEHA decides to keep the existing choose-your-own amount slider.
+- No fixed Stripe product/price is required for the supporter slider.
+- The Edge Function creates an inline Stripe monthly price using the selected slider amount.
+- The supported amount range is `$1/month` to `$100/month`, whole dollars only.
+- Metadata is attached to the Checkout Session and subscription:
+  - `payment_type=supporter_subscription`
+  - `user_id`
+  - `role`
+  - `support_amount`
 
-Current app status:
+Behavior goal:
 
-- `src/components/OnboardingScreen.jsx` already looks for `VITE_STRIPE_SUPPORTER_CHECKOUT_URL`.
-- The onboarding flow stores `supporter_checkout_started` before redirecting to Stripe.
-- The current slider shows a variable monthly amount, but a plain Stripe Payment Link is best treated as a fixed-price checkout unless a backend Checkout Session is added.
-
-Best short-term choice:
-
-- Use one fixed monthly supporter link first, likely `$10/month`.
-- Hide or simplify the slider if the fixed-link model is used.
-
-Best scalable choice:
-
-- Add a Supabase Edge Function that creates a Stripe Checkout Session server-side.
-- Pass `user_id`, `role`, `support_amount`, and `return_url` to the function.
-- Store `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, and `subscription_amount` back to Supabase through Stripe webhooks.
+1. User chooses Customer or Partner.
+2. User selects Supporter.
+3. User moves the slider to the chosen monthly amount.
+4. App calls `create-supporter-checkout`.
+5. Stripe opens a subscription Checkout Session for the exact selected amount.
+6. Stripe webhook updates the user's `profiles` row after payment/subscription confirmation.
 
 ### 2. HEHA Swipe SuperSwoop
 
@@ -83,15 +84,43 @@ Behavior goal:
 
 Important: this should stay optional during prototype sharing. It should create support, not friction.
 
-## Required Vercel env variables
+## Required frontend Vercel env variables
 
 ```bash
-VITE_STRIPE_SUPPORTER_CHECKOUT_URL=
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
 VITE_STRIPE_SUPERSWOOP_CHECKOUT_URL=
 VITE_STRIPE_DOLLAR_SUPPORT_CHECKOUT_URL=
 ```
 
-These are publishable frontend URLs only. Never place the Stripe secret key in Vite/frontend code.
+Supporter subscriptions do **not** use `VITE_STRIPE_SUPPORTER_CHECKOUT_URL` anymore. The supporter slider goes through the Supabase Edge Function.
+
+Never place the Stripe secret key in Vite/frontend code.
+
+## Required Supabase Edge Function secrets
+
+Set these in Supabase before testing the custom slider:
+
+```bash
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+HEHA_SWIPE_URL=https://hehaswipe.app
+```
+
+## Deploy commands
+
+From a local machine with the Supabase CLI connected to the correct project:
+
+```bash
+supabase db push
+supabase functions deploy create-supporter-checkout
+supabase functions deploy stripe-webhook
+```
+
+Then set the Stripe webhook endpoint to the deployed `stripe-webhook` function URL.
 
 ## Webhook events to handle
 
@@ -110,67 +139,41 @@ For SuperSwoops and $1 support pushes:
 - `payment_intent.succeeded`
 - `payment_intent.payment_failed`
 
-## Suggested Supabase tables/fields
+## Database fields/tables
 
-### Add to `profiles`
+The migration file `supabase/migrations/202606130001_stripe_supporter_slider.sql` adds:
 
-```sql
-alter table public.profiles
-  add column if not exists stripe_customer_id text,
-  add column if not exists stripe_subscription_id text,
-  add column if not exists subscription_status text,
-  add column if not exists subscription_amount numeric default 0,
-  add column if not exists subscription_current_period_end timestamptz;
-```
-
-### New `superswoops` table
+### `profiles` additions
 
 ```sql
-create table if not exists public.superswoops (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
-  partner_id uuid not null,
-  amount numeric not null default 2.00,
-  currency text not null default 'usd',
-  stripe_checkout_session_id text,
-  stripe_payment_intent_id text,
-  status text not null default 'pending',
-  created_at timestamptz not null default now(),
-  paid_at timestamptz
-);
+stripe_customer_id text
+stripe_subscription_id text
+subscription_status text
+subscription_amount numeric default 0
+subscription_current_period_end timestamptz
 ```
 
-Recommended statuses:
+### `superswoops`
 
-- `pending`
-- `checkout_started`
-- `paid`
-- `failed`
-- `refunded`
+Stores future paid $2 SuperSwoop records.
 
-### New `support_pushes` table
+### `support_pushes`
 
-```sql
-create table if not exists public.support_pushes (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid,
-  amount numeric not null default 1.00,
-  currency text not null default 'usd',
-  source text not null default 'pre_splash',
-  stripe_checkout_session_id text,
-  stripe_payment_intent_id text,
-  status text not null default 'pending',
-  created_at timestamptz not null default now(),
-  paid_at timestamptz
-);
-```
+Stores future $1 prototype support push records.
+
+## Testing checklist
+
+1. Deploy database migration.
+2. Deploy both Edge Functions.
+3. Set all Supabase secrets.
+4. Add Stripe webhook endpoint and event list.
+5. Open HEHA Swipe as a test user.
+6. Choose Supporter.
+7. Pick `$1/month` and complete test checkout.
+8. Confirm `profiles.subscription_status = active` and `subscription_amount = 1`.
+9. Repeat with `$10/month`.
+10. Cancel/update subscription in Stripe test mode and confirm webhook updates Supabase.
 
 ## MVP implementation decision
 
-Because HEHA Swipe is a frontend Vite app, the cleanest safe architecture is:
-
-- Frontend: calls Supabase Edge Function or opens a Stripe Payment Link.
-- Backend/Supabase Edge Function: creates Checkout Sessions and verifies Stripe webhooks.
-- Supabase database: stores the final paid subscription/SuperSwoop/support-push state.
-
-For the fastest test launch, payment links are acceptable, but final production should move to a backend Checkout Session so every SuperSwoop and support push can be tied to the correct `user_id`, `partner_id`, and/or funding source without manual reconciliation.
+The custom monthly slider is now the preferred supporter-subscription flow. SuperSwoop and the $1 support push still use simple Stripe Payment Links for speed, but both should eventually move to backend Checkout Sessions so every payment can be tied cleanly to a user, partner, and funding source without manual reconciliation.
