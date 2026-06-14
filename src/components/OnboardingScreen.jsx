@@ -8,7 +8,18 @@ function getInitialRole() {
   return localStorage.getItem("heha_signup_role") || null;
 }
 
+function getReturnParams() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    checkout: params.get("checkout"),
+    type: params.get("type"),
+    amount: params.get("amount"),
+    role: params.get("role"),
+  };
+}
+
 export default function OnboardingScreen({ user, onComplete }) {
+  const returnParams = getReturnParams();
   const [role, setRole] = useState(getInitialRole);
   const [step, setStep] = useState(role ? "access" : "role");
   const [access, setAccess] = useState("free");
@@ -21,6 +32,11 @@ export default function OnboardingScreen({ user, onComplete }) {
     localStorage.setItem("heha_signup_role", nextRole);
     setRole(nextRole);
     setStep("access");
+  };
+
+  const continueToDiscovery = () => {
+    window.history.replaceState(null, "", window.location.pathname);
+    onComplete?.(returnParams.role || role || "customer");
   };
 
   const saveProfile = async (statusOverride) => {
@@ -43,13 +59,12 @@ export default function OnboardingScreen({ user, onComplete }) {
     await supabase.from("customer_profiles").upsert({ user_id: user.id });
   };
 
-  const complete = async ({ forceFree = false } = {}) => {
+  const complete = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      if (forceFree) setAccess("free");
-      await saveProfile(forceFree ? "free" : undefined);
+      await saveProfile("free");
       onComplete?.(role || "customer");
     } catch (completeError) {
       setError(completeError.message || "Could not finish setup yet.");
@@ -81,16 +96,51 @@ export default function OnboardingScreen({ user, onComplete }) {
 
       if (functionError) throw functionError;
       if (!data?.checkoutUrl) {
-        throw new Error(data?.error || "Stripe checkout did not return a checkout URL yet. Check Supabase Edge Function secrets and logs.");
+        throw new Error(data?.error || "Checkout URL was not returned yet.");
       }
 
       window.location.href = data.checkoutUrl;
     } catch (checkoutError) {
-      setError(checkoutError.message || "Could not open Stripe checkout yet.");
+      setError(checkoutError.message || "Could not open checkout yet.");
     } finally {
       setLoading(false);
     }
   };
+
+  if (returnParams.checkout === "success" && returnParams.type === "supporter_membership") {
+    return (
+      <main className="onboarding-screen">
+        <section className="join-card card-like">
+          <p className="eyebrow">Supporter checkout complete</p>
+          <h1>Thank you for pushing HEHA forward.</h1>
+          <p>
+            Your supporter checkout completed. Your support helps improve HEHA Swipe discovery, partner onboarding, and the HEHA Local operating system.
+          </p>
+          <div className="soft-note">
+            Next milestone: keep the prototype simple, activate useful local partners, and test support features without turning on live fulfillment too early.
+          </div>
+          <button className="primary-button" type="button" onClick={continueToDiscovery}>
+            Continue to discovery
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  if (returnParams.checkout === "cancelled" && returnParams.type === "supporter_membership") {
+    return (
+      <main className="onboarding-screen">
+        <section className="join-card card-like">
+          <p className="eyebrow">Checkout cancelled</p>
+          <h1>No problem.</h1>
+          <p>You can adjust your amount, continue free, or come back to supporter checkout later.</p>
+          <button className="primary-button" type="button" onClick={() => window.history.replaceState(null, "", window.location.pathname)}>
+            Back to access options
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   if (step === "role") {
     return (
@@ -119,7 +169,7 @@ export default function OnboardingScreen({ user, onComplete }) {
   }
 
   const isPartner = role === "partner";
-  const canStartStripe = access === "supporter";
+  const canStartCheckout = access === "supporter";
   const freeCustomerNeedsInstagram = !isPartner && access === "free";
 
   return (
@@ -175,7 +225,7 @@ export default function OnboardingScreen({ user, onComplete }) {
                 </button>
               ))}
             </div>
-            <p className="soft-mini-note">Stripe test: ${supportAmount}/month sends quantity {supportAmount} on the $1/month supporter price.</p>
+            <p className="soft-mini-note">The selected amount becomes the monthly support amount in checkout.</p>
           </div>
         )}
 
@@ -191,26 +241,26 @@ export default function OnboardingScreen({ user, onComplete }) {
           </div>
         )}
 
-        {canStartStripe ? (
+        {canStartCheckout ? (
           <>
             <button className="primary-button" onClick={startSupporterCheckout} disabled={loading}>
-              {loading ? "Opening Stripe…" : `Start $${supportAmount}/mo supporter checkout`}
+              {loading ? "Opening checkout…" : `Start $${supportAmount}/mo supporter checkout`}
             </button>
-            <button className="secondary-button" onClick={() => complete({ forceFree: true })} disabled={loading}>
-              Continue free for testing
+            <button className="secondary-button" onClick={() => setAccess("free")} disabled={loading}>
+              Not now — choose free
             </button>
           </>
         ) : freeCustomerNeedsInstagram ? (
-          <button className="primary-button" onClick={() => complete()} disabled={loading || !instagramStepDone}>
+          <button className="primary-button" onClick={complete} disabled={loading || !instagramStepDone}>
             {loading ? "Setting up…" : instagramStepDone ? "Start discovering" : "Follow Instagram to unlock free access"}
           </button>
         ) : (
-          <button className="primary-button" onClick={() => complete()} disabled={loading}>
+          <button className="primary-button" onClick={complete} disabled={loading}>
             {loading ? "Setting up…" : isPartner ? "Continue to business listing" : "Start discovering"}
           </button>
         )}
 
-        <div className="soft-note">The supporter slider creates a monthly Stripe subscription through the Supabase Edge Function and webhook.</div>
+        <div className="soft-note">Monthly support is optional and the free path always stays available.</div>
         {error && <div className="error-banner">{error}</div>}
       </section>
     </main>
