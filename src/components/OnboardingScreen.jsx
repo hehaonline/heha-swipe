@@ -2,6 +2,7 @@ import { useState } from "react";
 import { supabase } from "../lib/supabase";
 
 const HEHA_INSTAGRAM_URL = import.meta.env.VITE_HEHA_INSTAGRAM_URL || "https://www.instagram.com/heha.online/";
+const PRESET_AMOUNTS = [1, 5, 10, 25, 50, 100];
 
 function getInitialRole() {
   return localStorage.getItem("heha_signup_role") || null;
@@ -69,19 +70,21 @@ export default function OnboardingScreen({ user, onComplete }) {
     try {
       await saveProfile("supporter_checkout_started");
 
+      const origin = window.location.origin;
       const { data, error: functionError } = await supabase.functions.invoke("create-supporter-checkout", {
         body: {
-          amount: supportAmount,
-          role: role || "customer",
+          quantity: supportAmount,
+          successUrl: `${origin}/?checkout=success&type=supporter_membership&amount=${supportAmount}&role=${role || "customer"}`,
+          cancelUrl: `${origin}/?checkout=cancelled&type=supporter_membership&amount=${supportAmount}&role=${role || "customer"}`,
         },
       });
 
       if (functionError) throw functionError;
-      if (!data?.url) {
-        throw new Error("Stripe checkout did not return a checkout URL yet. Check the Supabase Edge Function secrets and logs.");
+      if (!data?.checkoutUrl) {
+        throw new Error(data?.error || "Stripe checkout did not return a checkout URL yet. Check Supabase Edge Function secrets and logs.");
       }
 
-      window.location.href = data.url;
+      window.location.href = data.checkoutUrl;
     } catch (checkoutError) {
       setError(checkoutError.message || "Could not open Stripe checkout yet.");
     } finally {
@@ -150,7 +153,7 @@ export default function OnboardingScreen({ user, onComplete }) {
           <div className="slider-card">
             <div className="slider-header">
               <strong>${supportAmount}/mo</strong>
-              <span>optional support</span>
+              <span>monthly HEHA Swipe support</span>
             </div>
             <input
               type="range"
@@ -160,6 +163,19 @@ export default function OnboardingScreen({ user, onComplete }) {
               value={supportAmount}
               onChange={(event) => setSupportAmount(Number(event.target.value))}
             />
+            <div className="support-preset-grid">
+              {PRESET_AMOUNTS.map((amount) => (
+                <button
+                  key={amount}
+                  type="button"
+                  className={supportAmount === amount ? "active" : ""}
+                  onClick={() => setSupportAmount(amount)}
+                >
+                  ${amount}
+                </button>
+              ))}
+            </div>
+            <p className="soft-mini-note">Stripe test: ${supportAmount}/month sends quantity {supportAmount} on the $1/month supporter price.</p>
           </div>
         )}
 
@@ -194,7 +210,7 @@ export default function OnboardingScreen({ user, onComplete }) {
           </button>
         )}
 
-        <div className="soft-note">The supporter slider creates a real monthly Stripe subscription after the Supabase Edge Function and webhook secrets are deployed.</div>
+        <div className="soft-note">The supporter slider creates a monthly Stripe subscription through the Supabase Edge Function and webhook.</div>
         {error && <div className="error-banner">{error}</div>}
       </section>
     </main>
