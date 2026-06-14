@@ -15,6 +15,54 @@ const TABS = [
   { id: "profile", label: "Profile", icon: "♙" },
 ];
 
+const SUPPORT_PROMPT_STORAGE_KEY = "heha_swipe_support_prompt_skipped";
+
+const VIBE_THEME_STYLES = {
+  earth: {
+    "--heha-orange": "#e9692c",
+    "--heha-orange-bright": "#ffb759",
+    "--heha-green": "#2f6f4e",
+    "--heha-green-dark": "#173f2d",
+  },
+  sunrise: {
+    "--heha-orange": "#f47b37",
+    "--heha-orange-bright": "#ffc35f",
+    "--heha-green": "#8a5a2b",
+    "--heha-green-dark": "#4a2f1d",
+  },
+  ocean: {
+    "--heha-orange": "#2d7f8f",
+    "--heha-orange-bright": "#7bd6e8",
+    "--heha-green": "#2b6f73",
+    "--heha-green-dark": "#153f46",
+  },
+  lavender: {
+    "--heha-orange": "#8d6fc4",
+    "--heha-orange-bright": "#c8a8ff",
+    "--heha-green": "#5f6f9e",
+    "--heha-green-dark": "#352f5f",
+  },
+  ember: {
+    "--heha-orange": "#ff6b35",
+    "--heha-orange-bright": "#ffb000",
+    "--heha-green": "#724c22",
+    "--heha-green-dark": "#241810",
+  },
+};
+
+const INTEREST_CATEGORY_MAP = {
+  Restaurants: ["restaurant", "food", "cafe", "kitchen"],
+  Markets: ["market", "vendor", "grocery", "farm", "shop"],
+  Wellness: ["wellness", "yoga", "breathwork", "massage", "holistic"],
+  Coaches: ["coach", "coaching", "trainer", "fitness"],
+  "Private chefs": ["private chef", "privatechef", "chef", "retreat chef"],
+  Catering: ["catering", "staff meals", "group orders", "meal prep"],
+  Events: ["event", "events", "festival", "market day", "popup", "pop-up"],
+  Artists: ["artist", "music", "musician", "gallery", "creative", "art"],
+  "Local brands": ["brand", "local", "maker", "creator", "vendor"],
+  Services: ["service", "services", "bodywork", "therapy", "cleaning", "eco"],
+};
+
 const COMPLETED_SUBSCRIPTION_TYPES = [
   "instagram",
   "monthly",
@@ -55,6 +103,70 @@ function isPartnerProfile(profile) {
   );
 }
 
+function getInitialSupportPromptDismissed() {
+  try {
+    return window.sessionStorage.getItem(SUPPORT_PROMPT_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function getVibeThemeStyle(profile) {
+  return VIBE_THEME_STYLES[profile?.vibe_theme] || VIBE_THEME_STYLES.earth;
+}
+
+function normalizeTerms(value) {
+  return String(value || "").toLowerCase();
+}
+
+function partnerSearchText(partner) {
+  return normalizeTerms([
+    partner?.name,
+    partner?.category,
+    partner?.subcategory,
+    partner?.business_type,
+    partner?.tagline,
+    partner?.bio,
+    partner?.neighborhood,
+    partner?.location,
+    ...(Array.isArray(partner?.tags) ? partner.tags : []),
+    ...(Array.isArray(partner?.offerings) ? partner.offerings : []),
+    ...(Array.isArray(partner?.items) ? partner.items.map((item) => `${item?.name || ""} ${item?.emoji || ""}`) : []),
+  ].filter(Boolean).join(" "));
+}
+
+function scorePartnerForVibe(partner, profile) {
+  const passions = Array.isArray(profile?.vibe_passions) ? profile.vibe_passions : [];
+  const interests = Array.isArray(profile?.vibe_interests) ? profile.vibe_interests : [];
+  if (!passions.length && !interests.length) return 0;
+
+  const text = partnerSearchText(partner);
+  let score = 0;
+
+  passions.forEach((passion) => {
+    const term = normalizeTerms(passion);
+    if (term && text.includes(term)) score += 5;
+    term.split(/\s+|&/).filter((piece) => piece.length > 3).forEach((piece) => {
+      if (text.includes(piece)) score += 1;
+    });
+  });
+
+  interests.forEach((interest) => {
+    const terms = INTEREST_CATEGORY_MAP[interest] || [interest];
+    if (terms.some((term) => text.includes(normalizeTerms(term)))) score += 7;
+  });
+
+  if (partner?.heha_partner) score += 2;
+  return score;
+}
+
+function personalizePartners(partners, profile) {
+  return [...partners]
+    .map((partner, index) => ({ partner, index, score: scorePartnerForVibe(partner, profile) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((entry) => entry.partner);
+}
+
 function SwipeLogo({ compact = false }) {
   return (
     <div className={compact ? "swipe-logo compact-logo" : "swipe-logo"} aria-label="HEHA Swipe">
@@ -73,12 +185,17 @@ export default function App() {
   const [tab, setTab] = useState("swipe");
   const [loading, setLoading] = useState(true);
   const [splashReady, setSplashReady] = useState(false);
+  const [supportPromptDismissed, setSupportPromptDismissed] = useState(getInitialSupportPromptDismissed);
+  const [supportPromptError, setSupportPromptError] = useState(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showPartnerWizard, setShowPartnerWizard] = useState(false);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [notice, setNotice] = useState(null);
   const [appError, setAppError] = useState(null);
+
+  const vibeThemeStyle = useMemo(() => getVibeThemeStyle(profile), [profile?.vibe_theme]);
+  const personalizedPartners = useMemo(() => personalizePartners(partners, profile), [partners, profile]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSplashReady(true), 3400);
@@ -129,9 +246,16 @@ export default function App() {
     if (!checkoutSuccess) return;
 
     const returnRole = params.get("role");
+    const checkoutType = params.get("type");
     window.history.replaceState(null, "", window.location.pathname);
     setNeedsOnboarding(false);
     if (returnRole === "partner") setShowPartnerWizard(true);
+    if (checkoutType === "superswoop") {
+      flashNotice("SuperSwoop payment received. HEHA will activate it after Stripe confirms the $2 payment.");
+    }
+    if (checkoutType === "dollar_support") {
+      flashNotice("Thank you for the $1 prototype support. Every push helps HEHA Swipe and HEHA Local move forward.");
+    }
     loadData(session.user.id);
   }, [session?.user?.id]);
 
@@ -211,6 +335,32 @@ export default function App() {
     window.setTimeout(() => setNotice(null), 2600);
   };
 
+  const dismissSupportPrompt = () => {
+    try {
+      window.sessionStorage.setItem(SUPPORT_PROMPT_STORAGE_KEY, "true");
+    } catch {
+      // Browsers can block storage in some privacy modes. Skipping should still work.
+    }
+    setSupportPromptDismissed(true);
+  };
+
+  const handleDollarSupport = () => {
+    try {
+      const stripeLink = import.meta.env.VITE_STRIPE_DOLLAR_SUPPORT_CHECKOUT_URL;
+      if (!stripeLink) {
+        throw new Error("$1 support checkout is not connected yet. Add VITE_STRIPE_DOLLAR_SUPPORT_CHECKOUT_URL in Vercel after creating the Stripe payment link.");
+      }
+
+      dismissSupportPrompt();
+      const url = new URL(stripeLink);
+      url.searchParams.set("client_reference_id", session?.user?.id ? `dollar_support__${session.user.id}` : "dollar_support__guest");
+      url.searchParams.set("prefilled_email", session?.user?.email || "");
+      window.location.href = url.toString();
+    } catch (error) {
+      setSupportPromptError(error.message || "Could not open $1 support checkout yet.");
+    }
+  };
+
   const recordSwipeEvent = async (partner, direction) => {
     const uid = session?.user?.id;
     if (!uid || !partner?.id) return;
@@ -260,10 +410,19 @@ export default function App() {
     if (!uid || !partner?.id) return;
 
     try {
-      await recordSwipeEvent(partner, "super");
-      flashNotice(`SuperSwoop sent for ${partner.name}. HEHA will know this one stands out.`);
+      const stripeLink = import.meta.env.VITE_STRIPE_SUPERSWOOP_CHECKOUT_URL;
+      if (!stripeLink) {
+        throw new Error("SuperSwoop checkout is not connected yet. Add VITE_STRIPE_SUPERSWOOP_CHECKOUT_URL in Vercel after creating the $2 Stripe payment link.");
+      }
+
+      await recordSwipeEvent(partner, "super_checkout_started");
+
+      const url = new URL(stripeLink);
+      url.searchParams.set("client_reference_id", `superswoop__${uid}__${partner.id}`);
+      url.searchParams.set("prefilled_email", session.user.email || "");
+      window.location.href = url.toString();
     } catch (error) {
-      flashNotice(error.message || "Could not send SuperSwoop yet.");
+      flashNotice(error.message || "Could not open SuperSwoop checkout yet.");
     }
   };
 
@@ -329,6 +488,16 @@ export default function App() {
     setSession(null);
   };
 
+  if (!supportPromptDismissed) {
+    return (
+      <SupportPromptScreen
+        error={supportPromptError}
+        onSupport={handleDollarSupport}
+        onSkip={dismissSupportPrompt}
+      />
+    );
+  }
+
   if (loading || !splashReady) return <SplashScreen />;
   if (!session) return <AuthScreen />;
   if (passwordRecovery) {
@@ -370,7 +539,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={vibeThemeStyle}>
       <header className="app-header luxe-header">
         <SwipeLogo compact />
         <button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
@@ -382,7 +551,7 @@ export default function App() {
       <main className="app-content" aria-busy={dataLoading}>
         {tab === "swipe" && (
           <SwipeTab
-            partners={partners}
+            partners={personalizedPartners}
             saves={saves}
             onSave={handleSave}
             onPass={handlePass}
@@ -425,6 +594,47 @@ export default function App() {
         ))}
       </nav>
     </div>
+  );
+}
+
+function SupportPromptScreen({ error, onSupport, onSkip }) {
+  return (
+    <main className="splash-screen">
+      <section className="splash-card">
+        <div className="brand-mark large">H</div>
+        <p className="eyebrow">Prototype support</p>
+        <h1>Help push HEHA forward.</h1>
+        <p>
+          HEHA Swipe and HEHA Local are still early. Tap once to support the team and help us share the prototype with more local businesses, artists, and wellness partners.
+        </p>
+
+        <button
+          type="button"
+          className="primary-button"
+          onClick={onSupport}
+          style={{
+            width: "190px",
+            height: "190px",
+            borderRadius: "999px",
+            margin: "22px auto 12px",
+            display: "grid",
+            placeItems: "center",
+            fontSize: "19px",
+            lineHeight: "1.15",
+            whiteSpace: "pre-line",
+          }}
+        >
+          {"Tap to support\n$1 per push"}
+        </button>
+
+        <button className="text-button center" type="button" onClick={onSkip}>
+          Skip for now
+        </button>
+
+        <p className="soft-note">Optional. No paywall — just community support while the apps are still in prototype mode.</p>
+        {error && <div className="error-banner">{error}</div>}
+      </section>
+    </main>
   );
 }
 

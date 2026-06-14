@@ -2,12 +2,24 @@ import { useState } from "react";
 import { supabase } from "../lib/supabase";
 
 const HEHA_INSTAGRAM_URL = import.meta.env.VITE_HEHA_INSTAGRAM_URL || "https://www.instagram.com/heha.online/";
+const PRESET_AMOUNTS = [1, 5, 10, 25, 50, 100];
 
 function getInitialRole() {
   return localStorage.getItem("heha_signup_role") || null;
 }
 
+function getReturnParams() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    checkout: params.get("checkout"),
+    type: params.get("type"),
+    amount: params.get("amount"),
+    role: params.get("role"),
+  };
+}
+
 export default function OnboardingScreen({ user, onComplete }) {
+  const returnParams = getReturnParams();
   const [role, setRole] = useState(getInitialRole);
   const [step, setStep] = useState(role ? "access" : "role");
   const [access, setAccess] = useState("free");
@@ -20,6 +32,11 @@ export default function OnboardingScreen({ user, onComplete }) {
     localStorage.setItem("heha_signup_role", nextRole);
     setRole(nextRole);
     setStep("access");
+  };
+
+  const continueToDiscovery = () => {
+    window.history.replaceState(null, "", window.location.pathname);
+    onComplete?.(returnParams.role || role || "customer");
   };
 
   const saveProfile = async (statusOverride) => {
@@ -42,13 +59,12 @@ export default function OnboardingScreen({ user, onComplete }) {
     await supabase.from("customer_profiles").upsert({ user_id: user.id });
   };
 
-  const complete = async ({ forceFree = false } = {}) => {
+  const complete = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      if (forceFree) setAccess("free");
-      await saveProfile(forceFree ? "free" : undefined);
+      await saveProfile("free");
       onComplete?.(role || "customer");
     } catch (completeError) {
       setError(completeError.message || "Could not finish setup yet.");
@@ -68,21 +84,63 @@ export default function OnboardingScreen({ user, onComplete }) {
 
     try {
       await saveProfile("supporter_checkout_started");
-      const stripeLink = import.meta.env.VITE_STRIPE_SUPPORTER_CHECKOUT_URL;
-      if (!stripeLink) {
-        throw new Error("Stripe checkout is not connected yet. Add VITE_STRIPE_SUPPORTER_CHECKOUT_URL in Vercel when your Stripe payment link is ready.");
+
+      const origin = window.location.origin;
+      const { data, error: functionError } = await supabase.functions.invoke("create-supporter-checkout", {
+        body: {
+          quantity: supportAmount,
+          successUrl: `${origin}/?checkout=success&type=supporter_membership&amount=${supportAmount}&role=${role || "customer"}`,
+          cancelUrl: `${origin}/?checkout=cancelled&type=supporter_membership&amount=${supportAmount}&role=${role || "customer"}`,
+        },
+      });
+
+      if (functionError) throw functionError;
+      if (!data?.checkoutUrl) {
+        throw new Error(data?.error || "Checkout URL was not returned yet.");
       }
-      const url = new URL(stripeLink);
-      url.searchParams.set("client_reference_id", user.id);
-      url.searchParams.set("prefilled_email", user.email || "");
-      url.searchParams.set("heha_amount", String(supportAmount));
-      window.location.href = url.toString();
+
+      window.location.href = data.checkoutUrl;
     } catch (checkoutError) {
-      setError(checkoutError.message || "Could not open Stripe checkout yet.");
+      setError(checkoutError.message || "Could not open checkout yet.");
     } finally {
       setLoading(false);
     }
   };
+
+  if (returnParams.checkout === "success" && returnParams.type === "supporter_membership") {
+    return (
+      <main className="onboarding-screen">
+        <section className="join-card card-like">
+          <p className="eyebrow">Supporter checkout complete</p>
+          <h1>Thank you for pushing HEHA forward.</h1>
+          <p>
+            Your supporter checkout completed. Your support helps improve HEHA Swipe discovery, partner onboarding, and the HEHA Local operating system.
+          </p>
+          <div className="soft-note">
+            Next milestone: keep the prototype simple, activate useful local partners, and test support features without turning on live fulfillment too early.
+          </div>
+          <button className="primary-button" type="button" onClick={continueToDiscovery}>
+            Continue to discovery
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  if (returnParams.checkout === "cancelled" && returnParams.type === "supporter_membership") {
+    return (
+      <main className="onboarding-screen">
+        <section className="join-card card-like">
+          <p className="eyebrow">Checkout cancelled</p>
+          <h1>No problem.</h1>
+          <p>You can adjust your amount, continue free, or come back to supporter checkout later.</p>
+          <button className="primary-button" type="button" onClick={() => window.history.replaceState(null, "", window.location.pathname)}>
+            Back to access options
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   if (step === "role") {
     return (
@@ -111,7 +169,7 @@ export default function OnboardingScreen({ user, onComplete }) {
   }
 
   const isPartner = role === "partner";
-  const canStartStripe = access === "supporter";
+  const canStartCheckout = access === "supporter";
   const freeCustomerNeedsInstagram = !isPartner && access === "free";
 
   return (
@@ -145,7 +203,7 @@ export default function OnboardingScreen({ user, onComplete }) {
           <div className="slider-card">
             <div className="slider-header">
               <strong>${supportAmount}/mo</strong>
-              <span>optional support</span>
+              <span>monthly HEHA Swipe support</span>
             </div>
             <input
               type="range"
@@ -155,6 +213,19 @@ export default function OnboardingScreen({ user, onComplete }) {
               value={supportAmount}
               onChange={(event) => setSupportAmount(Number(event.target.value))}
             />
+            <div className="support-preset-grid">
+              {PRESET_AMOUNTS.map((amount) => (
+                <button
+                  key={amount}
+                  type="button"
+                  className={supportAmount === amount ? "active" : ""}
+                  onClick={() => setSupportAmount(amount)}
+                >
+                  ${amount}
+                </button>
+              ))}
+            </div>
+            <p className="soft-mini-note">The selected amount becomes the monthly support amount in checkout.</p>
           </div>
         )}
 
@@ -170,26 +241,26 @@ export default function OnboardingScreen({ user, onComplete }) {
           </div>
         )}
 
-        {canStartStripe ? (
+        {canStartCheckout ? (
           <>
             <button className="primary-button" onClick={startSupporterCheckout} disabled={loading}>
-              {loading ? "Opening Stripe…" : "Start supporter checkout"}
+              {loading ? "Opening checkout…" : `Start $${supportAmount}/mo supporter checkout`}
             </button>
-            <button className="secondary-button" onClick={() => complete({ forceFree: true })} disabled={loading}>
-              Continue free for testing
+            <button className="secondary-button" onClick={() => setAccess("free")} disabled={loading}>
+              Not now — choose free
             </button>
           </>
         ) : freeCustomerNeedsInstagram ? (
-          <button className="primary-button" onClick={() => complete()} disabled={loading || !instagramStepDone}>
+          <button className="primary-button" onClick={complete} disabled={loading || !instagramStepDone}>
             {loading ? "Setting up…" : instagramStepDone ? "Start discovering" : "Follow Instagram to unlock free access"}
           </button>
         ) : (
-          <button className="primary-button" onClick={() => complete()} disabled={loading}>
+          <button className="primary-button" onClick={complete} disabled={loading}>
             {loading ? "Setting up…" : isPartner ? "Continue to business listing" : "Start discovering"}
           </button>
         )}
 
-        <div className="soft-note">Stripe checkout needs your Stripe payment link in Vercel. Until then, use Free or Continue free for testing.</div>
+        <div className="soft-note">Monthly support is optional and the free path always stays available.</div>
         {error && <div className="error-banner">{error}</div>}
       </section>
     </main>
