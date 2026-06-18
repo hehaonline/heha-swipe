@@ -12,5 +12,8 @@ import "./partner-wizard-clean.css";
 import "./placeholder-photo.css";
 import "./admin-dashboard.css";
 import App from "./App.jsx";
+import AdminApp from "./AdminApp.jsx";
 
-createRoot(document.getElementById("root")).render(<StrictMode><App /></StrictMode>);
+const rootComponent = App;
+
+createRoot(document.getElementById("root")).render(<StrictMode>{rootComponent === AdminApp ? <AdminApp /> : <App />}</StrictMode>);
