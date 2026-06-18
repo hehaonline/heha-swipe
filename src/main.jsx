@@ -14,6 +14,11 @@ import "./admin-dashboard.css";
 import App from "./App.jsx";
 import AdminApp from "./AdminApp.jsx";
 
-const rootComponent = App;
+const rootComponent = window.location.hostname === "admin.hehaswipe.app" ? AdminApp : App;
+const RootComponent = rootComponent;
 
-createRoot(document.getElementById("root")).render(<StrictMode>{rootComponent === AdminApp ? <AdminApp /> : <App />}</StrictMode>);
+createRoot(document.getElementById("root")).render(
+  <StrictMode>
+    <RootComponent />
+  </StrictMode>
+);
