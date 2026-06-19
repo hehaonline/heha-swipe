@@ -1,8 +1,23 @@
+// src/AdminApp.jsx
+// HEHA Swipe — Internal Admin Dashboard
+// Read-only MVP shell. No write actions enabled.
+// Security: public.user_roles is the ONLY source of truth for admin access.
+// app_metadata is NOT used for authorization. Deny by default on any role failure.
+// Column names match Nova's admin_pm_dashboard_foundation_v2 migration exactly.
+
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabase";
 import AuthScreen from "./components/AuthScreen";
 
+// ─── Host gate ────────────────────────────────────────────────────────────────
 const ADMIN_HOSTS = new Set(["admin.hehaswipe.app"]);
+
+function isAllowedAdminHost() {
+  const host = window.location.hostname;
+  return ADMIN_HOSTS.has(host) || host === "localhost" || host === "127.0.0.1";
+}
+
+// ─── Role definitions ─────────────────────────────────────────────────────────
 const PM_DASHBOARD_ROLES = new Set(["super_admin", "pm_admin", "developer_admin"]);
 const COMMUNITY_EVENT_ROLES = new Set(["super_admin", "community_events_admin", "developer_admin"]);
 const INTERNAL_ROLES = new Set([
@@ -15,18 +30,79 @@ const INTERNAL_ROLES = new Set([
   "viewer",
 ]);
 
-const OVERVIEW_CARDS = [
-  { label: "Active partner profiles", value: "Setup", note: "Connect after RLS + tables are approved." },
-  { label: "New submissions", value: "Setup", note: "Phase 2: business forms flow into review." },
-  { label: "Profiles missing info", value: "Setup", note: "Missing fields/assets tracker." },
-  { label: "Deal requests", value: "Setup", note: "Community Pass / Swoop / SuperSwoop queue." },
-  { label: "Certification reviews", value: "Setup", note: "Track only. Geronimo approves." },
-  { label: "Visibility issues", value: "Setup", note: "Wix / Local / Swipe / HubSpot mismatches." },
-  { label: "Needs Geronimo approval", value: "Setup", note: "All risky items flow here." },
-  { label: "HubSpot sync issues", value: "Setup", note: "Backend or Make.com only; no frontend token." },
+function hasAnyRole(roles, allowedRoles) {
+  return roles.some((r) => allowedRoles.has(r));
+}
+
+// ─── Overview card definitions ─────────────────────────────────────────────────
+// Column names match Nova's admin_pm_dashboard_foundation_v2 migration exactly.
+// Do NOT use: readiness_status, resolved, has_issue, sync_ok, or generic status='pending'.
+// All queries are read-only SELECT with count:exact via anon key + RLS.
+const OVERVIEW_CARD_DEFS = [
+  {
+    label: "Active partner profiles",
+    table: "admin_partner_readiness",
+    filter: null,
+    note: "All partner readiness records on file.",
+  },
+  {
+    label: "New submissions",
+    table: "admin_partner_readiness",
+    filter: { col: "pipeline_status", val: "new_submission" },
+    note: "Newly submitted — awaiting first review.",
+  },
+  {
+    label: "Profiles missing info",
+    table: "admin_missing_items",
+    filter: { col: "status", val: "open" },
+    note: "Open missing-info or asset items.",
+  },
+  {
+    label: "Deal requests",
+    table: "admin_deal_requests",
+    filter: { col: "final_status", val: "pending" },
+    note: "Community Pass / Swoop / SuperSwoop queue.",
+  },
+  {
+    label: "Certification reviews",
+    table: "admin_certification_reviews",
+    filter: { col: "certification_status", val: "pending" },
+    note: "Track only. Geronimo approves all certification decisions.",
+  },
+  {
+    label: "Visibility issues",
+    table: "admin_platform_visibility",
+    filter: { col: "heha_swipe_status", val: "issue" },
+    note: "HEHA Swipe visibility mismatches flagged for review.",
+  },
+  {
+    label: "Needs Geronimo approval",
+    table: "admin_approval_requests",
+    filter: { col: "status", val: "needs_geronimo_review" },
+    note: "All risky items requiring Geronimo's final sign-off.",
+  },
+  {
+    label: "HubSpot sync issues",
+    table: "admin_hubspot_links",
+    filter: { col: "sync_status", val: "error" },
+    note: "Backend / Make.com only — no private token in frontend.",
+  },
+  {
+    label: "Weekly report drafts",
+    table: "admin_weekly_reports",
+    filter: { col: "report_status", val: "draft" },
+    note: "Drafts staged for Geronimo review and sign-off.",
+  },
 ];
 
+// ─── PM section definitions ───────────────────────────────────────────────────
 const PM_SECTIONS = [
+  {
+    title: "Overview / Today's Priorities",
+    description: "High-level counts and the most urgent items needing attention today.",
+    status: "MVP",
+    items: ["Blocked partners", "Pending approvals", "Overdue tasks", "Flagged items"],
+  },
   {
     title: "Partner Pipeline",
     description: "Track each partner from first lead to approved visibility.",
@@ -34,40 +110,58 @@ const PM_SECTIONS = [
     items: ["Status", "Owner", "Next step", "Due date", "Blocker", "HubSpot link", "Approval needed"],
   },
   {
-    title: "Profile Readiness",
+    title: "Partner Profile Readiness",
     description: "Confirm each partner has the profile data needed for Wix, HEHA Local, and HEHA Swipe.",
     status: "MVP",
-    items: ["Descriptions", "Logo/photos", "Menu/products/services", "Links", "Proof point", "Tags"],
+    items: ["Descriptions", "Logo / photos", "Menu / products / services", "Links", "Proof point", "Tags"],
   },
   {
-    title: "Missing Info + Assets",
+    title: "Missing Info + Asset Tracker",
     description: "One queue for missing logos, photos, links, menu info, proof points, and approvals.",
     status: "MVP",
     items: ["Assigned to", "Due date", "Follow-up method", "Escalation needed", "Status"],
   },
   {
-    title: "Deals / Discounts Queue",
-    description: "Track Community Pass, Swoop, SuperSwoop, and local discount requests without auto-approving them.",
+    title: "Deals / Discounts / Community Pass / SuperSwoop Queue",
+    description: "Track deal requests without auto-approving them. Geronimo approves all deals.",
     status: "MVP",
     items: ["Deal type", "Terms", "Dates", "Redemption", "Content needed", "Geronimo approval"],
   },
   {
-    title: "Listed But Not Certified",
+    title: "Listed But Not Certified Tracker",
     description: "Make sure listed partners are not confused with HEHA Certified / Verified partners.",
     status: "MVP",
     items: ["Certification status", "Missing review info", "Risk notes", "Badge status", "Geronimo decision"],
   },
   {
-    title: "Platform Visibility",
-    description: "Find mismatches between HEHA Swipe, HEHA Local, Wix, HubSpot, Instagram, and newsletter visibility.",
+    title: "Platform Visibility Tracker",
+    description: "Find mismatches across HEHA Swipe, HEHA Local, Wix, HubSpot, Instagram, and newsletter.",
     status: "MVP",
     items: ["Hidden", "Draft", "Needs update", "Ready", "Live", "Paused", "Broken link"],
   },
   {
-    title: "Content Requests",
-    description: "Request profile copy, deal cards, Canva graphics, social posts, and listing copy from the content team.",
+    title: "HubSpot Sync / CRM Status",
+    description: "Surface HubSpot link status. No private token in frontend. Backend / Make.com handles sync.",
+    status: "MVP",
+    items: ["Linked", "Not linked", "Sync error", "Last synced", "HubSpot owner"],
+  },
+  {
+    title: "Content Request Module",
+    description: "Request profile copy, deal cards, Canva graphics, social posts, and listing copy.",
     status: "MVP",
     items: ["Request type", "Assigned person", "Needed by", "Assets provided", "Approval needed"],
+  },
+  {
+    title: "Geronimo Approval Queue",
+    description: "All items requiring Geronimo's final approval before any action. Myren routes — Geronimo decides.",
+    status: "MVP",
+    items: ["Certification decisions", "Final deals", "Pricing changes", "Payment settings", "Public publishing", "Health / quality claims"],
+  },
+  {
+    title: "Team Task + Blocker Tracker",
+    description: "Track open tasks and blockers across the team for weekly reporting.",
+    status: "MVP",
+    items: ["Task owner", "Due date", "Blocker type", "Escalation", "Resolved"],
   },
   {
     title: "Weekly Report Generator",
@@ -88,24 +182,7 @@ const QUICK_ACTIONS = [
   "Generate Weekly Report",
 ];
 
-function isAllowedAdminHost() {
-  const host = window.location.hostname;
-  return ADMIN_HOSTS.has(host) || host === "localhost" || host === "127.0.0.1";
-}
-
-function getAppMetadataRoles(user) {
-  const appRole = user?.app_metadata?.role;
-  const appRoles = user?.app_metadata?.roles;
-  const normalized = [];
-  if (typeof appRole === "string") normalized.push(appRole);
-  if (Array.isArray(appRoles)) normalized.push(...appRoles.filter(Boolean));
-  return normalized;
-}
-
-function hasAnyRole(roles, allowedRoles) {
-  return roles.some((role) => allowedRoles.has(role));
-}
-
+// ─── Main AdminApp ────────────────────────────────────────────────────────────
 export default function AdminApp() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -119,6 +196,7 @@ export default function AdminApp() {
   const canOpenCommunityDashboard = useMemo(() => hasAnyRole(roles, COMMUNITY_EVENT_ROLES), [roles]);
   const hasInternalAccess = useMemo(() => hasAnyRole(roles, INTERNAL_ROLES), [roles]);
 
+  // ── Auth listener ──────────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
 
@@ -144,33 +222,46 @@ export default function AdminApp() {
     };
   }, []);
 
+  // ── Load roles — public.user_roles ONLY. Deny by default on any failure. ───
+  // app_metadata is NOT consulted. It cannot be used as an authorization source.
   useEffect(() => {
     if (!session?.user?.id || !allowedHost) return;
-    loadRoles(session.user);
+    loadRoles(session.user.id);
   }, [session?.user?.id, allowedHost]);
 
-  const loadRoles = async (user) => {
+  const loadRoles = async (userId) => {
     setCheckingRoles(true);
     setRoleError(null);
-
-    const appMetadataRoles = getAppMetadataRoles(user);
 
     try {
       const { data, error } = await supabase
         .from("user_roles")
         .select("role, active")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .eq("active", true);
 
       if (error) throw error;
 
-      const tableRoles = (data || []).map((record) => record.role).filter(Boolean);
-      setRoles(Array.from(new Set([...tableRoles, ...appMetadataRoles])));
-    } catch (error) {
-      // Deny by default if the role table is missing or not readable.
-      setRoles(Array.from(new Set(appMetadataRoles)));
+      const tableRoles = (data || []).map((r) => r.role).filter(Boolean);
+
+      if (tableRoles.length === 0) {
+        // No active internal roles found — deny access. Never fall back.
+        setRoles([]);
+        setRoleError(
+          "No active internal role found for this account. " +
+          "Access is denied. Ask Geronimo to assign the correct role in public.user_roles."
+        );
+      } else {
+        setRoles(tableRoles);
+      }
+    } catch (err) {
+      // user_roles unreadable (RLS block, missing table, network error).
+      // Deny by default. Do NOT fall back to app_metadata or any other source.
+      setRoles([]);
       setRoleError(
-        "Admin role table is not connected yet. Access is denied unless a trusted app_metadata admin role exists."
+        "Admin role table could not be read — access denied by default. " +
+        "Verify Supabase RLS allows internal roles to SELECT from public.user_roles. " +
+        "Error: " + (err?.message || "unknown")
       );
     } finally {
       setCheckingRoles(false);
@@ -182,14 +273,11 @@ export default function AdminApp() {
     setSession(null);
   };
 
-  if (!allowedHost) {
-    return <AdminUnavailable />;
-  }
-
+  // ── Render ─────────────────────────────────────────────────────────────────
+  if (!allowedHost) return <AdminUnavailable />;
   if (loading) return <AdminLoading message="Opening HEHA admin…" />;
   if (!session) return <AuthScreen />;
   if (checkingRoles) return <AdminLoading message="Checking internal access…" />;
-
   if (!hasInternalAccess) {
     return (
       <AdminDenied
@@ -237,49 +325,108 @@ export default function AdminApp() {
   );
 }
 
+// ─── Admin Entry Screen ───────────────────────────────────────────────────────
 function AdminEntry({ canOpenPmDashboard, canOpenCommunityDashboard, onOpenPm, onOpenCommunity }) {
   return (
     <main className="admin-entry-grid">
-      <button className="admin-dashboard-button primary" onClick={onOpenPm} disabled={!canOpenPmDashboard}>
+      <button
+        className="admin-dashboard-button primary"
+        onClick={onOpenPm}
+        disabled={!canOpenPmDashboard}
+      >
         <span>PM Dashboard</span>
         <strong>Myren project-management workflow</strong>
         <small>Partner onboarding · readiness · deals · approvals · weekly reporting</small>
-        {!canOpenPmDashboard && <em>Requires PM Admin or Super Admin role</em>}
+        {!canOpenPmDashboard && (
+          <em>Requires pm_admin, developer_admin, or super_admin role</em>
+        )}
       </button>
 
-      <button className="admin-dashboard-button secondary" onClick={onOpenCommunity} disabled={!canOpenCommunityDashboard}>
+      <button
+        className="admin-dashboard-button secondary"
+        onClick={onOpenCommunity}
+        disabled={!canOpenCommunityDashboard}
+      >
         <span>COMMUNITY / EVENTS</span>
         <strong>Niña community activation lane</strong>
-        <small>Separate dashboard. Not part of Myren’s PM workflow.</small>
-        {!canOpenCommunityDashboard && <em>Requires Community/Event Admin or Super Admin role</em>}
+        <small>Separate dashboard. Not part of Myren's PM workflow.</small>
+        {!canOpenCommunityDashboard && (
+          <em>Requires community_events_admin, developer_admin, or super_admin role</em>
+        )}
       </button>
     </main>
   );
 }
 
+// ─── PM Dashboard ─────────────────────────────────────────────────────────────
 function PmDashboard({ onBack, canOpen }) {
+  const [counts, setCounts] = useState({});
+  const [countsLoading, setCountsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!canOpen) return;
+    fetchCounts();
+  }, [canOpen]);
+
+  const fetchCounts = async () => {
+    setCountsLoading(true);
+    const results = {};
+
+    await Promise.allSettled(
+      OVERVIEW_CARD_DEFS.map(async (card) => {
+        try {
+          let query = supabase
+            .from(card.table)
+            .select("*", { count: "exact", head: true });
+
+          if (card.filter) {
+            query = query.eq(card.filter.col, card.filter.val);
+          }
+
+          const { count, error } = await query;
+          // On RLS block or missing table, show dash — never crash the dashboard.
+          results[card.label] = error ? "—" : (count ?? 0);
+        } catch {
+          results[card.label] = "—";
+        }
+      })
+    );
+
+    setCounts(results);
+    setCountsLoading(false);
+  };
+
   if (!canOpen) {
-    return <AdminDenied roleError="This account does not have PM Dashboard permission." onSignOut={onBack} />;
+    return (
+      <AdminDenied
+        roleError="This account does not have PM Dashboard permission."
+        onSignOut={onBack}
+      />
+    );
   }
 
   return (
     <main className="pm-dashboard">
-      <button className="admin-back-button" onClick={onBack}>← Back to admin home</button>
+      <button className="admin-back-button" onClick={onBack}>
+        ← Back to admin home
+      </button>
 
       <section className="admin-section-hero">
-        <p className="eyebrow">PM Dashboard</p>
+        <p className="eyebrow">PM Dashboard · Read-only MVP dashboard</p>
         <h2>Myren manages the workflow. Geronimo approves the final decisions.</h2>
         <p>
-          This dashboard is the internal command center for partner onboarding, profile readiness, missing info,
-          deal requests, certification tracking, platform visibility, content requests, blockers, and weekly reports.
+          Internal command center for partner onboarding, profile readiness, missing info,
+          deal requests, certification tracking, platform visibility, content requests,
+          team tasks, and weekly reports. All write actions are disabled until Geronimo
+          and Nova approve the full RLS and approval rules.
         </p>
       </section>
 
       <section className="admin-card-grid overview-grid">
-        {OVERVIEW_CARDS.map((card) => (
+        {OVERVIEW_CARD_DEFS.map((card) => (
           <article className="admin-stat-card" key={card.label}>
             <span>{card.label}</span>
-            <strong>{card.value}</strong>
+            <strong>{countsLoading ? "…" : (counts[card.label] ?? "—")}</strong>
             <p>{card.note}</p>
           </article>
         ))}
@@ -291,11 +438,16 @@ function PmDashboard({ onBack, canOpen }) {
             <p className="eyebrow">Quick actions</p>
             <h3>Workflow actions for V1</h3>
           </div>
-          <small>Buttons are intentionally disabled until tables, RLS, and approval rules are approved.</small>
+          <small>
+            All buttons are intentionally disabled. Write flows require
+            Geronimo + Nova approval of RLS policies and approval rules before activation.
+          </small>
         </div>
         <div className="admin-action-grid">
           {QUICK_ACTIONS.map((action) => (
-            <button key={action} disabled>{action}</button>
+            <button key={action} disabled>
+              {action}
+            </button>
           ))}
         </div>
       </section>
@@ -309,45 +461,78 @@ function PmDashboard({ onBack, canOpen }) {
             </div>
             <p>{section.description}</p>
             <ul>
-              {section.items.map((item) => <li key={item}>{item}</li>)}
+              {section.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
             </ul>
           </article>
         ))}
       </section>
 
       <section className="admin-guardrail-box">
-        <h3>Guardrails</h3>
+        <h3>Guardrails — Myren's Scope</h3>
         <p>
-          Myren can track and route work, but cannot self-approve HEHA Certified / Verified status, final deals,
-          pricing logic, payment settings, public publishing of sensitive profiles, or legal-sensitive health/quality claims.
+          Myren can track, route, and escalate work. Myren cannot self-approve any of
+          the following without Geronimo's explicit final decision:
+        </p>
+        <ul style={{ color: "rgba(255,255,255,.84)", paddingLeft: "20px", lineHeight: "1.8" }}>
+          <li>HEHA Certified / Verified status for any partner</li>
+          <li>Final deal terms, discount agreements, or pricing logic</li>
+          <li>Payment settings or financial configurations</li>
+          <li>Public publishing of sensitive partner profiles</li>
+          <li>Legal-sensitive health, quality, or certification claims</li>
+          <li>Partner self-publishing or bypassing HEHA review</li>
+          <li>Public promises about app features, support, income, or certification timelines</li>
+          <li>Sponsor packages or commercial partnership agreements</li>
+        </ul>
+        <p style={{ marginTop: "14px" }}>
+          <strong style={{ color: "white" }}>
+            Geronimo keeps final approval on all of the above.
+          </strong>
         </p>
       </section>
     </main>
   );
 }
 
+// ─── Community Placeholder ────────────────────────────────────────────────────
 function CommunityPlaceholder({ onBack, canOpen }) {
-  if (!canOpen) return <AdminDenied roleError="This account does not have Community / Events permission." onSignOut={onBack} />;
-
+  if (!canOpen) {
+    return (
+      <AdminDenied
+        roleError="This account does not have Community / Events permission."
+        onSignOut={onBack}
+      />
+    );
+  }
   return (
     <main className="pm-dashboard">
-      <button className="admin-back-button" onClick={onBack}>← Back to admin home</button>
+      <button className="admin-back-button" onClick={onBack}>
+        ← Back to admin home
+      </button>
       <section className="admin-section-hero">
         <p className="eyebrow">Community / Events</p>
-        <h2>Separate dashboard placeholder</h2>
-        <p>This keeps Niña’s event/community activation lane separate from Myren’s PM Dashboard.</p>
+        <h2>Niña's community activation dashboard — coming soon</h2>
+        <p>
+          This is a separate dashboard from Myren's PM workflow.
+          Niña's community and events lane will be built here independently.
+        </p>
       </section>
     </main>
   );
 }
 
+// ─── Support components ───────────────────────────────────────────────────────
 function AdminUnavailable() {
   return (
     <div className="admin-unavailable">
       <div className="admin-gate-card">
         <p className="eyebrow">HEHA Internal Admin</p>
         <h1>Not available on this site.</h1>
-        <p>Internal admin tools only open from admin.hehaswipe.app or a local developer environment.</p>
+        <p>
+          Internal admin tools only open from admin.hehaswipe.app
+          or a local developer environment.
+        </p>
       </div>
     </div>
   );
@@ -370,9 +555,16 @@ function AdminDenied({ email, roleError, onSignOut }) {
       <div className="admin-gate-card danger">
         <p className="eyebrow">Access denied</p>
         <h1>This account does not have internal admin access.</h1>
-        {email && <p>Signed in as: <strong>{email}</strong></p>}
+        {email && (
+          <p>
+            Signed in as: <strong>{email}</strong>
+          </p>
+        )}
         {roleError && <p className="admin-small-warning">{roleError}</p>}
-        <p>Ask Geronimo or the developer admin to assign the correct role after Supabase RLS is approved.</p>
+        <p>
+          Ask Geronimo or the developer admin to assign the correct role
+          in <code>public.user_roles</code> after Supabase RLS is confirmed.
+        </p>
         <button onClick={onSignOut}>Sign out</button>
       </div>
     </div>
