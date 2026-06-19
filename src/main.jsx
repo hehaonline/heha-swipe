@@ -10,13 +10,20 @@ import "./super-swoop.css";
 import "./preview-and-onboarding-fixes.css";
 import "./partner-wizard-clean.css";
 import "./placeholder-photo.css";
-import "./admin-dashboard.css";
 import App from "./App.jsx";
 import AdminApp from "./components/admin/AdminApp.jsx";
 import { supabase } from "./lib/supabase";
 
+function shouldRenderAdminApp() {
+  const hostIsAdmin = window.location.hostname.startsWith("admin.");
+  const buildIsAdmin = import.meta.env.VITE_APP_MODE === "admin";
+  const localAdminRoute = import.meta.env.DEV && window.location.pathname.startsWith("/admin");
+  return hostIsAdmin || buildIsAdmin || localAdminRoute;
+}
+
 function Root() {
-  const isAdminRoute = window.location.pathname.startsWith("/admin") || window.location.hostname.startsWith("admin.");
+  const isAdminRoute = shouldRenderAdminApp();
+  if (isAdminRoute) import("./admin-dashboard.css");
   return isAdminRoute ? <AdminSessionGate /> : <App />;
 }
 
