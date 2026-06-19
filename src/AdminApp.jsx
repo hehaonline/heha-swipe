@@ -3,13 +3,13 @@
 // Read-only MVP shell. No write actions enabled.
 // Security: public.user_roles is the ONLY source of truth for admin access.
 // app_metadata is NOT used for authorization. Deny by default on any role failure.
-// Column names match Nova's admin_pm_dashboard_foundation_v2 migration exactly.
+// Column names and enum values match Nova's admin_pm_dashboard_foundation_v2 migration exactly.
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabase";
 import AuthScreen from "./components/AuthScreen";
 
-// ─── Host gate ────────────────────────────────────────────────────────────────
+// ─── Host gate ──────────────────────────────────────────────────────────────────────────────
 const ADMIN_HOSTS = new Set(["admin.hehaswipe.app"]);
 
 function isAllowedAdminHost() {
@@ -17,7 +17,7 @@ function isAllowedAdminHost() {
   return ADMIN_HOSTS.has(host) || host === "localhost" || host === "127.0.0.1";
 }
 
-// ─── Role definitions ─────────────────────────────────────────────────────────
+// ─── Role definitions ─────────────────────────────────────────────────────────────────────
 const PM_DASHBOARD_ROLES = new Set(["super_admin", "pm_admin", "developer_admin"]);
 const COMMUNITY_EVENT_ROLES = new Set(["super_admin", "community_events_admin", "developer_admin"]);
 const INTERNAL_ROLES = new Set([
@@ -33,69 +33,107 @@ const INTERNAL_ROLES = new Set([
 function hasAnyRole(roles, allowedRoles) {
   return roles.some((r) => allowedRoles.has(r));
 }
-
-// ─── Overview card definitions ─────────────────────────────────────────────────
-// Column names match Nova's admin_pm_dashboard_foundation_v2 migration exactly.
-// Do NOT use: readiness_status, resolved, has_issue, sync_ok, or generic status='pending'.
-// All queries are read-only SELECT with count:exact via anon key + RLS.
+// ─── Overview card definitions ─────────────────────────────────────────────────────────────────────────
+// Column names and check-constraint enum values match Nova's migration exactly.
+// filterType values:
+//   "none"         — no WHERE clause, count all rows
+//   "eq"           — single equality: .eq(col, val)
+//   "in"           — inclusion list:  .in(col, vals)
+//   "notIn"        — exclusion list:  .not(col, 'in', `(a,b,c)`)
+//   "visibilityOr" — multi-column OR: .or(orClause) across 4 platform status fields
+//
+// REMOVED invalid values: new_submission, pending (generic), issue, error (generic), sync_ok, has_issue
 const OVERVIEW_CARD_DEFS = [
   {
     label: "Active partner profiles",
     table: "admin_partner_readiness",
-    filter: null,
-    note: "All partner readiness records on file.",
+    filterType: "notIn",
+    col: "pipeline_status",
+    vals: ["paused", "rejected", "archived"],
+    note: "Partners actively moving through the pipeline (excludes paused, rejected, archived).",
   },
   {
     label: "New submissions",
     table: "admin_partner_readiness",
-    filter: { col: "pipeline_status", val: "new_submission" },
-    note: "Newly submitted — awaiting first review.",
+    filterType: "in",
+    col: "pipeline_status",
+    vals: ["new_lead", "application_started", "profile_draft"],
+    note: "New leads and draft profiles awaiting first review.",
   },
   {
     label: "Profiles missing info",
+    table: "admin_partner_readiness",
+    filterType: "in",
+    col: "profile_status",
+    vals: ["missing_required_info", "missing_assets", "needs_content_review"],
+    note: "Partners with incomplete profiles that need follow-up.",
+  },
+  {
+    label: "Missing assets",
     table: "admin_missing_items",
-    filter: { col: "status", val: "open" },
-    note: "Open missing-info or asset items.",
+    filterType: "in",
+    col: "status",
+    vals: ["open", "assigned", "waiting_on_business", "waiting_on_content_team"],
+    note: "Open missing-info and asset items across all partners.",
   },
   {
     label: "Deal requests",
     table: "admin_deal_requests",
-    filter: { col: "final_status", val: "pending" },
-    note: "Community Pass / Swoop / SuperSwoop queue.",
+    filterType: "in",
+    col: "final_status",
+    vals: ["draft", "info_needed", "content_needed", "ready_for_geronimo_review", "changes_requested"],
+    note: "Community Pass / Swoop / SuperSwoop deals awaiting action.",
   },
   {
     label: "Certification reviews",
     table: "admin_certification_reviews",
-    filter: { col: "certification_status", val: "pending" },
+    filterType: "in",
+    col: "certification_status",
+    vals: ["requested", "missing_info", "in_review", "needs_geronimo_decision"],
     note: "Track only. Geronimo approves all certification decisions.",
   },
   {
     label: "Visibility issues",
     table: "admin_platform_visibility",
-    filter: { col: "heha_swipe_status", val: "issue" },
-    note: "HEHA Swipe visibility mismatches flagged for review.",
+    filterType: "visibilityOr",
+    orClause: [
+      "heha_swipe_status.eq.needs_update",
+      "heha_swipe_status.eq.error_broken_link",
+      "heha_local_status.eq.needs_update",
+      "heha_local_status.eq.error_broken_link",
+      "wix_status.eq.needs_update",
+      "wix_status.eq.error_broken_link",
+      "hubspot_status.eq.needs_update",
+      "hubspot_status.eq.error_broken_link",
+    ].join(","),
+    note: "Swipe, Local, Wix, or HubSpot visibility mismatches needing attention.",
   },
   {
     label: "Needs Geronimo approval",
     table: "admin_approval_requests",
-    filter: { col: "status", val: "needs_geronimo_review" },
+    filterType: "eq",
+    col: "status",
+    val: "needs_geronimo_review",
     note: "All risky items requiring Geronimo's final sign-off.",
   },
   {
     label: "HubSpot sync issues",
     table: "admin_hubspot_links",
-    filter: { col: "sync_status", val: "error" },
+    filterType: "in",
+    col: "sync_status",
+    vals: ["failed", "needs_review"],
     note: "Backend / Make.com only — no private token in frontend.",
   },
   {
     label: "Weekly report drafts",
     table: "admin_weekly_reports",
-    filter: { col: "report_status", val: "draft" },
+    filterType: "in",
+    col: "report_status",
+    vals: ["draft", "ready_for_review"],
     note: "Drafts staged for Geronimo review and sign-off.",
   },
 ];
-
-// ─── PM section definitions ───────────────────────────────────────────────────
+// ─── PM section definitions ──────────────────────────────────────────────────────────────────────────
 const PM_SECTIONS = [
   {
     title: "Overview / Today's Priorities",
@@ -181,8 +219,7 @@ const QUICK_ACTIONS = [
   "Create Follow-Up Task",
   "Generate Weekly Report",
 ];
-
-// ─── Main AdminApp ────────────────────────────────────────────────────────────
+// ─── Main AdminApp ──────────────────────────────────────────────────────────────────────────────
 export default function AdminApp() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -196,7 +233,7 @@ export default function AdminApp() {
   const canOpenCommunityDashboard = useMemo(() => hasAnyRole(roles, COMMUNITY_EVENT_ROLES), [roles]);
   const hasInternalAccess = useMemo(() => hasAnyRole(roles, INTERNAL_ROLES), [roles]);
 
-  // ── Auth listener ──────────────────────────────────────────────────────────
+  // ── Auth listener ──────────────────────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
 
@@ -273,7 +310,7 @@ export default function AdminApp() {
     setSession(null);
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────────────────────
   if (!allowedHost) return <AdminUnavailable />;
   if (loading) return <AdminLoading message="Opening HEHA admin…" />;
   if (!session) return <AuthScreen />;
@@ -324,8 +361,7 @@ export default function AdminApp() {
     </div>
   );
 }
-
-// ─── Admin Entry Screen ───────────────────────────────────────────────────────
+// ─── Admin Entry Screen ────────────────────────────────────────────────────────────────────
 function AdminEntry({ canOpenPmDashboard, canOpenCommunityDashboard, onOpenPm, onOpenCommunity }) {
   return (
     <main className="admin-entry-grid">
@@ -358,7 +394,7 @@ function AdminEntry({ canOpenPmDashboard, canOpenCommunityDashboard, onOpenPm, o
   );
 }
 
-// ─── PM Dashboard ─────────────────────────────────────────────────────────────
+// ─── PM Dashboard ───────────────────────────────────────────────────────────────────────────────
 function PmDashboard({ onBack, canOpen }) {
   const [counts, setCounts] = useState({});
   const [countsLoading, setCountsLoading] = useState(true);
@@ -368,6 +404,9 @@ function PmDashboard({ onBack, canOpen }) {
     fetchCounts();
   }, [canOpen]);
 
+  // Builds a read-only count query using the correct Supabase JS filter for each filterType.
+  // Supports: none, eq, in, notIn, visibilityOr
+  // On any query error or RLS block, the card shows — and the dashboard continues to render.
   const fetchCounts = async () => {
     setCountsLoading(true);
     const results = {};
@@ -379,12 +418,23 @@ function PmDashboard({ onBack, canOpen }) {
             .from(card.table)
             .select("*", { count: "exact", head: true });
 
-          if (card.filter) {
-            query = query.eq(card.filter.col, card.filter.val);
+          if (card.filterType === "eq") {
+            query = query.eq(card.col, card.val);
+          } else if (card.filterType === "in") {
+            query = query.in(card.col, card.vals);
+          } else if (card.filterType === "notIn") {
+            // Supabase JS: .not(col, 'in', `(a,b,c)`)
+            const csvList = `(${card.vals.join(",")})`;
+            query = query.not(card.col, "in", csvList);
+          } else if (card.filterType === "visibilityOr") {
+            // Multi-column OR across 4 platform status fields.
+            // orClause is a comma-separated PostgREST filter string, e.g.:
+            // "heha_swipe_status.eq.needs_update,heha_local_status.eq.error_broken_link,..."
+            query = query.or(card.orClause);
           }
+          // filterType === "none": no additional filter, count all rows
 
           const { count, error } = await query;
-          // On RLS block or missing table, show dash — never crash the dashboard.
           results[card.label] = error ? "—" : (count ?? 0);
         } catch {
           results[card.label] = "—";
@@ -494,8 +544,7 @@ function PmDashboard({ onBack, canOpen }) {
     </main>
   );
 }
-
-// ─── Community Placeholder ────────────────────────────────────────────────────
+// ─── Community Placeholder ─────────────────────────────────────────────────────────────────────
 function CommunityPlaceholder({ onBack, canOpen }) {
   if (!canOpen) {
     return (
@@ -522,7 +571,7 @@ function CommunityPlaceholder({ onBack, canOpen }) {
   );
 }
 
-// ─── Support components ───────────────────────────────────────────────────────
+// ─── Support components ───────────────────────────────────────────────────────────────────────────
 function AdminUnavailable() {
   return (
     <div className="admin-unavailable">
