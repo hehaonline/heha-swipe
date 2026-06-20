@@ -295,6 +295,12 @@ export default function ProfileTab({
         <button className="danger-button" onClick={requestAccountDeletion} disabled={busy}>Request account deletion</button>
         <button className="secondary-button" onClick={onSignOut} disabled={busy}>Sign out</button>
       </div>
+
+      {/* Low-prominence staff doorway. Grants no access by itself —
+          admin.hehaswipe.app enforces Supabase user_roles + RLS. */}
+      <p className="team-login-line">
+        <a className="team-login-link" href="https://admin.hehaswipe.app">Team Login</a>
+      </p>
     </section>
   );
 }
