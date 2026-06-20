@@ -196,3 +196,22 @@
 .profile-actions .danger-button {
   margin-top: 2px;
 }
+
+/* Low-prominence staff doorway at the bottom of the profile area.
+   Intentionally small and muted so customers are not drawn to it. */
+.team-login-line {
+  margin: 18px 0 4px;
+  text-align: center;
+}
+.team-login-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--heha-muted, #9a9183);
+  text-decoration: none;
+  opacity: 0.7;
+  letter-spacing: 0.02em;
+}
+.team-login-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
