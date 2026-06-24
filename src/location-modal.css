@@ -1,0 +1,222 @@
+/* =====================================================
+   Location Modal & Location Pill — HEHA Swipe
+   ===================================================== */
+
+/* --- Location pill in app header --- */
+.location-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1.5px solid rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.18s;
+}
+.location-pill:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+.location-pill-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.location-pill-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Modal backdrop --- */
+.location-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.44);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* --- Bottom sheet --- */
+.location-modal-sheet {
+  background: #fff;
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 520px;
+  padding: 24px 20px 32px;
+  max-height: 90dvh;
+  overflow-y: auto;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.16);
+}
+
+/* --- Header row --- */
+.location-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.location-modal-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+.location-modal-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: #555;
+  padding: 4px 8px;
+  border-radius: 8px;
+  line-height: 1;
+}
+.location-modal-close:hover {
+  background: #f2f2f2;
+}
+
+/* --- Toast --- */
+.location-toast {
+  background: #222;
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+/* --- Geo button --- */
+.location-geo-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 16px;
+  background: #f5f0eb;
+  border: 1.5px solid #e0d5c8;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  color: #2a2a2a;
+  transition: background 0.16s;
+}
+.location-geo-btn:hover:not(:disabled) {
+  background: #ede6dc;
+}
+.location-geo-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* --- Geo error --- */
+.location-geo-error {
+  font-size: 13px;
+  color: #c0392b;
+  margin: 8px 0 0;
+}
+
+/* --- Divider --- */
+.location-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 16px;
+  font-size: 12px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.location-divider::before,
+.location-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #e8e0d6;
+}
+
+/* --- Form fields --- */
+.location-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.location-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+.location-field span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.location-field input {
+  padding: 10px 12px;
+  border: 1.5px solid #ddd;
+  border-radius: 10px;
+  font-size: 15px;
+  color: #222;
+  background: #fafaf8;
+  outline: none;
+  transition: border-color 0.16s;
+  width: 100%;
+  box-sizing: border-box;
+}
+.location-field input:focus {
+  border-color: #e07a30;
+}
+
+.location-row {
+  display: flex;
+  gap: 10px;
+}
+.location-row .location-field:first-child {
+  flex: 0 0 80px;
+}
+
+/* --- Save button --- */
+.location-save-btn {
+  width: 100%;
+  padding: 14px;
+  margin-top: 20px;
+  background: #e07a30;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.16s, opacity 0.16s;
+}
+.location-save-btn:hover:not(:disabled) {
+  background: #c96920;
+}
+.location-save-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* --- Note text --- */
+.location-note {
+  font-size: 12px;
+  color: #888;
+  text-align: center;
+  margin-top: 12px;
+  margin-bottom: 0;
+  line-height: 1.5;
+}
