@@ -7,448 +7,480 @@ import SwipeTab from "./components/SwipeTab";
 import FavesTab from "./components/FavesTab";
 import ProfileTab from "./components/ProfileTab";
 import PasswordResetScreen from "./components/PasswordResetScreen";
+import LocationModal, { getActiveLocationLabel } from "./components/LocationModal";
 
 const TABS = [
-  { id: "swipe", label: "Discover", icon: "⌕" },
-  { id: "faves", label: "Saved", icon: "♡" },
-  { id: "deals", label: "Deals", icon: "⌑" },
-  { id: "profile", label: "Profile", icon: "♙" },
+{ id: "swipe", label: "Discover", icon: "\u2315" },
+{ id: "faves", label: "Saved", icon: "\u2661" },
+{ id: "deals", label: "Deals", icon: "\u2311" },
+{ id: "profile", label: "Profile", icon: "\u2659" },
 ];
 
 const COMPLETED_SUBSCRIPTION_TYPES = [
-  "instagram",
-  "monthly",
-  "customer_free",
-  "customer_supporter",
-  "partner_free",
-  "partner_supporter",
-  "partner_instagram",
-  "partner_monthly",
-  "partner",
-  "listed",
+"instagram",
+"monthly",
+"customer_free",
+"customer_supporter",
+"partner_free",
+"partner_supporter",
+"partner_instagram",
+"partner_monthly",
+"partner",
+"listed",
 ];
 
 const PARTNER_SUBSCRIPTION_TYPES = [
-  "instagram",
-  "monthly",
-  "partner_free",
-  "partner_supporter",
-  "partner_instagram",
-  "partner_monthly",
-  "partner",
-  "listed",
+"instagram",
+"monthly",
+"partner_free",
+"partner_supporter",
+"partner_instagram",
+"partner_monthly",
+"partner",
+"listed",
 ];
 
 function isOnboarded(profile) {
-  const type = profile?.subscription_type;
-  if (!type) return false;
-  return COMPLETED_SUBSCRIPTION_TYPES.some(
-    (acceptedType) => type === acceptedType || type.startsWith(`${acceptedType}_`)
-  );
+const type = profile?.subscription_type;
+if (!type) return false;
+return COMPLETED_SUBSCRIPTION_TYPES.some(
+(acceptedType) => type === acceptedType || type.startsWith(`${acceptedType}_`)
+);
 }
 
 function isPartnerProfile(profile) {
-  const type = profile?.subscription_type;
-  if (!type) return false;
-  return PARTNER_SUBSCRIPTION_TYPES.some(
-    (acceptedType) => type === acceptedType || type.startsWith(`${acceptedType}_`)
-  );
+const type = profile?.subscription_type;
+if (!type) return false;
+return PARTNER_SUBSCRIPTION_TYPES.some(
+(acceptedType) => type === acceptedType || type.startsWith(`${acceptedType}_`)
+);
 }
 
 function SwipeLogo({ compact = false }) {
-  return (
-    <div className={compact ? "swipe-logo compact-logo" : "swipe-logo"} aria-label="HEHA Swipe">
-      <span className="swipe-logo-square" />
-      <span className="swipe-logo-heha">HEHA</span>
-      <span className="swipe-logo-word">swipe</span>
-    </div>
-  );
+return (
+<div className={compact ? "swipe-logo compact-logo" : "swipe-logo"} aria-label="HEHA Swipe">
+<span className="swipe-logo-square" />
+<span className="swipe-logo-heha">HEHA</span>
+<span className="swipe-logo-word">swipe</span>
+</div>
+);
 }
 
 export default function App() {
-  const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [partners, setPartners] = useState([]);
-  const [saves, setSaves] = useState([]);
-  const [tab, setTab] = useState("swipe");
-  const [loading, setLoading] = useState(true);
-  const [splashReady, setSplashReady] = useState(false);
-  const [dataLoading, setDataLoading] = useState(false);
-  const [needsOnboarding, setNeedsOnboarding] = useState(false);
-  const [showPartnerWizard, setShowPartnerWizard] = useState(false);
-  const [passwordRecovery, setPasswordRecovery] = useState(false);
-  const [notice, setNotice] = useState(null);
-  const [appError, setAppError] = useState(null);
+const [session, setSession] = useState(null);
+const [profile, setProfile] = useState(null);
+const [partners, setPartners] = useState([]);
+const [saves, setSaves] = useState([]);
+const [tab, setTab] = useState("swipe");
+const [loading, setLoading] = useState(true);
+const [splashReady, setSplashReady] = useState(false);
+const [dataLoading, setDataLoading] = useState(false);
+const [needsOnboarding, setNeedsOnboarding] = useState(false);
+const [showPartnerWizard, setShowPartnerWizard] = useState(false);
+const [passwordRecovery, setPasswordRecovery] = useState(false);
+const [notice, setNotice] = useState(null);
+const [appError, setAppError] = useState(null);
+const [showLocationModal, setShowLocationModal] = useState(false);
+const [locationLabel, setLocationLabel] = useState(null);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setSplashReady(true), 3400);
-    return () => window.clearTimeout(timer);
-  }, []);
+useEffect(() => {
+const timer = window.setTimeout(() => setSplashReady(true), 3400);
+return () => window.clearTimeout(timer);
+}, []);
 
-  useEffect(() => {
-    let mounted = true;
+// Sync locationLabel from profile or localStorage on load/profile change
+useEffect(() => {
+setLocationLabel(getActiveLocationLabel(profile?.location || null));
+}, [profile]);
 
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!mounted) return;
-      if (error) setAppError(error.message);
-      setSession(data?.session || null);
-      setLoading(false);
-    });
+useEffect(() => {
+let mounted = true;
 
-    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
-      setSession(newSession);
-      if (event === "PASSWORD_RECOVERY") {
-        setPasswordRecovery(true);
-      }
-      if (!newSession) {
-        setProfile(null);
-        setPartners([]);
-        setSaves([]);
-        setNeedsOnboarding(false);
-        setShowPartnerWizard(false);
-        setPasswordRecovery(false);
-      }
-    });
+supabase.auth.getSession().then(({ data, error }) => {
+if (!mounted) return;
+if (error) setAppError(error.message);
+setSession(data?.session || null);
+setLoading(false);
+});
 
-    return () => {
-      mounted = false;
-      listener?.subscription?.unsubscribe?.();
-    };
-  }, []);
+const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
+setSession(newSession);
+if (event === "PASSWORD_RECOVERY") {
+setPasswordRecovery(true);
+}
+if (!newSession) {
+setProfile(null);
+setPartners([]);
+setSaves([]);
+setNeedsOnboarding(false);
+setShowPartnerWizard(false);
+setPasswordRecovery(false);
+// Refresh location label for guest state
+setLocationLabel(getActiveLocationLabel(null));
+}
+});
 
-  useEffect(() => {
-    if (!session?.user?.id || passwordRecovery) return;
-    loadData(session.user.id);
-    pingNewUserWebhook(session.user);
-  }, [session?.user?.id, passwordRecovery]);
+return () => {
+mounted = false;
+listener?.subscription?.unsubscribe?.();
+};
+}, []);
 
-  useEffect(() => {
-    if (!session?.user) return;
-    const params = new URLSearchParams(window.location.search);
-    const checkoutSuccess = params.get("checkout") === "success";
-    if (!checkoutSuccess) return;
+useEffect(() => {
+if (!session?.user?.id || passwordRecovery) return;
+loadData(session.user.id);
+pingNewUserWebhook(session.user);
+}, [session?.user?.id, passwordRecovery]);
 
-    const returnRole = params.get("role");
-    window.history.replaceState(null, "", window.location.pathname);
-    setNeedsOnboarding(false);
-    if (returnRole === "partner") setShowPartnerWizard(true);
-    loadData(session.user.id);
-  }, [session?.user?.id]);
+useEffect(() => {
+if (!session?.user) return;
+const params = new URLSearchParams(window.location.search);
+const checkoutSuccess = params.get("checkout") === "success";
+if (!checkoutSuccess) return;
 
-  const savedPartnerIds = useMemo(
-    () => new Set(saves.map((save) => save.partner_id)),
-    [saves]
-  );
+const returnRole = params.get("role");
+window.history.replaceState(null, "", window.location.pathname);
+setNeedsOnboarding(false);
+if (returnRole === "partner") setShowPartnerWizard(true);
+loadData(session.user.id);
+}, [session?.user?.id]);
 
-  const loadData = async (uid = session?.user?.id) => {
-    if (!uid) return;
-    setDataLoading(true);
-    setAppError(null);
+const savedPartnerIds = useMemo(
+() => new Set(saves.map((save) => save.partner_id)),
+[saves]
+);
 
-    try {
-      const [profileResult, partnerResult, saveResult] = await Promise.all([
-        supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
-        supabase
-          .from("partners")
-          .select("*")
-          .in("status", ["approved", "listed"])
-          .order("heha_partner", { ascending: false })
-          .order("created_at", { ascending: false }),
-        supabase.from("saves").select("*").eq("user_id", uid),
-      ]);
+const loadData = async (uid = session?.user?.id) => {
+if (!uid) return;
+setDataLoading(true);
+setAppError(null);
 
-      if (profileResult.error) throw profileResult.error;
-      if (partnerResult.error) throw partnerResult.error;
-      if (saveResult.error) throw saveResult.error;
+try {
+const [profileResult, partnerResult, saveResult] = await Promise.all([
+supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
+supabase
+.from("partners")
+.select("*")
+.in("status", ["approved", "listed"])
+.order("heha_partner", { ascending: false })
+.order("created_at", { ascending: false }),
+supabase.from("saves").select("*").eq("user_id", uid),
+]);
 
-      const nextProfile = profileResult.data;
-      const nextPartners = partnerResult.data || [];
-      const nextSaves = saveResult.data || [];
+if (profileResult.error) throw profileResult.error;
+if (partnerResult.error) throw partnerResult.error;
+if (saveResult.error) throw saveResult.error;
 
-      setProfile(nextProfile);
-      setPartners(nextPartners);
-      setSaves(nextSaves);
-      setNeedsOnboarding(!isOnboarded(nextProfile));
+const nextProfile = profileResult.data;
+const nextPartners = partnerResult.data || [];
+const nextSaves = saveResult.data || [];
 
-      if (isPartnerProfile(nextProfile)) {
-        const { data: existing, error } = await supabase
-          .from("partners")
-          .select("id")
-          .eq("owner_id", uid)
-          .maybeSingle();
-        if (error) throw error;
-        if (!existing) setShowPartnerWizard(true);
-      }
-    } catch (error) {
-      setAppError(error.message || "Could not load HEHA Swipe.");
-    } finally {
-      setDataLoading(false);
-    }
-  };
+setProfile(nextProfile);
+setPartners(nextPartners);
+setSaves(nextSaves);
+setNeedsOnboarding(!isOnboarded(nextProfile));
 
-  const pingNewUserWebhook = async (user) => {
-    try {
-      const webhookUrl = import.meta.env.VITE_MAKE_NEW_USER_WEBHOOK;
-      if (!webhookUrl) return;
-      await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.id,
-          email: user.email || null,
-          phone: user.phone || null,
-          created_at: user.created_at,
-          source: "heha_swipe",
-        }),
-      });
-    } catch {
-      // Marketing webhook failures should never block app usage.
-    }
-  };
+if (isPartnerProfile(nextProfile)) {
+const { data: existing, error } = await supabase
+.from("partners")
+.select("id")
+.eq("owner_id", uid)
+.maybeSingle();
+if (error) throw error;
+if (!existing) setShowPartnerWizard(true);
+}
+} catch (error) {
+setAppError(error.message || "Could not load HEHA Swipe.");
+} finally {
+setDataLoading(false);
+}
+};
 
-  const flashNotice = (message) => {
-    setNotice(message);
-    window.setTimeout(() => setNotice(null), 2600);
-  };
+const pingNewUserWebhook = async (user) => {
+try {
+const webhookUrl = import.meta.env.VITE_MAKE_NEW_USER_WEBHOOK;
+if (!webhookUrl) return;
+await fetch(webhookUrl, {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({
+user_id: user.id,
+email: user.email || null,
+phone: user.phone || null,
+created_at: user.created_at,
+source: "heha_swipe",
+}),
+});
+} catch {
+// Marketing webhook failures should never block app usage.
+}
+};
 
-  const recordSwipeEvent = async (partner, direction) => {
-    const uid = session?.user?.id;
-    if (!uid || !partner?.id) return;
+const flashNotice = (message) => {
+setNotice(message);
+window.setTimeout(() => setNotice(null), 2600);
+};
 
-    const { error } = await supabase.from("swipe_events").insert({
-      user_id: uid,
-      partner_id: partner.id,
-      direction,
-    });
+const recordSwipeEvent = async (partner, direction) => {
+const uid = session?.user?.id;
+if (!uid || !partner?.id) return;
 
-    if (error) throw error;
-  };
+const { error } = await supabase.from("swipe_events").insert({
+user_id: uid,
+partner_id: partner.id,
+direction,
+});
 
-  const handleSave = async (partner) => {
-    const uid = session?.user?.id;
-    if (!uid || !partner?.id) return;
+if (error) throw error;
+};
 
-    try {
-      if (!savedPartnerIds.has(partner.id)) {
-        const { data, error } = await supabase
-          .from("saves")
-          .insert({ user_id: uid, partner_id: partner.id })
-          .select()
-          .single();
-        if (error) throw error;
-        if (data) setSaves((current) => [...current, data]);
-      }
+const handleSave = async (partner) => {
+const uid = session?.user?.id;
+if (!uid || !partner?.id) return;
 
-      await recordSwipeEvent(partner, "right");
-      flashNotice(`${partner.name} saved to your HEHA list.`);
-    } catch (error) {
-      flashNotice(error.message || "Could not save this business yet.");
-    }
-  };
+try {
+if (!savedPartnerIds.has(partner.id)) {
+const { data, error } = await supabase
+.from("saves")
+.insert({ user_id: uid, partner_id: partner.id })
+.select()
+.single();
+if (error) throw error;
+if (data) setSaves((current) => [...current, data]);
+}
 
-  const handlePass = async (partner) => {
-    if (!partner?.id) return;
-    try {
-      await recordSwipeEvent(partner, "left");
-    } catch {
-      // Passing should feel lightweight. We quietly preserve the user flow.
-    }
-  };
+await recordSwipeEvent(partner, "right");
+flashNotice(`${partner.name} saved to your HEHA list.`);
+} catch (error) {
+flashNotice(error.message || "Could not save this business yet.");
+}
+};
 
-  const handleSuperSwipe = async (partner) => {
-    const uid = session?.user?.id;
-    if (!uid || !partner?.id) return;
+const handlePass = async (partner) => {
+if (!partner?.id) return;
+try {
+await recordSwipeEvent(partner, "left");
+} catch {
+// Passing should feel lightweight. We quietly preserve the user flow.
+}
+};
 
-    try {
-      await recordSwipeEvent(partner, "super");
-      flashNotice(`SuperSwoop sent for ${partner.name}. HEHA will know this one stands out.`);
-    } catch (error) {
-      flashNotice(error.message || "Could not send SuperSwoop yet.");
-    }
-  };
+const handleSuperSwipe = async (partner) => {
+const uid = session?.user?.id;
+if (!uid || !partner?.id) return;
 
-  const handleDiscountCheck = async (partner, request = {}) => {
-    const uid = session?.user?.id;
-    if (!uid || !partner?.id) return;
+try {
+await recordSwipeEvent(partner, "super");
+flashNotice(`SuperSwoop sent for ${partner.name}. HEHA will know this one stands out.`);
+} catch (error) {
+flashNotice(error.message || "Could not send SuperSwoop yet.");
+}
+};
 
-    const phone = request.user_phone?.trim() || null;
-    const preference = request.contact_preference || "text";
-    const note = request.user_note?.trim() || null;
-    const consent = Boolean(request.consent_to_contact);
+const handleDiscountCheck = async (partner, request = {}) => {
+const uid = session?.user?.id;
+if (!uid || !partner?.id) return;
 
-    try {
-      const { error } = await supabase.from("discount_interest_requests").insert({
-        user_id: uid,
-        partner_id: partner.id,
-        partner_name: partner.name,
-        partner_category: partner.category || null,
-        partner_neighborhood: partner.neighborhood || partner.location || null,
-        user_phone: phone,
-        contact_preference: preference,
-        user_note: note,
-        consent_to_contact: consent,
-        source: "saved_detail",
-        user_followup_status: phone && consent ? "pending" : "no_contact_requested",
-      });
-      if (error) throw error;
+const phone = request.user_phone?.trim() || null;
+const preference = request.contact_preference || "text";
+const note = request.user_note?.trim() || null;
+const consent = Boolean(request.consent_to_contact);
 
-      await Promise.allSettled([
-        recordSwipeEvent(partner, "discount_interest"),
-        supabase.from("in_app_messages").insert({
-          user_id: uid,
-          title: "Discount request received",
-          body: `HEHA saved your request for ${partner.name}. If a discount or partner offer becomes available, it can appear here in your inbox${phone && consent ? " and a team member may follow up by your selected contact method" : ""}.`,
-          related_partner_id: partner.id,
-          message_type: "discount_request",
-        }),
-      ]);
+try {
+const { error } = await supabase.from("discount_interest_requests").insert({
+user_id: uid,
+partner_id: partner.id,
+partner_name: partner.name,
+partner_category: partner.category || null,
+partner_neighborhood: partner.neighborhood || partner.location || null,
+user_phone: phone,
+contact_preference: preference,
+user_note: note,
+consent_to_contact: consent,
+source: "saved_detail",
+user_followup_status: phone && consent ? "pending" : "no_contact_requested",
+});
+if (error) throw error;
 
-      flashNotice(`Discount request saved for ${partner.name}. Check your Profile inbox for updates.`);
-    } catch (error) {
-      flashNotice(error.message || "Could not save discount interest yet.");
-    }
-  };
+await Promise.allSettled([
+recordSwipeEvent(partner, "discount_interest"),
+supabase.from("in_app_messages").insert({
+user_id: uid,
+title: "Discount request received",
+body: `HEHA saved your request for ${partner.name}. If a discount or partner offer becomes available, it can appear here in your inbox${phone && consent ? " and a team member may follow up by your selected contact method" : ""}.`,
+related_partner_id: partner.id,
+message_type: "discount_request",
+}),
+]);
 
-  const handleUnsave = async (partnerId) => {
-    try {
-      const { error } = await supabase
-        .from("saves")
-        .delete()
-        .eq("user_id", session.user.id)
-        .eq("partner_id", partnerId);
-      if (error) throw error;
-      setSaves((current) => current.filter((save) => save.partner_id !== partnerId));
-      flashNotice("Removed from your saved HEHA list.");
-    } catch (error) {
-      flashNotice(error.message || "Could not remove this business yet.");
-    }
-  };
+flashNotice(`Discount request saved for ${partner.name}. Check your Profile inbox for updates.`);
+} catch (error) {
+flashNotice(error.message || "Could not save discount interest yet.");
+}
+};
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setSession(null);
-  };
+const handleUnsave = async (partnerId) => {
+try {
+const { error } = await supabase
+.from("saves")
+.delete()
+.eq("user_id", session.user.id)
+.eq("partner_id", partnerId);
+if (error) throw error;
+setSaves((current) => current.filter((save) => save.partner_id !== partnerId));
+flashNotice("Removed from your saved HEHA list.");
+} catch (error) {
+flashNotice(error.message || "Could not remove this business yet.");
+}
+};
 
-  if (loading || !splashReady) return <SplashScreen />;
-  if (!session) return <AuthScreen />;
-  if (passwordRecovery) {
-    return (
-      <PasswordResetScreen
-        onComplete={() => {
-          setPasswordRecovery(false);
-          loadData(session.user.id);
-        }}
-      />
-    );
-  }
+const handleSignOut = async () => {
+await supabase.auth.signOut();
+setSession(null);
+};
 
-  if (needsOnboarding) {
-    return (
-      <OnboardingScreen
-        user={session.user}
-        onComplete={(role) => {
-          setNeedsOnboarding(false);
-          if (role === "partner") setShowPartnerWizard(true);
-          loadData(session.user.id);
-        }}
-      />
-    );
-  }
+const handleLocationSaved = (locationString, displayLabel) => {
+setLocationLabel(displayLabel || locationString);
+};
 
-  if (showPartnerWizard) {
-    return (
-      <PartnerWizard
-        user={session.user}
-        onComplete={() => {
-          setShowPartnerWizard(false);
-          setTab("profile");
-          loadData(session.user.id);
-        }}
-        onCancel={() => setShowPartnerWizard(false)}
-      />
-    );
-  }
+if (loading || !splashReady) return <SplashScreen />;
+if (!session) return <AuthScreen />;
+if (passwordRecovery) {
+return (
+<PasswordResetScreen
+onComplete={() => {
+setPasswordRecovery(false);
+loadData(session.user.id);
+}}
+/>
+);
+}
 
-  return (
-    <div className="app-shell">
-      <header className="app-header luxe-header">
-        <SwipeLogo compact />
-        <button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
-      </header>
+if (needsOnboarding) {
+return (
+<OnboardingScreen
+user={session.user}
+onComplete={(role) => {
+setNeedsOnboarding(false);
+if (role === "partner") setShowPartnerWizard(true);
+loadData(session.user.id);
+}}
+/>
+);
+}
 
-      {notice && <div className="toast-notice">{notice}</div>}
-      {appError && <div className="error-banner">{appError}</div>}
+if (showPartnerWizard) {
+return (
+<PartnerWizard
+user={session.user}
+onComplete={() => {
+setShowPartnerWizard(false);
+setTab("profile");
+loadData(session.user.id);
+}}
+onCancel={() => setShowPartnerWizard(false)}
+/>
+);
+}
 
-      <main className="app-content" aria-busy={dataLoading}>
-        {tab === "swipe" && (
-          <SwipeTab
-            partners={partners}
-            saves={saves}
-            onSave={handleSave}
-            onPass={handlePass}
-            onSuperSwipe={handleSuperSwipe}
-            dataLoading={dataLoading}
-          />
-        )}
-        {tab === "faves" && (
-          <FavesTab
-            partners={partners}
-            saves={saves}
-            onUnsave={handleUnsave}
-            onDiscountCheck={handleDiscountCheck}
-          />
-        )}
-        {tab === "deals" && <DealsTab />}
-        {tab === "profile" && (
-          <ProfileTab
-            user={session.user}
-            profile={profile}
-            partners={partners}
-            saves={saves}
-            onSignOut={handleSignOut}
-            onListBusiness={() => setShowPartnerWizard(true)}
-            onRefresh={() => loadData(session.user.id)}
-          />
-        )}
-      </main>
+return (
+<div className="app-shell">
+<header className="app-header luxe-header">
+<SwipeLogo compact />
+<button
+className="location-pill ghost-pill"
+onClick={() => setShowLocationModal(true)}
+aria-label="Set your location"
+title="Set your location"
+>
+<span className="location-pill-icon">\u{1F4CD}</span>
+<span className="location-pill-label">{locationLabel || "Tampa Bay"}</span>
+</button>
+<button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
+</header>
 
-      <nav className="bottom-nav luxe-nav" aria-label="Primary navigation">
-        {TABS.map((navItem) => (
-          <button
-            key={navItem.id}
-            className={tab === navItem.id ? "active" : ""}
-            onClick={() => setTab(navItem.id)}
-          >
-            <span>{navItem.icon}</span>
-            <strong>{navItem.label}</strong>
-          </button>
-        ))}
-      </nav>
-    </div>
-  );
+{notice && <div className="toast-notice">{notice}</div>}
+{appError && <div className="error-banner">{appError}</div>}
+
+{showLocationModal && (
+<LocationModal
+user={session?.user || null}
+profileLocation={profile?.location || null}
+onClose={() => setShowLocationModal(false)}
+onLocationSaved={handleLocationSaved}
+/>
+)}
+
+<main className="app-content" aria-busy={dataLoading}>
+{tab === "swipe" && (
+<SwipeTab
+partners={partners}
+saves={saves}
+onSave={handleSave}
+onPass={handlePass}
+onSuperSwipe={handleSuperSwipe}
+dataLoading={dataLoading}
+/>
+)}
+{tab === "faves" && (
+<FavesTab
+partners={partners}
+saves={saves}
+onUnsave={handleUnsave}
+onDiscountCheck={handleDiscountCheck}
+/>
+)}
+{tab === "deals" && <DealsTab />}
+{tab === "profile" && (
+<ProfileTab
+user={session.user}
+profile={profile}
+partners={partners}
+saves={saves}
+onSignOut={handleSignOut}
+onListBusiness={() => setShowPartnerWizard(true)}
+onRefresh={() => loadData(session.user.id)}
+/>
+)}
+</main>
+
+<nav className="bottom-nav luxe-nav" aria-label="Primary navigation">
+{TABS.map((navItem) => (
+<button
+key={navItem.id}
+className={tab === navItem.id ? "active" : ""}
+onClick={() => setTab(navItem.id)}
+>
+<span>{navItem.icon}</span>
+<strong>{navItem.label}</strong>
+</button>
+))}
+</nav>
+</div>
+);
 }
 
 function SplashScreen() {
-  return (
-    <div className="splash-screen heha-splash luxe-splash">
-      <div className="splash-logo-lockup">
-        <span className="splash-square" />
-        <span className="splash-heha">HEHA</span>
-        <span className="splash-swipe">swipe</span>
-      </div>
-      <p className="heha-powered">powered by Healthy Habit LLC</p>
-    </div>
-  );
+return (
+<div className="splash-screen heha-splash luxe-splash">
+<div className="splash-logo-lockup">
+<span className="splash-square" />
+<span className="splash-heha">HEHA</span>
+<span className="splash-swipe">swipe</span>
+</div>
+<p className="heha-powered">powered by Healthy Habit LLC</p>
+</div>
+);
 }
 
 function DealsTab() {
-  return (
-    <section className="saved-screen deals-screen">
-      <div className="section-hero clean-section-hero">
-        <p className="eyebrow">Member offers</p>
-        <h2>Deals are coming soon.</h2>
-        <p>Saved discount requests and partner offers will live here once HEHA starts activating member deals.</p>
-      </div>
-    </section>
-  );
+return (
+<section className="saved-screen deals-screen">
+<div className="section-hero clean-section-hero">
+<p className="eyebrow">Member offers</p>
+<h2>Deals are coming soon.</h2>
+<p>Saved discount requests and partner offers will live here once HEHA starts activating member deals.</p>
+</div>
+</section>
+);
 }
