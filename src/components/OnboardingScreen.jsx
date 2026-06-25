@@ -176,7 +176,7 @@ export default function OnboardingScreen({ user, onComplete }) {
               {loading ? "Opening Stripe…" : "Start supporter checkout"}
             </button>
             <button className="secondary-button" onClick={() => complete({ forceFree: true })} disabled={loading}>
-              Continue free for testing
+              Continue exploring free
             </button>
           </>
         ) : freeCustomerNeedsInstagram ? (
@@ -189,7 +189,7 @@ export default function OnboardingScreen({ user, onComplete }) {
           </button>
         )}
 
-        <div className="soft-note">Stripe checkout needs your Stripe payment link in Vercel. Until then, use Free or Continue free for testing.</div>
+        <div className="soft-note">Supporter checkout is coming soon. You can still create a free account and explore HEHA Swipe.</div>
         {error && <div className="error-banner">{error}</div>}
       </section>
     </main>
