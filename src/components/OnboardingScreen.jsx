@@ -70,7 +70,7 @@ export default function OnboardingScreen({ user, onComplete }) {
       await saveProfile("supporter_checkout_started");
       const stripeLink = import.meta.env.VITE_STRIPE_SUPPORTER_CHECKOUT_URL;
       if (!stripeLink) {
-        throw new Error("Stripe checkout is not connected yet. Add VITE_STRIPE_SUPPORTER_CHECKOUT_URL in Vercel when your Stripe payment link is ready.");
+        throw new Error("Supporter checkout is coming soon. You can still create a free account and explore HEHA Swipe.");
       }
       const url = new URL(stripeLink);
       url.searchParams.set("client_reference_id", user.id);
@@ -111,7 +111,8 @@ export default function OnboardingScreen({ user, onComplete }) {
   }
 
   const isPartner = role === "partner";
-  const canStartStripe = access === "supporter";
+  const supporterCheckoutLive = Boolean(import.meta.env.VITE_STRIPE_SUPPORTER_CHECKOUT_URL);
+  const canStartStripe = access === "supporter" && supporterCheckoutLive;
   const freeCustomerNeedsInstagram = !isPartner && access === "free";
 
   return (
@@ -134,14 +135,22 @@ export default function OnboardingScreen({ user, onComplete }) {
             <h2>Free</h2>
             <p>{isPartner ? "Create a starter listing without paying today." : "Follow HEHA on Instagram, then explore and save local businesses for free."}</p>
           </button>
-          <button className={access === "supporter" ? "choice-card featured active-plan" : "choice-card featured"} onClick={() => setAccess("supporter")}>
+          <button
+            className={access === "supporter" ? "choice-card featured active-plan" : "choice-card featured"}
+            onClick={() => supporterCheckoutLive && setAccess("supporter")}
+            disabled={!supporterCheckoutLive}
+          >
             <span>🕊️</span>
             <h2>Supporter</h2>
-            <p>Choose a monthly amount to support HEHA’s community work.</p>
+            <p>
+              {supporterCheckoutLive
+                ? "Choose a monthly amount to support HEHA’s community work."
+                : "Coming soon — monthly supporter checkout opens once HEHA finishes connecting payments."}
+            </p>
           </button>
         </div>
 
-        {access === "supporter" && (
+        {access === "supporter" && supporterCheckoutLive && (
           <div className="slider-card">
             <div className="slider-header">
               <strong>${supportAmount}/mo</strong>

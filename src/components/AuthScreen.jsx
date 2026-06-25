@@ -122,11 +122,14 @@ export default function AuthScreen() {
         <section className="auth-card">
           <div className="auth-hero">
             <div className="brand-mark large">✦</div>
-            <p className="eyebrow">HEHA Swipe Tampa Bay</p>
-            <h1>How are you joining HEHA Swipe?</h1>
-            <p>Choose your path first so your profile opens the right customer or business experience.</p>
+            <p className="eyebrow">HEHA Swipe Tampa Bay · Early access</p>
+            <h1>Swipe local. Save healthy spots. Support what you love.</h1>
+            <p>HEHA Swipe helps you discover local healthy restaurants, wellness spaces, markets, vendors, and community businesses — starting as an early-access web app.</p>
+            <p className="auth-feature-line">Swipe local spots. Save favorites. Set your vibe. Businesses can request to get listed.</p>
+            <p className="auth-access-note">Create a free account to explore HEHA Swipe.</p>
           </div>
 
+          <p className="choice-prompt">How are you joining?</p>
           <div className="choice-grid auth-choice-grid">
             <button type="button" className="choice-card" onClick={() => chooseRole("customer")}>
               <span>🌿</span>

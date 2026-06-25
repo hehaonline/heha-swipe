@@ -393,7 +393,7 @@ onClick={() => setShowLocationModal(true)}
 aria-label="Set your location"
 title="Set your location"
 >
-<span className="location-pill-icon">\u{1F4CD}</span>
+<span className="location-pill-icon">📍</span>
 <span className="location-pill-label">{locationLabel || "Tampa Bay"}</span>
 </button>
 <button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
