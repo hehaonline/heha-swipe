@@ -11,7 +11,6 @@ export default function OnboardingScreen({ user, onComplete }) {
   const [role, setRole] = useState(getInitialRole);
   const [step, setStep] = useState(role ? "access" : "role");
   const [access, setAccess] = useState("free");
-  const [supportAmount, setSupportAmount] = useState(10);
   const [instagramStepDone, setInstagramStepDone] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -22,20 +21,20 @@ export default function OnboardingScreen({ user, onComplete }) {
     setStep("access");
   };
 
-  const saveProfile = async (statusOverride) => {
+  const saveProfile = async (statusOverride, accessOverride = access) => {
     const isPartner = role === "partner";
     const subscriptionType = isPartner
-      ? access === "supporter" ? "partner_supporter" : "partner_free"
-      : access === "supporter" ? "customer_supporter" : "customer_free";
+      ? accessOverride === "supporter" ? "partner_supporter" : "partner_free"
+      : accessOverride === "supporter" ? "customer_supporter" : "customer_free";
 
     const { error: profileError } = await supabase.from("profiles").upsert({
       id: user.id,
       email: user.email || null,
       phone: user.phone || null,
       subscription_type: subscriptionType,
-      subscription_active: access === "free" || statusOverride === "active",
-      subscription_amount: access === "supporter" ? supportAmount : 0,
-      subscription_status: statusOverride || access,
+      subscription_active: accessOverride === "free" || statusOverride === "active",
+      subscription_amount: 0,
+      subscription_status: statusOverride || (accessOverride === "supporter" ? "supporter_coming_soon" : accessOverride),
     });
     if (profileError) throw profileError;
 
@@ -48,7 +47,7 @@ export default function OnboardingScreen({ user, onComplete }) {
 
     try {
       if (forceFree) setAccess("free");
-      await saveProfile(forceFree ? "free" : undefined);
+      await saveProfile(forceFree ? "free" : undefined, forceFree ? "free" : access);
       onComplete?.(role || "customer");
     } catch (completeError) {
       setError(completeError.message || "Could not finish setup yet.");
@@ -60,28 +59,6 @@ export default function OnboardingScreen({ user, onComplete }) {
   const handleInstagramFollowStep = () => {
     setInstagramStepDone(true);
     window.open(HEHA_INSTAGRAM_URL, "_blank", "noopener,noreferrer");
-  };
-
-  const startSupporterCheckout = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      await saveProfile("supporter_checkout_started");
-      const stripeLink = import.meta.env.VITE_STRIPE_SUPPORTER_CHECKOUT_URL;
-      if (!stripeLink) {
-        throw new Error("Stripe checkout is not connected yet. Add VITE_STRIPE_SUPPORTER_CHECKOUT_URL in Vercel when your Stripe payment link is ready.");
-      }
-      const url = new URL(stripeLink);
-      url.searchParams.set("client_reference_id", user.id);
-      url.searchParams.set("prefilled_email", user.email || "");
-      url.searchParams.set("heha_amount", String(supportAmount));
-      window.location.href = url.toString();
-    } catch (checkoutError) {
-      setError(checkoutError.message || "Could not open Stripe checkout yet.");
-    } finally {
-      setLoading(false);
-    }
   };
 
   if (step === "role") {
@@ -111,7 +88,6 @@ export default function OnboardingScreen({ user, onComplete }) {
   }
 
   const isPartner = role === "partner";
-  const canStartStripe = access === "supporter";
   const freeCustomerNeedsInstagram = !isPartner && access === "free";
 
   return (
@@ -120,7 +96,7 @@ export default function OnboardingScreen({ user, onComplete }) {
         <button className="text-button" onClick={() => setStep("role")}>← Change path</button>
         <p className="eyebrow">Community access</p>
         <h1>{isPartner ? "Choose how your business joins." : "Choose your HEHA Swipe access."}</h1>
-        <p>Start free, or choose an optional monthly supporter amount. Support helps grow the local healthy business network.</p>
+        <p>Start free today. Supporter checkout is coming soon once payments are fully connected and tested.</p>
 
         <div className="choice-grid plan-choice-grid">
           <button
@@ -135,26 +111,15 @@ export default function OnboardingScreen({ user, onComplete }) {
             <p>{isPartner ? "Create a starter listing without paying today." : "Follow HEHA on Instagram, then explore and save local businesses for free."}</p>
           </button>
           <button className={access === "supporter" ? "choice-card featured active-plan" : "choice-card featured"} onClick={() => setAccess("supporter")}>
-            <span>🕊️</span>
+            <span>✦</span>
             <h2>Supporter</h2>
-            <p>Choose a monthly amount to support HEHA’s community work.</p>
+            <p>Supporter checkout is coming soon. You can still create a free account and explore HEHA Swipe.</p>
           </button>
         </div>
 
         {access === "supporter" && (
-          <div className="slider-card">
-            <div className="slider-header">
-              <strong>${supportAmount}/mo</strong>
-              <span>optional support</span>
-            </div>
-            <input
-              type="range"
-              min="1"
-              max="100"
-              step="1"
-              value={supportAmount}
-              onChange={(event) => setSupportAmount(Number(event.target.value))}
-            />
+          <div className="soft-note">
+            Supporter checkout is coming soon. You can still create a free account and explore HEHA Swipe.
           </div>
         )}
 
@@ -170,12 +135,9 @@ export default function OnboardingScreen({ user, onComplete }) {
           </div>
         )}
 
-        {canStartStripe ? (
+        {access === "supporter" ? (
           <>
-            <button className="primary-button" onClick={startSupporterCheckout} disabled={loading}>
-              {loading ? "Opening Stripe…" : "Start supporter checkout"}
-            </button>
-            <button className="secondary-button" onClick={() => complete({ forceFree: true })} disabled={loading}>
+            <button className="primary-button" onClick={() => complete({ forceFree: true })} disabled={loading}>
               Continue exploring free
             </button>
           </>
@@ -189,7 +151,9 @@ export default function OnboardingScreen({ user, onComplete }) {
           </button>
         )}
 
-        <div className="soft-note">Supporter checkout is coming soon. You can still create a free account and explore HEHA Swipe.</div>
+        {access !== "supporter" && (
+          <div className="soft-note">Supporter checkout is coming soon. You can still create a free account and explore HEHA Swipe.</div>
+        )}
         {error && <div className="error-banner">{error}</div>}
       </section>
     </main>
