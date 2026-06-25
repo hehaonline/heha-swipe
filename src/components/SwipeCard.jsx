@@ -213,8 +213,8 @@ export default function SwipeCard({ partner, onSwipe }) {
 
           <div className="card-footer compact-footer clean-footer">
             <div className="social-proof">
-              {partner.rating ? <strong>★ {Number(partner.rating).toFixed(1)}</strong> : <strong>{partner.heha_partner ? "Certified" : "Directory"}</strong>}
-              <span>{partner.review_count ? `${partner.review_count} reviews` : "by HEHA"}</span>
+              <strong>{partner.heha_partner ? "Certified" : "Listed"}</strong>
+              <span>by HEHA</span>
             </div>
             <button
               type="button"
