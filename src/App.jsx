@@ -266,15 +266,8 @@ await recordSwipeEvent(partner, "left");
 };
 
 const handleSuperSwipe = async (partner) => {
-const uid = session?.user?.id;
-if (!uid || !partner?.id) return;
-
-try {
-await recordSwipeEvent(partner, "super");
-flashNotice(`SuperSwoop sent for ${partner.name}. HEHA will know this one stands out.`);
-} catch (error) {
-flashNotice(error.message || "Could not send SuperSwoop yet.");
-}
+if (!partner?.id) return;
+flashNotice("SuperSwoop is coming soon. For now, save this spot and help us see what the community wants next.");
 };
 
 const handleDiscountCheck = async (partner, request = {}) => {
@@ -393,7 +386,7 @@ onClick={() => setShowLocationModal(true)}
 aria-label="Set your location"
 title="Set your location"
 >
-<span className="location-pill-icon">\u{1F4CD}</span>
+<span className="location-pill-icon">📍</span>
 <span className="location-pill-label">{locationLabel || "Tampa Bay"}</span>
 </button>
 <button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
