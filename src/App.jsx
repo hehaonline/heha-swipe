@@ -336,7 +336,22 @@ const handleLocationSaved = (locationString, displayLabel) => {
 setLocationLabel(displayLabel || locationString);
 };
 
+const supportCheckoutStatus = window.location.pathname === "/support/success"
+? "success"
+: window.location.pathname === "/support/cancel"
+? "cancel"
+: null;
+
+const handleSupportStatusContinue = () => {
+window.history.replaceState(null, "", "/");
+setTab("profile");
+if (session?.user?.id) loadData(session.user.id);
+};
+
 if (loading || !splashReady) return <SplashScreen />;
+if (supportCheckoutStatus) {
+return <SupportCheckoutStatus status={supportCheckoutStatus} onContinue={handleSupportStatusContinue} />;
+}
 if (!session) return <AuthScreen />;
 if (passwordRecovery) {
 return (
@@ -463,6 +478,26 @@ return (
 </div>
 <p className="heha-powered">powered by Healthy Habit LLC</p>
 </div>
+);
+}
+
+function SupportCheckoutStatus({ status, onContinue }) {
+const isSuccess = status === "success";
+return (
+<main className="onboarding-screen">
+<section className="join-card card-like">
+<p className="eyebrow">Monthly support</p>
+<h1>{isSuccess ? "Thank you for supporting HEHA Swipe." : "Supporter checkout canceled."}</h1>
+<p>
+{isSuccess
+? "Your monthly support helps us grow the local healthy discovery network."
+: "No worries. You can keep exploring HEHA Swipe for free."}
+</p>
+<button className="primary-button" type="button" onClick={onContinue}>
+Continue to HEHA Swipe
+</button>
+</section>
+</main>
 );
 }
 

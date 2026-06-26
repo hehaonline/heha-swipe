@@ -11,6 +11,7 @@ export default function OnboardingScreen({ user, onComplete }) {
   const [role, setRole] = useState(getInitialRole);
   const [step, setStep] = useState(role ? "access" : "role");
   const [access, setAccess] = useState("free");
+  const [supportAmount, setSupportAmount] = useState(10);
   const [instagramStepDone, setInstagramStepDone] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -56,6 +57,49 @@ export default function OnboardingScreen({ user, onComplete }) {
     }
   };
 
+  const startSupporterCheckout = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // The deployed checkout uses a fixed $1/month Stripe price, so the selected
+      // monthly dollar amount maps directly to quantity ($10/month => quantity 10).
+      const quantity = Number(supportAmount);
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+        throw new Error("Supporter checkout is not available yet. Please try again later.");
+      }
+
+      // Forward the active Supabase session token so the Edge Function can verify the user.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error("Please sign in again to start monthly support.");
+      }
+
+      const origin = window.location.origin;
+      const { data, error: checkoutError } = await supabase.functions.invoke("create-supporter-checkout", {
+        body: {
+          quantity,
+          successUrl: `${origin}/support/success`,
+          cancelUrl: `${origin}/support/cancel`,
+        },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      const checkoutUrl = data?.checkoutUrl;
+      if (checkoutError || !checkoutUrl) {
+        console.error("Supporter checkout failed", checkoutError || data);
+        throw new Error("Supporter checkout is not available yet. Please try again later.");
+      }
+
+      window.location.assign(checkoutUrl);
+    } catch (checkoutError) {
+      setError(checkoutError.message || "Supporter checkout is not available yet. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleInstagramFollowStep = () => {
     setInstagramStepDone(true);
     window.open(HEHA_INSTAGRAM_URL, "_blank", "noopener,noreferrer");
@@ -96,7 +140,7 @@ export default function OnboardingScreen({ user, onComplete }) {
         <button className="text-button" onClick={() => setStep("role")}>← Change path</button>
         <p className="eyebrow">Community access</p>
         <h1>{isPartner ? "Choose how your business joins." : "Choose your HEHA Swipe access."}</h1>
-        <p>Start free today. Supporter checkout is coming soon once payments are fully connected and tested.</p>
+        <p>Start free today or become a monthly supporter to help HEHA Swipe grow.</p>
 
         <div className="choice-grid plan-choice-grid">
           <button
@@ -113,13 +157,29 @@ export default function OnboardingScreen({ user, onComplete }) {
           <button className={access === "supporter" ? "choice-card featured active-plan" : "choice-card featured"} onClick={() => setAccess("supporter")}>
             <span>✦</span>
             <h2>Supporter</h2>
-            <p>Supporter checkout is coming soon. You can still create a free account and explore HEHA Swipe.</p>
+            <p>Support HEHA Swipe monthly and keep the local discovery network growing.</p>
           </button>
         </div>
 
         {access === "supporter" && (
-          <div className="soft-note">
-            Supporter checkout is coming soon. You can still create a free account and explore HEHA Swipe.
+          <div className="slider-card">
+            <p className="eyebrow">Support HEHA Swipe monthly</p>
+            <div className="slider-header">
+              <div>
+                <h3>Choose your monthly support amount</h3>
+                <span>$1 to $100/month</span>
+              </div>
+              <strong>${supportAmount}/month</strong>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="100"
+              step="1"
+              value={supportAmount}
+              onChange={(event) => setSupportAmount(Number(event.target.value))}
+              aria-label="Monthly support amount"
+            />
           </div>
         )}
 
@@ -137,7 +197,10 @@ export default function OnboardingScreen({ user, onComplete }) {
 
         {access === "supporter" ? (
           <>
-            <button className="primary-button" onClick={() => complete({ forceFree: true })} disabled={loading}>
+            <button className="primary-button" onClick={startSupporterCheckout} disabled={loading}>
+              {loading ? "Opening checkout..." : "Start monthly support"}
+            </button>
+            <button className="text-button center" type="button" onClick={() => complete({ forceFree: true })} disabled={loading}>
               Continue exploring free
             </button>
           </>
