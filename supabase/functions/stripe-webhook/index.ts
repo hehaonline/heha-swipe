@@ -1,206 +1,212 @@
-import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import Stripe from 'npm:stripe';
 
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY"), {
-  apiVersion: "2023-10-16",
-  httpClient: Stripe.createFetchHttpClient(),
-});
+type SupportType = 'dollar_support' | 'superswoop' | 'supporter_membership' | 'other';
 
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL"),
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
-);
+function getSupabaseServiceKey(): string {
+  const legacyServiceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (legacyServiceRole) return legacyServiceRole;
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, stripe-signature",
-};
+  const secretKeysJson = Deno.env.get('SUPABASE_SECRET_KEYS');
+  if (secretKeysJson) {
+    const parsed = JSON.parse(secretKeysJson);
+    if (parsed.default) return parsed.default;
+  }
 
-const SUPPORTER_SOURCE = "heha_swipe_supporter";
-
-function toTimestamp(value) {
-  return value ? new Date(value * 1000).toISOString() : null;
+  throw new Error('Missing Supabase service/secret key for Edge Function admin operations.');
 }
 
-function getSupporterAmountCents(metadata = {}) {
-  return Number(metadata.support_amount_cents || metadata.amount_cents || 0);
+function toTimestamp(value: number | null | undefined): string | null {
+  if (!value) return null;
+  return new Date(value * 1000).toISOString();
 }
 
-function isSupporterMetadata(metadata = {}) {
-  return metadata.source === SUPPORTER_SOURCE;
+function getUserIdFromObject(object: Stripe.Checkout.Session | Stripe.Subscription): string | null {
+  const metadataUserId = typeof object.metadata?.user_id === 'string' ? object.metadata.user_id : null;
+  if (metadataUserId) return metadataUserId;
+  if ('client_reference_id' in object && typeof object.client_reference_id === 'string') return object.client_reference_id;
+  return null;
 }
 
-async function upsertSupporterSubscription(fields) {
-  if (!fields?.user_id || !fields?.support_amount_cents) return;
+function inferSupportType(session: Stripe.Checkout.Session): SupportType {
+  const metadataSupportType = session.metadata?.support_type as SupportType | undefined;
+  if (metadataSupportType) return metadataSupportType;
+  if (session.mode === 'subscription') return 'supporter_membership';
 
-  const nextRow = {
-    ...fields,
-    updated_at: new Date().toISOString(),
+  // Safety fallback for the current sandbox Payment Links:
+  // $1.00 one-time = HEHA Swipe Support, $2.00 one-time = SuperSwoop.
+  // Future production links should send explicit metadata instead of relying on amount.
+  if (session.mode === 'payment' && session.amount_total === 100) return 'dollar_support';
+  if (session.mode === 'payment' && session.amount_total === 200) return 'superswoop';
+
+  return 'other';
+}
+
+function buildSessionMetadata(session: Stripe.Checkout.Session, supportType: SupportType) {
+  return {
+    ...(session.metadata ?? {}),
+    support_type: supportType,
+    payment_link: typeof session.payment_link === 'string' ? session.payment_link : session.payment_link?.id ?? null,
+    checkout_session_id: session.id,
+    environment: session.livemode ? 'live' : 'test',
   };
-
-  let existing = null;
-  if (fields.stripe_subscription_id) {
-    const { data } = await supabase
-      .from("supporter_subscriptions")
-      .select("id")
-      .eq("stripe_subscription_id", fields.stripe_subscription_id)
-      .maybeSingle();
-    existing = data;
-  }
-
-  if (!existing && fields.stripe_checkout_session_id) {
-    const { data } = await supabase
-      .from("supporter_subscriptions")
-      .select("id")
-      .eq("stripe_checkout_session_id", fields.stripe_checkout_session_id)
-      .maybeSingle();
-    existing = data;
-  }
-
-  const result = existing?.id
-    ? await supabase.from("supporter_subscriptions").update(nextRow).eq("id", existing.id)
-    : await supabase.from("supporter_subscriptions").insert(nextRow);
-
-  if (result.error) console.error("supporter_subscriptions write failed", result.error);
 }
 
-async function markSupporterPaymentFailed(subscriptionId) {
-  if (!subscriptionId) return;
-
-  const { data: existing } = await supabase
-    .from("supporter_subscriptions")
-    .select("user_id")
-    .eq("stripe_subscription_id", subscriptionId)
-    .maybeSingle();
-
-  await supabase
-    .from("supporter_subscriptions")
-    .update({ status: "payment_failed", updated_at: new Date().toISOString() })
-    .eq("stripe_subscription_id", subscriptionId);
-
-  if (existing?.user_id) {
-    await supabase.from("profiles").update({
-      subscription_active: false,
-      subscription_status: "payment_failed",
-    }).eq("id", existing.user_id);
+Deno.serve(async (req: Request) => {
+  if (req.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405 });
   }
-}
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
+  const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 
-  const signature = req.headers.get("stripe-signature");
+  if (!stripeSecretKey || !webhookSecret) {
+    console.error('Stripe webhook missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET');
+    return new Response('Webhook not configured', { status: 500 });
+  }
+
+  const stripe = new Stripe(stripeSecretKey, { apiVersion: '2025-02-24.acacia' });
+  const signature = req.headers.get('stripe-signature');
   const body = await req.text();
 
-  let event;
-  try {
-    event = await stripe.webhooks.constructEventAsync(
-      body, signature, Deno.env.get("STRIPE_WEBHOOK_SECRET")
-    );
-  } catch (err) {
-    return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+  if (!signature) {
+    return new Response('Missing Stripe signature', { status: 400 });
   }
 
-  switch (event.type) {
-    case "checkout.session.completed": {
-      const session = event.data.object;
-      const metadata = session.metadata || {};
-      const userId = metadata.user_id;
-      const amountCents = getSupporterAmountCents(metadata);
-      const role = session.metadata?.role || "customer";
-      const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
-      const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
+  let event: Stripe.Event;
+  try {
+    event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
+  } catch (error) {
+    console.error('Stripe signature verification failed', error);
+    return new Response('Bad signature', { status: 400 });
+  }
 
-      if (userId && isSupporterMetadata(metadata)) {
-        await upsertSupporterSubscription({
-          user_id: userId,
-          stripe_customer_id: customerId || null,
-          stripe_subscription_id: subscriptionId || null,
-          stripe_checkout_session_id: session.id,
-          support_amount_cents: amountCents,
-          status: "active",
-        });
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, getSupabaseServiceKey(), {
+    auth: { persistSession: false },
+  });
 
-        await supabase.from("profiles").update({
-          subscription_type: "customer_supporter",
-          subscription_amount: amountCents / 100,
-          subscription_active: true,
-          subscription_status: "active",
-          stripe_customer_id: customerId || null,
-          stripe_subscription_id: subscriptionId || null,
-        }).eq("id", userId);
-      } else if (userId) {
-        await supabase.from("profiles").update({
-          subscription_type: role === "partner" ? "partner_monthly" : "monthly",
-          subscription_amount: amountCents / 100,
-          subscription_active: true,
-          subscription_status: "active",
-          stripe_subscription_id: session.subscription,
-        }).eq("id", userId);
-      }
-      break;
-    }
-    case "customer.subscription.updated": {
-      const subscription = event.data.object;
-      const metadata = subscription.metadata || {};
-      const userId = metadata.user_id;
-      if (userId && isSupporterMetadata(metadata)) {
-        const amountCents = getSupporterAmountCents(metadata);
-        await upsertSupporterSubscription({
-          user_id: userId,
-          stripe_customer_id: typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id || null,
-          stripe_subscription_id: subscription.id,
-          support_amount_cents: amountCents,
-          status: subscription.status || "updated",
-          current_period_start: toTimestamp(subscription.current_period_start),
-          current_period_end: toTimestamp(subscription.current_period_end),
-        });
+  try {
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const userId = getUserIdFromObject(session);
+        const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id ?? null;
+        const sessionAmount = session.amount_total ?? 0;
+        const currency = session.currency ?? 'usd';
+        const supportType = inferSupportType(session);
 
-        await supabase.from("profiles").update({
-          subscription_type: "customer_supporter",
-          subscription_amount: amountCents / 100,
-          subscription_active: subscription.status === "active" || subscription.status === "trialing",
-          subscription_status: subscription.status || "updated",
-          stripe_subscription_id: subscription.id,
-        }).eq("id", userId);
-      }
-      break;
-    }
-    case "invoice.payment_succeeded": {
-      const invoice = event.data.object;
-      const sub = await stripe.subscriptions.retrieve(invoice.subscription);
-      const userId = sub.metadata?.user_id;
-      if (userId) await supabase.from("profiles").update({ subscription_active: true, subscription_status: "active" }).eq("id", userId);
-      break;
-    }
-    case "customer.subscription.deleted": {
-      const subscription = event.data.object;
-      const metadata = subscription.metadata || {};
-      const subId = subscription.id;
-      if (isSupporterMetadata(metadata)) {
-        await supabase
-          .from("supporter_subscriptions")
-          .update({
-            status: subscription.status || "cancelled",
+        if (session.mode === 'subscription' && typeof session.subscription === 'string') {
+          const subscription = await stripe.subscriptions.retrieve(session.subscription);
+          const priceId = subscription.items.data[0]?.price?.id ?? session.metadata?.price_id ?? null;
+          const quantity = subscription.items.data[0]?.quantity ?? Number(session.metadata?.quantity ?? 1);
+          const unitAmount = subscription.items.data[0]?.price?.unit_amount ?? 100;
+
+          await supabase.from('supporter_subscriptions').upsert({
+            user_id: userId,
+            stripe_subscription_id: subscription.id,
+            stripe_customer_id: customerId,
+            stripe_price_id: priceId,
+            quantity,
+            amount_cents: (unitAmount ?? 100) * quantity,
+            currency,
+            status: subscription.status,
             current_period_start: toTimestamp(subscription.current_period_start),
             current_period_end: toTimestamp(subscription.current_period_end),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("stripe_subscription_id", subId);
-      }
-      if (subId) await supabase.from("profiles").update({ subscription_active: false, subscription_status: "cancelled" }).eq("stripe_subscription_id", subId);
-      break;
-    }
-    case "invoice.payment_failed": {
-      const invoice = event.data.object;
-      const subId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
-      await markSupporterPaymentFailed(subId);
-      if (subId) await supabase.from("profiles").update({ subscription_active: false, subscription_status: "cancelled" }).eq("stripe_subscription_id", subId);
-      break;
-    }
-  }
+            cancel_at_period_end: subscription.cancel_at_period_end,
+            canceled_at: toTimestamp(subscription.canceled_at),
+            metadata: {
+              ...(subscription.metadata ?? {}),
+              support_type: 'supporter_membership',
+              checkout_session_id: session.id,
+              environment: session.livemode ? 'live' : 'test',
+            },
+          }, { onConflict: 'stripe_subscription_id' });
 
-  return new Response(JSON.stringify({ received: true }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200,
-  });
+          if (userId) {
+            await supabase.from('profiles').update({
+              stripe_customer_id: customerId,
+              stripe_subscription_id: subscription.id,
+              subscription_type: 'supporter_membership',
+              subscription_amount: ((unitAmount ?? 100) * quantity) / 100,
+              subscription_active: ['active', 'trialing'].includes(subscription.status),
+              subscription_status: subscription.status,
+            }).eq('id', userId);
+          }
+        } else {
+          await supabase.from('supporter_payments').upsert({
+            user_id: userId,
+            stripe_checkout_session_id: session.id,
+            stripe_payment_intent_id: typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null,
+            stripe_customer_id: customerId,
+            amount_cents: sessionAmount,
+            currency,
+            support_type: supportType,
+            status: session.payment_status === 'paid' ? 'paid' : 'pending',
+            metadata: buildSessionMetadata(session, supportType),
+          }, { onConflict: 'stripe_checkout_session_id' });
+
+          await supabase.from('contributions').insert({
+            user_id: userId,
+            type: supportType,
+            amount: sessionAmount / 100,
+            freebird_portion: 0,
+            heha_portion: sessionAmount / 100,
+            stripe_payment_id: typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? session.id,
+            status: session.payment_status === 'paid' ? 'paid' : 'pending',
+          });
+        }
+        break;
+      }
+
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object as Stripe.Subscription;
+        const userId = getUserIdFromObject(subscription);
+        const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id ?? null;
+        const priceId = subscription.items.data[0]?.price?.id ?? null;
+        const quantity = subscription.items.data[0]?.quantity ?? Number(subscription.metadata?.quantity ?? 1);
+        const unitAmount = subscription.items.data[0]?.price?.unit_amount ?? 100;
+
+        await supabase.from('supporter_subscriptions').upsert({
+          user_id: userId,
+          stripe_subscription_id: subscription.id,
+          stripe_customer_id: customerId,
+          stripe_price_id: priceId,
+          quantity,
+          amount_cents: (unitAmount ?? 100) * quantity,
+          currency: subscription.currency ?? 'usd',
+          status: subscription.status,
+          current_period_start: toTimestamp(subscription.current_period_start),
+          current_period_end: toTimestamp(subscription.current_period_end),
+          cancel_at_period_end: subscription.cancel_at_period_end,
+          canceled_at: toTimestamp(subscription.canceled_at),
+          metadata: {
+            ...(subscription.metadata ?? {}),
+            support_type: 'supporter_membership',
+          },
+        }, { onConflict: 'stripe_subscription_id' });
+
+        if (userId) {
+          await supabase.from('profiles').update({
+            stripe_customer_id: customerId,
+            stripe_subscription_id: subscription.id,
+            subscription_type: 'supporter_membership',
+            subscription_amount: ((unitAmount ?? 100) * quantity) / 100,
+            subscription_active: ['active', 'trialing'].includes(subscription.status),
+            subscription_status: subscription.status,
+          }).eq('id', userId);
+        }
+        break;
+      }
+
+      default:
+        console.log(`Unhandled Stripe event type: ${event.type}`);
+    }
+
+    return Response.json({ received: true });
+  } catch (error) {
+    console.error('stripe-webhook processing error', error);
+    return new Response('Webhook processing failed', { status: 500 });
+  }
 });
