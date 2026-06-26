@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background:
+    radial-gradient(circle at 50% 24%, rgba(255, 138, 36, 0.08), transparent 30%),
+    linear-gradient(180deg, #ffffff 0%, #fffaf2 100%);
+  background-attachment: fixed;
+  color: #191715;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8;
+  }
+
+  .eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full border border-line bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-muted;
+  }
+
+  .card-soft {
+    @apply rounded-3xl border border-line bg-white shadow-soft;
+  }
+
+  .input-field {
+    @apply w-full rounded-2xl border border-line bg-cream/60 px-4 py-3 text-ink placeholder:text-muted/60 outline-none transition focus:border-orange focus:bg-white focus:ring-2 focus:ring-orange/30;
+  }
+
+  .label-field {
+    @apply mb-1.5 block text-sm font-semibold text-ink;
+  }
+
+  .chip {
+    @apply cursor-pointer select-none rounded-full border px-3.5 py-2 text-sm font-medium transition;
+  }
+}
+
+/* Subtle reveal for hero/section accents */
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-floaty {
+  animation: floaty 6s ease-in-out infinite;
+}
