@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import ShareSheet from "./ShareSheet";
+import { filterPublicTags } from "../lib/partnerTags";
 
 const dragThreshold = 72;
 
@@ -35,12 +36,10 @@ function getCategoryGroup(partner) {
 }
 
 function getPartnerTags(partner) {
-  const tags = [
+  const tags = filterPublicTags([
     ...(partner.offerings || []),
     ...(partner.tags || []),
-  ]
-    .filter(Boolean)
-    .filter((tag) => !String(tag).toLowerCase().includes("crm-seed"));
+  ]);
   return [...new Set(tags)].slice(0, 2);
 }
 
@@ -81,7 +80,7 @@ function hasRealWebsite(url) {
 }
 
 function statusBadge(partner) {
-  if (partner.heha_partner) return "HEHA Certified";
+  if (partner.heha_partner) return "HEHA Reviewed";
   return "Listed on HEHA Swipe";
 }
 
@@ -213,7 +212,7 @@ export default function SwipeCard({ partner, onSwipe }) {
 
           <div className="card-footer compact-footer clean-footer">
             <div className="social-proof">
-              <strong>{partner.heha_partner ? "Certified" : "Listed"}</strong>
+              <strong>{partner.heha_partner ? "Reviewed" : "Listed"}</strong>
               <span>by HEHA</span>
             </div>
             <button

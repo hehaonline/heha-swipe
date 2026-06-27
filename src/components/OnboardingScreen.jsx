@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
+import { startSupporterCheckout as startSupporterCheckoutFlow } from "../lib/supporterCheckout";
 
 const HEHA_INSTAGRAM_URL = import.meta.env.VITE_HEHA_INSTAGRAM_URL || "https://www.instagram.com/heha.online/";
 
@@ -62,37 +63,8 @@ export default function OnboardingScreen({ user, onComplete }) {
     setError(null);
 
     try {
-      // The deployed checkout uses a fixed $1/month Stripe price, so the selected
-      // monthly dollar amount maps directly to quantity ($10/month => quantity 10).
-      const quantity = Number(supportAmount);
-      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
-        throw new Error("Supporter checkout is not available yet. Please try again later.");
-      }
-
-      // Forward the active Supabase session token so the Edge Function can verify the user.
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData?.session?.access_token;
-      if (!accessToken) {
-        throw new Error("Please sign in again to start monthly support.");
-      }
-
-      const origin = window.location.origin;
-      const { data, error: checkoutError } = await supabase.functions.invoke("create-supporter-checkout", {
-        body: {
-          quantity,
-          successUrl: `${origin}/support/success`,
-          cancelUrl: `${origin}/support/cancel`,
-        },
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-
-      const checkoutUrl = data?.checkoutUrl;
-      if (checkoutError || !checkoutUrl) {
-        console.error("Supporter checkout failed", checkoutError || data);
-        throw new Error("Supporter checkout is not available yet. Please try again later.");
-      }
-
-      window.location.assign(checkoutUrl);
+      // Shared canonical supporter checkout (also used by the Community Pass dashboard).
+      await startSupporterCheckoutFlow(supportAmount);
     } catch (checkoutError) {
       setError(checkoutError.message || "Supporter checkout is not available yet. Please try again later.");
     } finally {
