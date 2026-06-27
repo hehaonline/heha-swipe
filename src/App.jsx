@@ -22,6 +22,7 @@ const COMPLETED_SUBSCRIPTION_TYPES = [
 "monthly",
 "customer_free",
 "customer_supporter",
+"supporter_membership",
 "partner_free",
 "partner_supporter",
 "partner_instagram",
@@ -41,7 +42,15 @@ const PARTNER_SUBSCRIPTION_TYPES = [
 "listed",
 ];
 
+function isActiveSupporter(profile) {
+if (!profile) return false;
+const status = (profile.subscription_status || "").toLowerCase();
+// A paid/active supporter is always allowed into the app (no onboarding gate).
+return profile.subscription_active === true && (status === "active" || status === "trialing");
+}
+
 function isOnboarded(profile) {
+if (isActiveSupporter(profile)) return true;
 const type = profile?.subscription_type;
 if (!type) return false;
 return COMPLETED_SUBSCRIPTION_TYPES.some(
@@ -83,6 +92,9 @@ const [notice, setNotice] = useState(null);
 const [appError, setAppError] = useState(null);
 const [showLocationModal, setShowLocationModal] = useState(false);
 const [locationLabel, setLocationLabel] = useState(null);
+// True when the app first loaded on the post-payment success route — used to avoid
+// bouncing a just-paid supporter back into onboarding while the webhook settles.
+const [supportReturn] = useState(() => window.location.pathname === "/support/success");
 
 useEffect(() => {
 const timer = window.setTimeout(() => setSplashReady(true), 3400);
@@ -343,15 +355,28 @@ const supportCheckoutStatus = window.location.pathname === "/support/success"
 ? "cancel"
 : null;
 
-const handleSupportStatusContinue = () => {
+// Refetch the profile on demand (used by the success page to wait for the
+// Stripe webhook to mark the user as an active supporter). Returns true once
+// active-supporter state is visible.
+const refreshProfileNow = async () => {
+const uid = session?.user?.id;
+if (!uid) return false;
+const { data, error } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+if (error || !data) return false;
+setProfile(data);
+setNeedsOnboarding(!isOnboarded(data));
+return isActiveSupporter(data);
+};
+
+const handleSupportStatusContinue = async () => {
+await refreshProfileNow();
 window.history.replaceState(null, "", "/");
-setTab("profile");
-if (session?.user?.id) loadData(session.user.id);
+setTab("deals"); // land on the Community / supporter dashboard
 };
 
 if (loading || !splashReady) return <SplashScreen />;
 if (supportCheckoutStatus) {
-return <SupportCheckoutStatus status={supportCheckoutStatus} onContinue={handleSupportStatusContinue} />;
+return <SupportCheckoutStatus status={supportCheckoutStatus} onContinue={handleSupportStatusContinue} onPoll={refreshProfileNow} />;
 }
 if (!session) return <AuthScreen />;
 if (passwordRecovery) {
@@ -365,7 +390,7 @@ loadData(session.user.id);
 );
 }
 
-if (needsOnboarding) {
+if (needsOnboarding && !supportReturn) {
 return (
 <OnboardingScreen
 user={session.user}
@@ -482,21 +507,92 @@ return (
 );
 }
 
-function SupportCheckoutStatus({ status, onContinue }) {
+function SupportCheckoutStatus({ status, onContinue, onPoll }) {
 const isSuccess = status === "success";
+// checking -> waiting for the Stripe webhook to mark supporter active
+// ready    -> active supporter confirmed
+// slow     -> webhook taking longer than expected (still let the user continue)
+const [phase, setPhase] = useState(isSuccess ? "checking" : "ready");
+
+useEffect(() => {
+if (!isSuccess) return;
+let cancelled = false;
+let tries = 0;
+const tick = async () => {
+tries += 1;
+let ok = false;
+try {
+ok = await onPoll?.();
+} catch {
+ok = false;
+}
+if (cancelled) return;
+if (ok) return setPhase("ready");
+if (tries >= 5) return setPhase("slow");
+window.setTimeout(tick, 2000);
+};
+tick();
+return () => {
+cancelled = true;
+};
+// run once on mount for the success screen
+}, []);
+
+const retry = async () => {
+setPhase("checking");
+let ok = false;
+try {
+ok = await onPoll?.();
+} catch {
+ok = false;
+}
+setPhase(ok ? "ready" : "slow");
+};
+
+if (!isSuccess) {
 return (
 <main className="onboarding-screen">
 <section className="join-card card-like">
 <p className="eyebrow">Monthly support</p>
-<h1>{isSuccess ? "Thank you for supporting HEHA Swipe." : "Supporter checkout canceled."}</h1>
-<p>
-{isSuccess
-? "Your monthly support helps us grow the local healthy discovery network."
-: "No worries. You can keep exploring HEHA Swipe for free."}
-</p>
+<h1>Supporter checkout canceled.</h1>
+<p>No worries. You can keep exploring HEHA Swipe for free.</p>
 <button className="primary-button" type="button" onClick={onContinue}>
 Continue to HEHA Swipe
 </button>
+</section>
+</main>
+);
+}
+
+return (
+<main className="onboarding-screen">
+<section className="join-card card-like">
+<p className="eyebrow">Monthly support</p>
+<h1>Thank you for supporting HEHA Swipe.</h1>
+{phase === "checking" ? (
+<p>Finalizing your supporter access…</p>
+) : phase === "slow" ? (
+<p>Still finalizing your supporter access — this can take a moment. You can continue into HEHA Swipe now.</p>
+) : (
+<p>Your monthly support helps us grow the local healthy discovery network.</p>
+)}
+
+{phase === "checking" ? (
+<button className="primary-button" type="button" disabled>
+Finalizing…
+</button>
+) : (
+<>
+<button className="primary-button" type="button" onClick={onContinue}>
+Continue to HEHA Swipe
+</button>
+{phase === "slow" && (
+<button className="text-button center" type="button" onClick={retry}>
+Retry
+</button>
+)}
+</>
+)}
 </section>
 </main>
 );
