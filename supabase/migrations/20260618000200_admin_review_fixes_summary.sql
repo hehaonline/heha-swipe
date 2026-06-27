@@ -1,0 +1,7 @@
+-- Live Supabase migration applied by Nova for PR 16 review fixes.
+-- Summary only: the applied database migration added updated_at triggers for event_applications,
+-- event_concepts, invite_list, community_outreach, and event_recaps.
+-- It also tightened RLS so community_events_admin can write Niña-owned community records,
+-- pm_admin is mainly read/coordination on those tables, and final approved/published/scheduled
+-- states remain restricted to super_admin/developer_admin.
+-- The detailed live SQL is documented in docs/admin-dashboard-review-fixes.md.
