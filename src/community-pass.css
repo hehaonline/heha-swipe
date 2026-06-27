@@ -79,6 +79,9 @@
 .cp-benefit-icon { font-size: 18px; line-height: 1; }
 
 .cp-cta-card { display: flex; flex-direction: column; gap: 10px; }
+.cp-amount-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cp-amount-hint { display: block; font-size: 12px; color: var(--heha-muted, #8a918b); }
+.cp-cta-card input[type="range"] { width: 100%; accent-color: var(--heha-green, #1e4d1e); }
 .cp-reminder {
   font-size: 13px;
   color: var(--heha-muted, #6b746e);

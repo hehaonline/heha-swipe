@@ -439,13 +439,7 @@ onUnsave={handleUnsave}
 onDiscountCheck={handleDiscountCheck}
 />
 )}
-{tab === "deals" && (
-<CommunityPassTab
-user={session.user}
-profile={profile}
-onBecomeSupporter={() => flashNotice("Monthly support is coming soon — you'll be able to start it right here.")}
-/>
-)}
+{tab === "deals" && <CommunityPassTab profile={profile} />}
 {tab === "profile" && (
 <ProfileTab
 user={session.user}

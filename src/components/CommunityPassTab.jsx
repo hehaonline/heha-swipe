@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { startSupporterCheckout } from "../lib/supporterCheckout";
 
 // Community Pass & Local Deals dashboard.
-// Read-only view of supporter/profile state — does NOT initiate Stripe checkout
-// (supporter checkout activation is owned by the separate payment-flow PR).
+// Reads supporter/profile state; for "Become a Supporter" it routes to the shared,
+// already-deployed supporter checkout (PR #26) via lib/supporterCheckout — no
+// duplicated Stripe logic and no new checkout function.
 
 const REMINDER_COPY =
   "HEHA Swipe grows through the people using it. If this community helps you discover better local options, even $1/month helps us keep building.";
@@ -34,7 +36,7 @@ function statusLabel(profile) {
   return profile?.subscription_active ? "Active" : "—";
 }
 
-function ManageSupportModal({ amount, portalUrl, onClose }) {
+function ManageSupportModal({ portalUrl, onClose }) {
   const [billingNote, setBillingNote] = useState(null);
 
   const goToBilling = () => {
@@ -84,11 +86,26 @@ function ManageSupportModal({ amount, portalUrl, onClose }) {
   );
 }
 
-export default function CommunityPassTab({ user, profile, onBecomeSupporter }) {
+export default function CommunityPassTab({ profile }) {
   const [showManage, setShowManage] = useState(false);
+  const [amount, setAmount] = useState(5);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
   const supporter = isActiveSupporter(profile);
-  const amount = Number(profile?.subscription_amount || 0);
+  const currentAmount = Number(profile?.subscription_amount || 0);
   const portalUrl = import.meta.env.VITE_STRIPE_CUSTOMER_PORTAL_URL || null;
+
+  const goToCheckout = async (qty) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await startSupporterCheckout(qty); // redirects to Stripe on success
+    } catch (e) {
+      setError(e.message || "Supporter checkout is not available yet. Please try again later.");
+      setBusy(false);
+    }
+  };
 
   return (
     <section className="community-pass-screen">
@@ -108,7 +125,7 @@ export default function CommunityPassTab({ user, profile, onBecomeSupporter }) {
             <div className="cp-status-grid">
               <div>
                 <span className="cp-status-label">Monthly support</span>
-                <strong className="cp-status-value">{amount > 0 ? `$${amount}/month` : "Active"}</strong>
+                <strong className="cp-status-value">{currentAmount > 0 ? `$${currentAmount}/month` : "Active"}</strong>
               </div>
               <div>
                 <span className="cp-status-label">Status</span>
@@ -149,9 +166,7 @@ export default function CommunityPassTab({ user, profile, onBecomeSupporter }) {
             Manage support
           </button>
 
-          {showManage && (
-            <ManageSupportModal amount={amount} portalUrl={portalUrl} onClose={() => setShowManage(false)} />
-          )}
+          {showManage && <ManageSupportModal portalUrl={portalUrl} onClose={() => setShowManage(false)} />}
         </>
       ) : (
         <>
@@ -173,12 +188,32 @@ export default function CommunityPassTab({ user, profile, onBecomeSupporter }) {
           </div>
 
           <div className="cp-cta-card card-like">
-            <button className="primary-button" type="button" onClick={() => onBecomeSupporter?.()}>
-              Become a Supporter
+            <div className="cp-amount-row">
+              <div>
+                <span className="cp-status-label">Choose your monthly support</span>
+                <span className="cp-amount-hint">$1 to $100/month</span>
+              </div>
+              <strong className="cp-status-value">${amount}/month</strong>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="100"
+              step="1"
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+              aria-label="Monthly support amount"
+              disabled={busy}
+            />
+
+            <button className="primary-button" type="button" onClick={() => goToCheckout(amount)} disabled={busy}>
+              {busy ? "Opening checkout…" : `Become a Supporter · $${amount}/month`}
             </button>
-            <button className="secondary-button" type="button" onClick={() => onBecomeSupporter?.()}>
+            <button className="secondary-button" type="button" onClick={() => goToCheckout(1)} disabled={busy}>
               Start at $1/month
             </button>
+
+            {error && <div className="cp-billing-note">{error}</div>}
             <p className="cp-reminder">{REMINDER_COPY}</p>
           </div>
         </>
