@@ -96,6 +96,15 @@ const [locationLabel, setLocationLabel] = useState(null);
 // True when the app first loaded on the post-payment success route — used to avoid
 // bouncing a just-paid supporter back into onboarding while the webhook settles.
 const [supportReturn] = useState(() => window.location.pathname === "/support/success");
+// State-driven post-checkout view so "Continue" can reliably leave the screen
+// (replaceState alone does not trigger a re-render).
+const [supportView, setSupportView] = useState(() =>
+window.location.pathname === "/support/success"
+? "success"
+: window.location.pathname === "/support/cancel"
+? "cancel"
+: null
+);
 
 useEffect(() => {
 const timer = window.setTimeout(() => setSplashReady(true), 3400);
@@ -356,12 +365,6 @@ const handleLocationSaved = (locationString, displayLabel) => {
 setLocationLabel(displayLabel || locationString);
 };
 
-const supportCheckoutStatus = window.location.pathname === "/support/success"
-? "success"
-: window.location.pathname === "/support/cancel"
-? "cancel"
-: null;
-
 // Refetch the profile on demand (used by the success page to wait for the
 // Stripe webhook to mark the user as an active supporter). Returns true once
 // active-supporter state is visible.
@@ -376,15 +379,18 @@ setNeedsOnboarding(!(((data && isOnboarded(data)) || supporterActive)));
 return profileSupporter || supporterActive;
 };
 
-const handleSupportStatusContinue = async () => {
-await refreshProfileNow();
+const handleSupportStatusContinue = () => {
+// Navigate immediately and unconditionally — never gated behind an async call.
+setSupportView(null);
 window.history.replaceState(null, "", "/");
 setTab("deals"); // land on the Community / supporter dashboard
+// Sync supporter state in the background (does not block navigation).
+refreshProfileNow();
 };
 
 if (loading || !splashReady) return <SplashScreen />;
-if (supportCheckoutStatus) {
-return <SupportCheckoutStatus status={supportCheckoutStatus} onContinue={handleSupportStatusContinue} onPoll={refreshProfileNow} />;
+if (supportView) {
+return <SupportCheckoutStatus status={supportView} onContinue={handleSupportStatusContinue} onPoll={refreshProfileNow} />;
 }
 if (!session) return <AuthScreen />;
 if (passwordRecovery) {
