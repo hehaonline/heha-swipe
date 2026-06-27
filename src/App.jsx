@@ -163,6 +163,20 @@ const savedPartnerIds = useMemo(
 [saves]
 );
 
+// Does the authenticated user have an active/trialing supporter subscription?
+// RLS allows a user to read only their own supporter_subscriptions rows.
+const hasActiveSupporterSub = async (uid) => {
+if (!uid) return false;
+const { data, error } = await supabase
+.from("supporter_subscriptions")
+.select("status")
+.eq("user_id", uid)
+.in("status", ["active", "trialing"])
+.limit(1);
+if (error) return false;
+return Array.isArray(data) && data.length > 0;
+};
+
 const loadData = async (uid = session?.user?.id) => {
 if (!uid) return;
 setDataLoading(true);
@@ -191,7 +205,10 @@ const nextSaves = saveResult.data || [];
 setProfile(nextProfile);
 setPartners(nextPartners);
 setSaves(nextSaves);
-setNeedsOnboarding(!isOnboarded(nextProfile));
+// Allow app entry if the profile says active supporter OR an active/trialing
+// supporter_subscriptions row exists (covers webhook/profile-flip lag).
+const supporterBySub = isActiveSupporter(nextProfile) ? true : await hasActiveSupporterSub(uid);
+setNeedsOnboarding(!(isOnboarded(nextProfile) || supporterBySub));
 
 if (isPartnerProfile(nextProfile)) {
 const { data: existing, error } = await supabase
@@ -361,11 +378,12 @@ const supportCheckoutStatus = window.location.pathname === "/support/success"
 const refreshProfileNow = async () => {
 const uid = session?.user?.id;
 if (!uid) return false;
-const { data, error } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
-if (error || !data) return false;
-setProfile(data);
-setNeedsOnboarding(!isOnboarded(data));
-return isActiveSupporter(data);
+const { data } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+if (data) setProfile(data);
+const profileSupporter = isActiveSupporter(data);
+const supporterActive = profileSupporter ? true : await hasActiveSupporterSub(uid);
+setNeedsOnboarding(!(((data && isOnboarded(data)) || supporterActive)));
+return profileSupporter || supporterActive;
 };
 
 const handleSupportStatusContinue = async () => {
