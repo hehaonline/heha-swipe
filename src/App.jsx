@@ -8,11 +8,12 @@ import FavesTab from "./components/FavesTab";
 import ProfileTab from "./components/ProfileTab";
 import PasswordResetScreen from "./components/PasswordResetScreen";
 import LocationModal, { getActiveLocationLabel } from "./components/LocationModal";
+import CommunityPassTab from "./components/CommunityPassTab";
 
 const TABS = [
 { id: "swipe", label: "Discover", icon: "\u2315" },
 { id: "faves", label: "Saved", icon: "\u2661" },
-{ id: "deals", label: "Deals", icon: "\u2311" },
+{ id: "deals", label: "Community", icon: "\u2311" },
 { id: "profile", label: "Profile", icon: "\u2659" },
 ];
 
@@ -438,7 +439,13 @@ onUnsave={handleUnsave}
 onDiscountCheck={handleDiscountCheck}
 />
 )}
-{tab === "deals" && <DealsTab />}
+{tab === "deals" && (
+<CommunityPassTab
+user={session.user}
+profile={profile}
+onBecomeSupporter={() => flashNotice("Monthly support is coming soon — you'll be able to start it right here.")}
+/>
+)}
 {tab === "profile" && (
 <ProfileTab
 user={session.user}
@@ -501,14 +508,3 @@ Continue to HEHA Swipe
 );
 }
 
-function DealsTab() {
-return (
-<section className="saved-screen deals-screen">
-<div className="section-hero clean-section-hero">
-<p className="eyebrow">Member offers</p>
-<h2>Deals are coming soon.</h2>
-<p>Saved discount requests and partner offers will live here once HEHA starts activating member deals.</p>
-</div>
-</section>
-);
-}
