@@ -298,9 +298,7 @@ function PartnerPreviewSheet({ partner, categoryGroup, images, tags, items, onCl
           {publicDescription(partner) && <p className="preview-tagline">{publicDescription(partner)}</p>}
 
           {tags.length > 0 && (
-            <div className="detail-tags preview-tags">
-              {tags.map((tag) => <span key={tag}>{tag}</span>)}
-            </div>
+            <div className="detail-tags preview-tags">{tags.join(", ")}</div>
           )}
 
           {items.length > 0 && (

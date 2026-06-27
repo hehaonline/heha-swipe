@@ -131,7 +131,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
 
             {tags.length > 0 && (
               <div className="detail-tags">
-                {tags.map((tag) => <span key={tag}>{tag}</span>)}
+                {tags.join(", ")}
               </div>
             )}
           </div>
