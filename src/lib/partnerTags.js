@@ -15,7 +15,9 @@ export function filterPublicTags(rawTags = []) {
     .filter((tag) => {
       const key = tag.toLowerCase();
       if (!key) return false;
-      if (key.includes("crm-seed")) return false;
+      // Hide all CRM/import pipeline tags (crm, crm-import, crm-seed, crm-*) and bare "import".
+      if (key.startsWith("crm")) return false;
+      if (key === "import") return false;
       return !INTERNAL_TAGS.has(key);
     });
 }
