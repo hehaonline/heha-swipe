@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { startSupporterCheckout } from "../lib/supporterCheckout";
+import { fetchActiveSupporterSubscription } from "../lib/supporterStatus";
 
 // Community Pass & Local Deals dashboard.
 // Reads supporter/profile state; for "Become a Supporter" it routes to the shared,
@@ -86,14 +87,46 @@ function ManageSupportModal({ portalUrl, onClose }) {
   );
 }
 
-export default function CommunityPassTab({ profile }) {
+export default function CommunityPassTab({ user, profile }) {
   const [showManage, setShowManage] = useState(false);
   const [amount, setAmount] = useState(5);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // Fallback: if the profile hasn't been flipped by the webhook yet, an active
+  // supporter_subscriptions row still counts (covers post-payment lag).
+  const [subRow, setSubRow] = useState(null);
 
-  const supporter = isActiveSupporter(profile);
-  const currentAmount = Number(profile?.subscription_amount || 0);
+  const profileSupporter = isActiveSupporter(profile);
+
+  useEffect(() => {
+    if (profileSupporter || !user?.id) {
+      setSubRow(null);
+      return;
+    }
+    let cancelled = false;
+    fetchActiveSupporterSubscription(user.id)
+      .then((row) => {
+        if (!cancelled) setSubRow(row);
+      })
+      .catch(() => {
+        if (!cancelled) setSubRow(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileSupporter, user?.id]);
+
+  const supporter = profileSupporter || !!subRow;
+  const currentAmount = profileSupporter
+    ? Number(profile?.subscription_amount || 0)
+    : subRow
+    ? Number(subRow.amount_cents || 0) / 100
+    : 0;
+  const supporterStatus = profileSupporter
+    ? statusLabel(profile)
+    : subRow
+    ? (subRow.status === "trialing" ? "Trialing" : "Active")
+    : statusLabel(profile);
   const portalUrl = import.meta.env.VITE_STRIPE_CUSTOMER_PORTAL_URL || null;
 
   const goToCheckout = async (qty) => {
@@ -129,7 +162,7 @@ export default function CommunityPassTab({ profile }) {
               </div>
               <div>
                 <span className="cp-status-label">Status</span>
-                <strong className="cp-status-value">{statusLabel(profile)}</strong>
+                <strong className="cp-status-value">{supporterStatus}</strong>
               </div>
             </div>
             <p className="cp-thanks">

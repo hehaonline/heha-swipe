@@ -9,6 +9,7 @@ import ProfileTab from "./components/ProfileTab";
 import PasswordResetScreen from "./components/PasswordResetScreen";
 import LocationModal, { getActiveLocationLabel } from "./components/LocationModal";
 import CommunityPassTab from "./components/CommunityPassTab";
+import { fetchActiveSupporterSubscription } from "./lib/supporterStatus";
 
 const TABS = [
 { id: "swipe", label: "Discover", icon: "\u2315" },
@@ -164,18 +165,7 @@ const savedPartnerIds = useMemo(
 );
 
 // Does the authenticated user have an active/trialing supporter subscription?
-// RLS allows a user to read only their own supporter_subscriptions rows.
-const hasActiveSupporterSub = async (uid) => {
-if (!uid) return false;
-const { data, error } = await supabase
-.from("supporter_subscriptions")
-.select("status")
-.eq("user_id", uid)
-.in("status", ["active", "trialing"])
-.limit(1);
-if (error) return false;
-return Array.isArray(data) && data.length > 0;
-};
+const hasActiveSupporterSub = async (uid) => !!(await fetchActiveSupporterSubscription(uid));
 
 const loadData = async (uid = session?.user?.id) => {
 if (!uid) return;
@@ -482,7 +472,7 @@ onUnsave={handleUnsave}
 onDiscountCheck={handleDiscountCheck}
 />
 )}
-{tab === "deals" && <CommunityPassTab profile={profile} />}
+{tab === "deals" && <CommunityPassTab user={session.user} profile={profile} />}
 {tab === "profile" && (
 <ProfileTab
 user={session.user}
