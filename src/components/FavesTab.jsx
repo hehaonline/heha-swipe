@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { filterPublicTags } from "../lib/partnerTags";
 
 function fallbackImage(partner) {
   if (partner.image_url) return partner.image_url;
@@ -88,7 +89,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
 
   if (selectedPartner) {
     const items = Array.isArray(selectedPartner.items) ? selectedPartner.items : [];
-    const tags = [...new Set([...(selectedPartner.offerings || []), ...(selectedPartner.tags || [])])].slice(0, 8);
+    const tags = [...new Set(filterPublicTags([...(selectedPartner.offerings || []), ...(selectedPartner.tags || [])]))].slice(0, 8);
     const ig = instagramUrl(selectedPartner.instagram);
     const hasSelectedItems = selectedItems.length > 0;
     const images = galleryImages(selectedPartner);
@@ -105,7 +106,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
           <div className="detail-image-wrap gallery-hero">
             <img src={currentImage} alt={`${selectedPartner.name} preview`} />
             <div className="detail-avatar">{selectedPartner.photo_emoji || "🌿"}</div>
-            {selectedPartner.heha_partner && <span className="detail-verified">HEHA Certified</span>}
+            {selectedPartner.heha_partner && <span className="detail-verified">HEHA Reviewed</span>}
             {!selectedPartner.heha_partner && <span className="detail-listed">Listed on HEHA Swipe</span>}
             {images.length > 1 && (
               <div className="gallery-dots" aria-label="Partner photo gallery">
@@ -267,7 +268,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
             <div>
               <div className="saved-title-row">
                 <h3>{partner.name}</h3>
-                {partner.heha_partner ? <span>Certified</span> : <span>Listed</span>}
+                {partner.heha_partner ? <span>Reviewed</span> : <span>Listed</span>}
               </div>
               <p>{partner.category} · {partner.neighborhood || "Tampa Bay"}</p>
               {partner.price_range && <small>{partner.price_range}</small>}
