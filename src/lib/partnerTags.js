@@ -8,6 +8,15 @@ export const INTERNAL_TAGS = new Set([
   "crm", "crm-seed", "crm seed", "seed", "internal",
 ]);
 
+// Generic category/taxonomy slugs that just duplicate the card's category/status
+// label — hide them as chips (the category chip already conveys this).
+const GENERIC_CATEGORY_TAGS = new Set([
+  "event", "events", "market", "markets", "restaurant", "restaurants",
+  "vendor", "vendors", "wellness", "coach", "coaches", "service", "services",
+  "catering", "private chef", "senior", "facility", "senior & facility",
+  "senior and facility", "heha market",
+]);
+
 export function filterPublicTags(rawTags = []) {
   return rawTags
     .filter(Boolean)
@@ -15,7 +24,10 @@ export function filterPublicTags(rawTags = []) {
     .filter((tag) => {
       const key = tag.toLowerCase();
       if (!key) return false;
-      if (key.includes("crm-seed")) return false;
+      // Hide all CRM/import pipeline tags (crm, crm-import, crm-seed, crm-*) and bare "import".
+      if (key.startsWith("crm")) return false;
+      if (key === "import") return false;
+      if (GENERIC_CATEGORY_TAGS.has(key)) return false;
       return !INTERNAL_TAGS.has(key);
     });
 }
