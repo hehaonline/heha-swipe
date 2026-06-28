@@ -1,19 +1,30 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { supabase } from "../lib/supabase";
 
 const redirectTo = window.location.origin;
+// Single source of truth for the sign-up intent key so it stays in sync with App.jsx.
+const SIGNUP_ROLE_KEY = "heha_signup_role";
 
 export default function AuthScreen() {
-  const [role, setRole] = useState(() => localStorage.getItem("heha_signup_role") || "");
+  const [role, setRole] = useState(() => localStorage.getItem(SIGNUP_ROLE_KEY) || "");
   const [mode, setMode] = useState("create");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
+  // Guards against a second auth call firing before `loading` disables the button
+  // on the next render (rapid double-click / double-submit). One click => one call.
+  const authPending = useRef(false);
+
+  // Persist the chosen customer/partner intent right before an auth call so it
+  // survives the OAuth/magic-link round trip and can be read after login.
+  const persistIntent = () => {
+    localStorage.setItem(SIGNUP_ROLE_KEY, role || "customer");
+  };
 
   const chooseRole = (nextRole) => {
-    localStorage.setItem("heha_signup_role", nextRole);
+    localStorage.setItem(SIGNUP_ROLE_KEY, nextRole);
     setRole(nextRole);
     setMessage(null);
     setError(null);
@@ -21,7 +32,7 @@ export default function AuthScreen() {
 
   const changeRole = () => {
     const nextRole = role === "partner" ? "customer" : "partner";
-    localStorage.setItem("heha_signup_role", nextRole);
+    localStorage.setItem(SIGNUP_ROLE_KEY, nextRole);
     setRole(nextRole);
     setMessage(null);
     setError(null);
@@ -29,6 +40,9 @@ export default function AuthScreen() {
 
   const submitPasswordAuth = async (event) => {
     event.preventDefault();
+    if (authPending.current) return;
+    authPending.current = true;
+    persistIntent();
     setLoading(true);
     setError(null);
     setMessage(null);
@@ -60,10 +74,14 @@ export default function AuthScreen() {
       setError(authError.message || "Could not complete authentication.");
     } finally {
       setLoading(false);
+      authPending.current = false;
     }
   };
 
   const sendSignInEmail = async () => {
+    if (authPending.current) return;
+    authPending.current = true;
+    persistIntent();
     setLoading(true);
     setError(null);
     setMessage(null);
@@ -71,7 +89,10 @@ export default function AuthScreen() {
     try {
       const { error: linkError } = await supabase.auth.signInWithOtp({
         email: email.trim(),
-        options: { emailRedirectTo: redirectTo, shouldCreateUser: true },
+        // On the Sign in tab, do NOT create a new user: that path can trigger a
+        // second (signup confirmation) email on top of the magic link. New accounts
+        // are still created intentionally from the Create account tab.
+        options: { emailRedirectTo: redirectTo, shouldCreateUser: mode === "create" },
       });
       if (linkError) throw linkError;
       setMessage("We sent a secure sign-in email. Open the link to continue.");
@@ -79,10 +100,13 @@ export default function AuthScreen() {
       setError(linkError.message || "Could not send sign-in email.");
     } finally {
       setLoading(false);
+      authPending.current = false;
     }
   };
 
   const sendPasswordReset = async () => {
+    if (authPending.current) return;
+    authPending.current = true;
     setLoading(true);
     setError(null);
     setMessage(null);
@@ -98,21 +122,27 @@ export default function AuthScreen() {
       setError(resetError.message || "Could not send password reset email.");
     } finally {
       setLoading(false);
+      authPending.current = false;
     }
   };
 
   const signInWithProvider = async (provider) => {
+    if (authPending.current) return;
+    authPending.current = true;
     setLoading(true);
     setError(null);
-    localStorage.setItem("heha_signup_role", role || "customer");
+    persistIntent();
 
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider,
       options: { redirectTo },
     });
+    // On success the browser redirects to the provider, so we intentionally do not
+    // reset here. Only clear the guard if the call failed before navigating away.
     if (authError) {
       setError(authError.message);
       setLoading(false);
+      authPending.current = false;
     }
   };
 
@@ -128,7 +158,6 @@ export default function AuthScreen() {
             <p>Swipe local spots. Save favorites. Set your vibe. Businesses can request to get listed.</p>
           </div>
 
-          <p className="choice-prompt">How are you joining?</p>
           <div className="choice-grid auth-choice-grid">
             <button type="button" className="choice-card" onClick={() => chooseRole("customer")}>
               <span>🌿</span>

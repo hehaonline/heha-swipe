@@ -133,7 +133,7 @@ export default function OnboardingScreen({ user, onComplete }) {
           </button>
         </div>
 
-        {access === "supporter" && supporterCheckoutLive && (
+        {access === "supporter" && (
           <div className="slider-card">
             <p className="eyebrow">Support HEHA Swipe monthly</p>
             <div className="slider-header">

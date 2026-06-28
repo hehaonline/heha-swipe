@@ -209,14 +209,27 @@ setSaves(nextSaves);
 const supporterBySub = isActiveSupporter(nextProfile) ? true : await hasActiveSupporterSub(uid);
 setNeedsOnboarding(!(isOnboarded(nextProfile) || supporterBySub));
 
-if (isPartnerProfile(nextProfile)) {
+// Business/partner intent: either an existing partner profile, or the role the
+// user chose at sign-up and that we preserved through login. A brand-new partner
+// signup has no subscription_type yet, so without the stored intent it would fall
+// into the generic customer onboarding instead of business registration (#35).
+const signupIntent = localStorage.getItem("heha_signup_role");
+if (isPartnerProfile(nextProfile) || signupIntent === "partner") {
 const { data: existing, error } = await supabase
 .from("partners")
 .select("id")
 .eq("owner_id", uid)
 .maybeSingle();
 if (error) throw error;
-if (!existing) setShowPartnerWizard(true);
+if (!existing) {
+// Route business-intent users straight to business registration (PartnerWizard),
+// not the generic customer onboarding (which is checked first in render).
+setShowPartnerWizard(true);
+setNeedsOnboarding(false);
+// Intent consumed — clear it only now that routing has succeeded so a partner
+// is not re-pushed into the wizard on later refreshes.
+if (signupIntent === "partner") localStorage.removeItem("heha_signup_role");
+}
 }
 } catch (error) {
 setAppError(error.message || "Could not load HEHA Swipe.");
