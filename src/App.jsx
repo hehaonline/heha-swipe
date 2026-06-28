@@ -88,6 +88,9 @@ const [splashReady, setSplashReady] = useState(false);
 const [dataLoading, setDataLoading] = useState(false);
 const [needsOnboarding, setNeedsOnboarding] = useState(false);
 const [showPartnerWizard, setShowPartnerWizard] = useState(false);
+// The signed-in user's own partner listing (id/name/status) if they own one,
+// so the Profile tab can show role-aware business copy (#36).
+const [myListing, setMyListing] = useState(null);
 const [passwordRecovery, setPasswordRecovery] = useState(false);
 const [notice, setNotice] = useState(null);
 const [appError, setAppError] = useState(null);
@@ -137,6 +140,7 @@ setPartners([]);
 setSaves([]);
 setNeedsOnboarding(false);
 setShowPartnerWizard(false);
+setMyListing(null);
 setPasswordRecovery(false);
 // Refresh location label for guest state
 setLocationLabel(getActiveLocationLabel(null));
@@ -214,13 +218,17 @@ setNeedsOnboarding(!(isOnboarded(nextProfile) || supporterBySub));
 // signup has no subscription_type yet, so without the stored intent it would fall
 // into the generic customer onboarding instead of business registration (#35).
 const signupIntent = localStorage.getItem("heha_signup_role");
+setMyListing(null);
 if (isPartnerProfile(nextProfile) || signupIntent === "partner") {
 const { data: existing, error } = await supabase
 .from("partners")
-.select("id")
+.select("id, name, status")
 .eq("owner_id", uid)
 .maybeSingle();
 if (error) throw error;
+// Remember the owner's own listing so the Profile tab can show status-aware
+// business copy instead of asking them to register again (#36).
+setMyListing(existing || null);
 if (!existing) {
 // Route business-intent users straight to business registration (PartnerWizard),
 // not the generic customer onboarding (which is checked first in render).
@@ -498,6 +506,8 @@ user={session.user}
 profile={profile}
 partners={partners}
 saves={saves}
+isBusiness={isPartnerProfile(profile) || !!myListing}
+listing={myListing}
 onSignOut={handleSignOut}
 onListBusiness={() => setShowPartnerWizard(true)}
 onRefresh={() => loadData(session.user.id)}

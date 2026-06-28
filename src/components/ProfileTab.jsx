@@ -6,6 +6,8 @@ export default function ProfileTab({
   profile,
   partners = [],
   saves = [],
+  isBusiness = false,
+  listing = null,
   onSignOut,
   onListBusiness,
   onRefresh,
@@ -284,14 +286,40 @@ export default function ProfileTab({
         </div>
       </div>
 
-      <button className="partner-cta" onClick={onListBusiness}>
-        <div>
-          <span>🏪</span>
-          <h3>Have a healthy business?</h3>
-          <p>Get listed on HEHA Swipe and become visible to local customers looking for cleaner options.</p>
-        </div>
-        <strong>Start →</strong>
-      </button>
+      {isBusiness ? (
+        listing ? (
+          <div className="profile-card card-like">
+            <p className="eyebrow">Your business</p>
+            <h3>Your business listing</h3>
+            <p>
+              {["approved", "listed", "live"].includes(String(listing.status || "").toLowerCase())
+                ? "Your business is live on HEHA Swipe."
+                : "Your business has been submitted. HEHA reviews listings before they appear publicly."}
+            </p>
+            <p>You can add Community Pass deals and SuperSwoop offers later, after your listing is reviewed.</p>
+            <p className="fine-print">Follow HEHA on Instagram or connect with our team to stay updated while your listing is reviewed.</p>
+          </div>
+        ) : (
+          <div className="profile-card card-like">
+            <p className="eyebrow">Free business registration</p>
+            <h3>Register your business now to be seen by HEHA users.</h3>
+            <p>Register your business to be reviewed for HEHA Swipe and future local offers. Submit your business for HEHA review — listings appear publicly only after review.</p>
+            <button className="primary-button" onClick={onListBusiness}>Register my business</button>
+            <p className="fine-print">Already submitted? HEHA will review listings before they appear publicly.</p>
+            <p className="fine-print">Community Pass deals and SuperSwoop offers can be added later, after your listing is reviewed. Partner support options coming soon.</p>
+            <p className="fine-print">Follow HEHA on Instagram or connect with our team to stay updated while your listing is reviewed.</p>
+          </div>
+        )
+      ) : (
+        <button className="partner-cta" onClick={onListBusiness}>
+          <div>
+            <span>🏪</span>
+            <h3>Have a healthy business?</h3>
+            <p>Get listed on HEHA Swipe and become visible to local customers looking for cleaner options.</p>
+          </div>
+          <strong>Start →</strong>
+        </button>
+      )}
 
       <div className="profile-card card-like">
         <p className="eyebrow">Why HEHA Swipe exists</p>
