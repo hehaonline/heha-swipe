@@ -94,6 +94,20 @@ export default function ProfileTab({
     }
   };
 
+  const handleRefreshBusinesses = async () => {
+    setBusy(true);
+    setProfileError(null);
+    setProfileMessage(null);
+    try {
+      await onRefresh?.();
+      setProfileMessage("Businesses refreshed.");
+    } catch (error) {
+      setProfileError(error?.message || "Could not refresh businesses yet.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveUserProfile = async () => {
     setBusy(true);
     setProfileError(null);
@@ -188,16 +202,22 @@ export default function ProfileTab({
         <div><strong>{unreadCount}</strong><span>inbox</span></div>
       </div>
 
+      <div className="profile-card card-like">
+        <p className="eyebrow">HEHA updates</p>
+        <h3>What’s new</h3>
+        <p>HEHA Swipe is in early access. Community Pass perks, local deals, and partner updates are rolling out.</p>
+      </div>
+
       <div className="profile-card card-like inbox-card">
         <div className="inbox-heading">
           <div>
-            <p className="eyebrow">HEHA Inbox</p>
-            <h3>Updates from HEHA</h3>
+            <p className="eyebrow">Your inbox</p>
+            <h3>Your messages</h3>
           </div>
           {unreadCount > 0 && <button onClick={markAllMessagesRead} disabled={busy}>Mark read</button>}
         </div>
         {messagesLoading ? (
-          <p>Loading inbox…</p>
+          <p>Loading messages…</p>
         ) : messages.length ? (
           <div className="inbox-list">
             {messages.map((message) => (
@@ -209,7 +229,7 @@ export default function ProfileTab({
             ))}
           </div>
         ) : (
-          <p>No HEHA messages yet. Discount updates, partner replies, and future order notes can appear here.</p>
+          <p>No personal messages yet. Discount replies and order updates will appear here.</p>
         )}
       </div>
 
@@ -290,7 +310,7 @@ export default function ProfileTab({
       {profileError && <div className="error-banner">{profileError}</div>}
 
       <div className="profile-actions">
-        <button className="secondary-button" onClick={onRefresh} disabled={busy}>Refresh businesses</button>
+        <button className="secondary-button" onClick={handleRefreshBusinesses} disabled={busy}>{busy ? "Refreshing…" : "Refresh businesses"}</button>
         <button className="secondary-button" onClick={resetAppProfile} disabled={busy}>Reset app profile</button>
         <button className="danger-button" onClick={requestAccountDeletion} disabled={busy}>Request account deletion</button>
         <button className="secondary-button" onClick={onSignOut} disabled={busy}>Sign out</button>

@@ -122,11 +122,10 @@ export default function AuthScreen() {
         <section className="auth-card">
           <div className="auth-hero">
             <div className="brand-mark large">✦</div>
-            <p className="eyebrow">HEHA Swipe Tampa Bay · Early access</p>
+            <p className="eyebrow">HEHA Swipe early access</p>
             <h1>Swipe local. Save healthy spots. Support what you love.</h1>
             <p>HEHA Swipe helps you discover local healthy restaurants, wellness spaces, markets, vendors, and community businesses — starting as an early-access web app.</p>
-            <p className="auth-feature-line">Swipe local spots. Save favorites. Set your vibe. Businesses can request to get listed.</p>
-            <p className="auth-access-note">Create a free account to explore HEHA Swipe.</p>
+            <p>Swipe local spots. Save favorites. Set your vibe. Businesses can request to get listed.</p>
           </div>
 
           <p className="choice-prompt">How are you joining?</p>
@@ -150,12 +149,10 @@ export default function AuthScreen() {
   const isBusiness = role === "partner";
   const accessLabel = isBusiness ? "Business access" : "Customer access";
   const switchLabel = isBusiness ? "Customer access" : "Business access";
-  const headline = isBusiness
-    ? "Sign in or create your business profile."
-    : "Sign in or create your HEHA explorer profile.";
+  const headline = "Swipe local. Save healthy spots. Support what you love.";
   const helperCopy = isBusiness
-    ? "Manage your business listing and become visible to local customers looking for healthier options."
-    : "Save local restaurants, wellness spaces, markets, and offers you want to remember.";
+    ? "HEHA Swipe helps you discover local healthy restaurants, wellness spaces, markets, vendors, and community businesses — starting as an early-access web app. Create a free account to request your business listing."
+    : "HEHA Swipe helps you discover local healthy restaurants, wellness spaces, markets, vendors, and community businesses — starting as an early-access web app. Create a free account to explore HEHA Swipe.";
 
   return (
     <main className="auth-screen">
@@ -169,6 +166,7 @@ export default function AuthScreen() {
           <p className="eyebrow">{accessLabel}</p>
           <h1>{headline}</h1>
           <p>{helperCopy}</p>
+          <p>Swipe local spots. Save favorites. Set your vibe. Businesses can request to get listed.</p>
         </div>
 
         <div className="auth-tabs">

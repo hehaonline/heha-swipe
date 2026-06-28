@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { filterPublicTags } from "../lib/partnerTags";
+import { publicDescription, TWO_LINE_CLAMP } from "../lib/cardCopy";
 
 function fallbackImage(partner) {
   if (partner.image_url) return partner.image_url;
@@ -88,7 +90,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
 
   if (selectedPartner) {
     const items = Array.isArray(selectedPartner.items) ? selectedPartner.items : [];
-    const tags = [...new Set([...(selectedPartner.offerings || []), ...(selectedPartner.tags || [])])].slice(0, 8);
+    const tags = [...new Set(filterPublicTags([...(selectedPartner.offerings || []), ...(selectedPartner.tags || [])]))].slice(0, 8);
     const ig = instagramUrl(selectedPartner.instagram);
     const hasSelectedItems = selectedItems.length > 0;
     const images = galleryImages(selectedPartner);
@@ -105,7 +107,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
           <div className="detail-image-wrap gallery-hero">
             <img src={currentImage} alt={`${selectedPartner.name} preview`} />
             <div className="detail-avatar">{selectedPartner.photo_emoji || "🌿"}</div>
-            {selectedPartner.heha_partner && <span className="detail-verified">HEHA Certified</span>}
+            {selectedPartner.heha_partner && <span className="detail-verified">HEHA Reviewed</span>}
             {!selectedPartner.heha_partner && <span className="detail-listed">Listed on HEHA Swipe</span>}
             {images.length > 1 && (
               <div className="gallery-dots" aria-label="Partner photo gallery">
@@ -123,14 +125,13 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
 
           <div className="detail-body">
             <p className="eyebrow">{selectedPartner.category || "Local"} · {selectedPartner.neighborhood || "Tampa Bay"}</p>
-            <h2>{selectedPartner.name}</h2>
+            <h2 style={TWO_LINE_CLAMP}>{selectedPartner.name}</h2>
             {selectedPartner.price_range && <div className="price-range-pill">{selectedPartner.price_range}</div>}
-            {selectedPartner.tagline && <p className="detail-tagline">{selectedPartner.tagline}</p>}
-            {selectedPartner.bio && <p className="detail-bio">{selectedPartner.bio}</p>}
+            {publicDescription(selectedPartner) && <p className="detail-tagline">{publicDescription(selectedPartner)}</p>}
 
             {tags.length > 0 && (
               <div className="detail-tags">
-                {tags.map((tag) => <span key={tag}>{tag}</span>)}
+                {tags.join(", ")}
               </div>
             )}
           </div>
@@ -266,12 +267,12 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
             </div>
             <div>
               <div className="saved-title-row">
-                <h3>{partner.name}</h3>
-                {partner.heha_partner ? <span>Certified</span> : <span>Listed</span>}
+                <h3 style={TWO_LINE_CLAMP}>{partner.name}</h3>
+                {partner.heha_partner ? <span>Reviewed</span> : <span>Listed</span>}
               </div>
               <p>{partner.category} · {partner.neighborhood || "Tampa Bay"}</p>
               {partner.price_range && <small>{partner.price_range}</small>}
-              {!partner.price_range && partner.tagline && <small>{partner.tagline}</small>}
+              {!partner.price_range && publicDescription(partner) && <small>{publicDescription(partner)}</small>}
               <div className="saved-actions">
                 <button type="button" onClick={(event) => { event.stopPropagation(); openDetails(partner); }}>View details</button>
                 {!partner.heha_partner && <button type="button" onClick={(event) => { event.stopPropagation(); openDetails(partner); setShowDiscountForm(true); }}>Check discounts</button>}

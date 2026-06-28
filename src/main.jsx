@@ -11,6 +11,7 @@ import "./preview-and-onboarding-fixes.css";
 import "./partner-wizard-clean.css";
 import "./placeholder-photo.css";
 import "./location-modal.css";
+import "./community-pass.css";
 import App from "./App.jsx";
 
 createRoot(document.getElementById("root")).render(<StrictMode><App /></StrictMode>);

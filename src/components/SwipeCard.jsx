@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import ShareSheet from "./ShareSheet";
+import { filterPublicTags } from "../lib/partnerTags";
+import { publicDescription, TWO_LINE_CLAMP } from "../lib/cardCopy";
 
 const dragThreshold = 72;
 
@@ -35,12 +37,10 @@ function getCategoryGroup(partner) {
 }
 
 function getPartnerTags(partner) {
-  const tags = [
+  const tags = filterPublicTags([
     ...(partner.offerings || []),
     ...(partner.tags || []),
-  ]
-    .filter(Boolean)
-    .filter((tag) => !String(tag).toLowerCase().includes("crm-seed"));
+  ]);
   return [...new Set(tags)].slice(0, 2);
 }
 
@@ -81,12 +81,13 @@ function hasRealWebsite(url) {
 }
 
 function statusBadge(partner) {
-  if (partner.heha_partner) return "HEHA Certified";
+  if (partner.heha_partner) return "HEHA Reviewed";
   return "Listed on HEHA Swipe";
 }
 
 function displayName(name = "") {
-  return name.length > 38 ? `${name.slice(0, 35)}…` : name;
+  // Names wrap to 2 lines in the UI (TWO_LINE_CLAMP) instead of hard-truncating.
+  return name;
 }
 
 function itemUrl(item) {
@@ -190,9 +191,8 @@ export default function SwipeCard({ partner, onSwipe }) {
 
         <div className="card-main compact-main clean-main">
           <p className="location-line">📍 {partner.neighborhood || partner.location || "Tampa Bay"}</p>
-          <h2>{displayName(partner.name)}</h2>
-          {partner.tagline && <p className="tagline">{partner.tagline}</p>}
-          {!partner.tagline && partner.bio && <p className="tagline">{partner.bio}</p>}
+          <h2 style={TWO_LINE_CLAMP}>{displayName(partner.name)}</h2>
+          {publicDescription(partner) && <p className="tagline">{publicDescription(partner)}</p>}
         </div>
 
         <div className="card-bottom-zone">
@@ -213,8 +213,8 @@ export default function SwipeCard({ partner, onSwipe }) {
 
           <div className="card-footer compact-footer clean-footer">
             <div className="social-proof">
-              {partner.rating ? <strong>★ {Number(partner.rating).toFixed(1)}</strong> : <strong>{partner.heha_partner ? "Certified" : "Directory"}</strong>}
-              <span>{partner.review_count ? `${partner.review_count} reviews` : "by HEHA"}</span>
+              <strong>{partner.heha_partner ? "Reviewed" : "Listed"}</strong>
+              <span>by HEHA</span>
             </div>
             <button
               type="button"
@@ -295,13 +295,10 @@ function PartnerPreviewSheet({ partner, categoryGroup, images, tags, items, onCl
           <p className="eyebrow">{partner.neighborhood || partner.location || "Tampa Bay"}</p>
           <h2>{partner.name}</h2>
           {partner.price_range && <span className="price-range-pill">{partner.price_range}</span>}
-          {partner.tagline && <p className="preview-tagline">{partner.tagline}</p>}
-          {partner.bio && <p className="preview-bio">{partner.bio}</p>}
+          {publicDescription(partner) && <p className="preview-tagline">{publicDescription(partner)}</p>}
 
           {tags.length > 0 && (
-            <div className="detail-tags preview-tags">
-              {tags.map((tag) => <span key={tag}>{tag}</span>)}
-            </div>
+            <div className="detail-tags preview-tags">{tags.join(", ")}</div>
           )}
 
           {items.length > 0 && (

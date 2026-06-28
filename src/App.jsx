@@ -8,11 +8,13 @@ import FavesTab from "./components/FavesTab";
 import ProfileTab from "./components/ProfileTab";
 import PasswordResetScreen from "./components/PasswordResetScreen";
 import LocationModal, { getActiveLocationLabel } from "./components/LocationModal";
+import CommunityPassTab from "./components/CommunityPassTab";
+import { fetchActiveSupporterSubscription } from "./lib/supporterStatus";
 
 const TABS = [
 { id: "swipe", label: "Discover", icon: "\u2315" },
 { id: "faves", label: "Saved", icon: "\u2661" },
-{ id: "deals", label: "Deals", icon: "\u2311" },
+{ id: "deals", label: "Community", icon: "\u2311" },
 { id: "profile", label: "Profile", icon: "\u2659" },
 ];
 
@@ -21,6 +23,7 @@ const COMPLETED_SUBSCRIPTION_TYPES = [
 "monthly",
 "customer_free",
 "customer_supporter",
+"supporter_membership",
 "partner_free",
 "partner_supporter",
 "partner_instagram",
@@ -40,7 +43,15 @@ const PARTNER_SUBSCRIPTION_TYPES = [
 "listed",
 ];
 
+function isActiveSupporter(profile) {
+if (!profile) return false;
+const status = (profile.subscription_status || "").toLowerCase();
+// A paid/active supporter is always allowed into the app (no onboarding gate).
+return profile.subscription_active === true && (status === "active" || status === "trialing");
+}
+
 function isOnboarded(profile) {
+if (isActiveSupporter(profile)) return true;
 const type = profile?.subscription_type;
 if (!type) return false;
 return COMPLETED_SUBSCRIPTION_TYPES.some(
@@ -82,6 +93,18 @@ const [notice, setNotice] = useState(null);
 const [appError, setAppError] = useState(null);
 const [showLocationModal, setShowLocationModal] = useState(false);
 const [locationLabel, setLocationLabel] = useState(null);
+// True when the app first loaded on the post-payment success route — used to avoid
+// bouncing a just-paid supporter back into onboarding while the webhook settles.
+const [supportReturn] = useState(() => window.location.pathname === "/support/success");
+// State-driven post-checkout view so "Continue" can reliably leave the screen
+// (replaceState alone does not trigger a re-render).
+const [supportView, setSupportView] = useState(() =>
+window.location.pathname === "/support/success"
+? "success"
+: window.location.pathname === "/support/cancel"
+? "cancel"
+: null
+);
 
 useEffect(() => {
 const timer = window.setTimeout(() => setSplashReady(true), 3400);
@@ -150,6 +173,9 @@ const savedPartnerIds = useMemo(
 [saves]
 );
 
+// Does the authenticated user have an active/trialing supporter subscription?
+const hasActiveSupporterSub = async (uid) => !!(await fetchActiveSupporterSubscription(uid));
+
 const loadData = async (uid = session?.user?.id) => {
 if (!uid) return;
 setDataLoading(true);
@@ -178,7 +204,10 @@ const nextSaves = saveResult.data || [];
 setProfile(nextProfile);
 setPartners(nextPartners);
 setSaves(nextSaves);
-setNeedsOnboarding(!isOnboarded(nextProfile));
+// Allow app entry if the profile says active supporter OR an active/trialing
+// supporter_subscriptions row exists (covers webhook/profile-flip lag).
+const supporterBySub = isActiveSupporter(nextProfile) ? true : await hasActiveSupporterSub(uid);
+setNeedsOnboarding(!(isOnboarded(nextProfile) || supporterBySub));
 
 if (isPartnerProfile(nextProfile)) {
 const { data: existing, error } = await supabase
@@ -266,15 +295,8 @@ await recordSwipeEvent(partner, "left");
 };
 
 const handleSuperSwipe = async (partner) => {
-const uid = session?.user?.id;
-if (!uid || !partner?.id) return;
-
-try {
-await recordSwipeEvent(partner, "super");
-flashNotice(`SuperSwoop sent for ${partner.name}. HEHA will know this one stands out.`);
-} catch (error) {
-flashNotice(error.message || "Could not send SuperSwoop yet.");
-}
+if (!partner?.id) return;
+flashNotice("SuperSwoop is coming soon. For now, save this spot and help us see what the community wants next.");
 };
 
 const handleDiscountCheck = async (partner, request = {}) => {
@@ -343,7 +365,33 @@ const handleLocationSaved = (locationString, displayLabel) => {
 setLocationLabel(displayLabel || locationString);
 };
 
+// Refetch the profile on demand (used by the success page to wait for the
+// Stripe webhook to mark the user as an active supporter). Returns true once
+// active-supporter state is visible.
+const refreshProfileNow = async () => {
+const uid = session?.user?.id;
+if (!uid) return false;
+const { data } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+if (data) setProfile(data);
+const profileSupporter = isActiveSupporter(data);
+const supporterActive = profileSupporter ? true : await hasActiveSupporterSub(uid);
+setNeedsOnboarding(!(((data && isOnboarded(data)) || supporterActive)));
+return profileSupporter || supporterActive;
+};
+
+const handleSupportStatusContinue = () => {
+// Navigate immediately and unconditionally — never gated behind an async call.
+setSupportView(null);
+window.history.replaceState(null, "", "/");
+setTab("deals"); // land on the Community / supporter dashboard
+// Sync supporter state in the background (does not block navigation).
+refreshProfileNow();
+};
+
 if (loading || !splashReady) return <SplashScreen />;
+if (supportView) {
+return <SupportCheckoutStatus status={supportView} onContinue={handleSupportStatusContinue} onPoll={refreshProfileNow} />;
+}
 if (!session) return <AuthScreen />;
 if (passwordRecovery) {
 return (
@@ -356,7 +404,7 @@ loadData(session.user.id);
 );
 }
 
-if (needsOnboarding) {
+if (needsOnboarding && !supportReturn) {
 return (
 <OnboardingScreen
 user={session.user}
@@ -430,7 +478,7 @@ onUnsave={handleUnsave}
 onDiscountCheck={handleDiscountCheck}
 />
 )}
-{tab === "deals" && <DealsTab />}
+{tab === "deals" && <CommunityPassTab user={session.user} profile={profile} />}
 {tab === "profile" && (
 <ProfileTab
 user={session.user}
@@ -473,14 +521,94 @@ return (
 );
 }
 
-function DealsTab() {
+function SupportCheckoutStatus({ status, onContinue, onPoll }) {
+const isSuccess = status === "success";
+// checking -> waiting for the Stripe webhook to mark supporter active
+// ready    -> active supporter confirmed
+// slow     -> webhook taking longer than expected (still let the user continue)
+const [phase, setPhase] = useState(isSuccess ? "checking" : "ready");
+
+useEffect(() => {
+if (!isSuccess) return;
+let cancelled = false;
+let tries = 0;
+const tick = async () => {
+tries += 1;
+let ok = false;
+try {
+ok = await onPoll?.();
+} catch {
+ok = false;
+}
+if (cancelled) return;
+if (ok) return setPhase("ready");
+if (tries >= 5) return setPhase("slow");
+window.setTimeout(tick, 2000);
+};
+tick();
+return () => {
+cancelled = true;
+};
+// run once on mount for the success screen
+}, []);
+
+const retry = async () => {
+setPhase("checking");
+let ok = false;
+try {
+ok = await onPoll?.();
+} catch {
+ok = false;
+}
+setPhase(ok ? "ready" : "slow");
+};
+
+if (!isSuccess) {
 return (
-<section className="saved-screen deals-screen">
-<div className="section-hero clean-section-hero">
-<p className="eyebrow">Member offers</p>
-<h2>Deals are coming soon.</h2>
-<p>Saved discount requests and partner offers will live here once HEHA starts activating member deals.</p>
-</div>
+<main className="onboarding-screen">
+<section className="join-card card-like">
+<p className="eyebrow">Monthly support</p>
+<h1>Supporter checkout canceled.</h1>
+<p>No worries. You can keep exploring HEHA Swipe for free.</p>
+<button className="primary-button" type="button" onClick={onContinue}>
+Continue to HEHA Swipe
+</button>
 </section>
+</main>
 );
 }
+
+return (
+<main className="onboarding-screen">
+<section className="join-card card-like">
+<p className="eyebrow">Monthly support</p>
+<h1>Thank you for supporting HEHA Swipe.</h1>
+{phase === "checking" ? (
+<p>Finalizing your supporter access…</p>
+) : phase === "slow" ? (
+<p>Still finalizing your supporter access — this can take a moment. You can continue into HEHA Swipe now.</p>
+) : (
+<p>Your monthly support helps us grow the local healthy discovery network.</p>
+)}
+
+{phase === "checking" ? (
+<button className="primary-button" type="button" disabled>
+Finalizing…
+</button>
+) : (
+<>
+<button className="primary-button" type="button" onClick={onContinue}>
+Continue to HEHA Swipe
+</button>
+{phase === "slow" && (
+<button className="text-button center" type="button" onClick={retry}>
+Retry
+</button>
+)}
+</>
+)}
+</section>
+</main>
+);
+}
+
