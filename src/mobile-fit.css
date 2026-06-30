@@ -134,9 +134,11 @@
   font-size: clamp(29px, 8.5vw, 39px);
   margin: 0 0 3px;
   letter-spacing: -.065em;
-  white-space: nowrap;
+  /* Wrap into the shared 2-line clamp (.polished-card .card-main h2 / TWO_LINE_CLAMP)
+     instead of single-line truncating. white-space:nowrap previously forced long
+     names like "VILLAGE HEALTH MARKET" to render as "VILLAGE HEA…". */
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .compact-main .tagline {
