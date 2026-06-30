@@ -306,7 +306,9 @@ body, button, input, textarea, select {
 .swipe-card.polished-card::after { display: none !important; }
 
 .card-category-strip {
-  min-height: 230px !important;
+  /* 30px gradient bar + image. Trimmed so the (now 2-line) title block clears the
+     fixed action dock instead of sitting under it (PR C companion fix). */
+  min-height: 186px !important;
   padding: 0 !important;
   display: block !important;
   background: #fff !important;
@@ -326,7 +328,7 @@ body, button, input, textarea, select {
 .category-events .card-category-strip::before { background: linear-gradient(135deg, #ffab72, #e9722e); }
 
 .strip-image-card {
-  min-height: 200px !important;
+  min-height: 156px !important;
   border-radius: 0 !important;
   border: 0 !important;
   background: #f9f4ec !important;
@@ -337,7 +339,7 @@ body, button, input, textarea, select {
 
 .strip-image-card img {
   width: 100% !important;
-  height: 200px !important;
+  height: 156px !important;
   object-fit: cover !important;
   display: block;
 }
