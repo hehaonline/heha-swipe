@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 import { startSupporterCheckout } from "../lib/supporterCheckout";
 import { fetchActiveSupporterSubscription } from "../lib/supporterStatus";
 
 // Community Pass & Local Deals dashboard.
-// Reads supporter/profile state; for "Become a Supporter" it routes to the shared,
-// already-deployed supporter checkout (PR #26) via lib/supporterCheckout — no
-// duplicated Stripe logic and no new checkout function.
+// Partner/business users see a read-only Partner Hub instead of customer supporter
+// checkout content. Admin-controlled partner fields stay display-only here.
 
 const REMINDER_COPY =
   "HEHA Swipe grows through the people using it. If this community helps you discover better local options, even $1/month helps us keep building.";
@@ -21,11 +21,46 @@ const BENEFITS = [
 ];
 
 const SUPPORTER_TYPES = ["supporter_membership", "customer_supporter", "partner_supporter"];
+const PARTNER_TYPES = [
+  "partner_free",
+  "partner_supporter",
+  "partner_instagram",
+  "partner_monthly",
+  "partner",
+  "listed",
+];
+const VISIBLE_STATUSES = ["approved", "listed", "live"];
 
 function isActiveSupporter(profile) {
   if (!profile) return false;
   const type = profile.subscription_type || "";
   return profile.subscription_active === true && SUPPORTER_TYPES.includes(type);
+}
+
+function isPartnerProfile(profile) {
+  return PARTNER_TYPES.includes(profile?.subscription_type || "");
+}
+
+function normalizeStatus(status) {
+  return (status || "pending").toLowerCase();
+}
+
+function formatStatus(status) {
+  return normalizeStatus(status).replace(/_/g, " ");
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function completionLabel(value) {
+  if (value === null || value === undefined || value === "") return "Not calculated yet";
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return "Not calculated yet";
+  return `${Math.max(0, Math.min(100, Math.round(parsed)))}%`;
 }
 
 function statusLabel(profile) {
@@ -66,7 +101,6 @@ function ManageSupportModal({ portalUrl, onClose }) {
             Keep my support
           </button>
 
-          {/* Quantity-change (lower amount) is not wired yet — shown as coming soon, never a dead end. */}
           <button className="secondary-button" type="button" disabled title="Coming soon">
             Lower to $1/month · Coming soon
           </button>
@@ -75,7 +109,6 @@ function ManageSupportModal({ portalUrl, onClose }) {
             Pause support
           </button>
 
-          {/* Always-visible, never blocked: the path out stays open. */}
           <button className="text-button center" type="button" onClick={goToBilling}>
             Continue to billing
           </button>
@@ -87,13 +120,11 @@ function ManageSupportModal({ portalUrl, onClose }) {
   );
 }
 
-export default function CommunityPassTab({ user, profile }) {
+function CustomerCommunityPass({ user, profile }) {
   const [showManage, setShowManage] = useState(false);
   const [amount, setAmount] = useState(5);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  // Fallback: if the profile hasn't been flipped by the webhook yet, an active
-  // supporter_subscriptions row still counts (covers post-payment lag).
   const [subRow, setSubRow] = useState(null);
 
   const profileSupporter = isActiveSupporter(profile);
@@ -101,7 +132,7 @@ export default function CommunityPassTab({ user, profile }) {
   useEffect(() => {
     if (profileSupporter || !user?.id) {
       setSubRow(null);
-      return;
+      return undefined;
     }
     let cancelled = false;
     fetchActiveSupporterSubscription(user.id)
@@ -133,7 +164,7 @@ export default function CommunityPassTab({ user, profile }) {
     setBusy(true);
     setError(null);
     try {
-      await startSupporterCheckout(qty); // redirects to Stripe on success
+      await startSupporterCheckout(qty);
     } catch (e) {
       setError(e.message || "Supporter checkout is not available yet. Please try again later.");
       setBusy(false);
@@ -141,7 +172,7 @@ export default function CommunityPassTab({ user, profile }) {
   };
 
   return (
-    <section className="community-pass-screen">
+    <>
       <header className="cp-hero">
         <p className="eyebrow">Community-supported</p>
         <h1>Community Pass &amp; Local Deals</h1>
@@ -250,6 +281,203 @@ export default function CommunityPassTab({ user, profile }) {
             <p className="cp-reminder">{REMINDER_COPY}</p>
           </div>
         </>
+      )}
+    </>
+  );
+}
+
+function PartnerHubTab({ listing, loading, error, isPartnerAccount, onRefresh, onListBusiness }) {
+  const [actionNote, setActionNote] = useState(null);
+  const status = normalizeStatus(listing?.status);
+  const visible = Boolean(listing && VISIBLE_STATUSES.includes(status));
+  const certified = listing?.heha_partner === true;
+
+  const comingSoon = (label) => {
+    setActionNote(`${label} will open after the next dashboard update.`);
+  };
+
+  const copy = !listing
+    ? "Your business account is active, but no listing was found yet. Start or continue your business registration."
+    : status === "pending"
+    ? "Your listing has been submitted. HEHA reviews listings before they become publicly visible."
+    : visible
+    ? "Your listing is approved and visible in HEHA Swipe discovery. Certification is still separate unless marked HEHA Certified."
+    : "Your listing is not publicly visible right now. HEHA review and admin actions control publication and certification.";
+
+  return (
+    <>
+      <header className="cp-hero partner-hub-hero">
+        <p className="eyebrow">Business Partner Hub</p>
+        <h1>Your HEHA Swipe listing</h1>
+        <p className="cp-sub">
+          Track your listing status, update missing info, and prepare your profile for HEHA review.
+        </p>
+      </header>
+
+      <section className="partner-hub-card card-like" aria-busy={loading}>
+        {loading ? (
+          <div className="partner-hub-loading">Loading your listing status…</div>
+        ) : error ? (
+          <>
+            <h2>Listing status unavailable</h2>
+            <p className="partner-hub-copy">
+              HEHA Swipe could not load your business listing yet. This may be a Supabase/RLS access issue or a temporary connection problem.
+            </p>
+            <button className="secondary-button" type="button" onClick={onRefresh}>
+              Refresh status
+            </button>
+          </>
+        ) : listing ? (
+          <>
+            <div className="partner-hub-topline">
+              <div>
+                <span className="cp-status-label">Business name</span>
+                <h2>{listing.name || "Unnamed business"}</h2>
+              </div>
+              <span className={visible ? "partner-status-pill visible" : "partner-status-pill hidden"}>
+                {formatStatus(status)}
+              </span>
+            </div>
+
+            <p className="partner-hub-copy">{copy}</p>
+
+            <div className="partner-hub-grid">
+              <div>
+                <span className="cp-status-label">Category</span>
+                <strong>{listing.category || "Not set"}</strong>
+              </div>
+              <div>
+                <span className="cp-status-label">Status</span>
+                <strong>{formatStatus(status)}</strong>
+              </div>
+              <div>
+                <span className="cp-status-label">Submitted</span>
+                <strong>{formatDate(listing.created_at)}</strong>
+              </div>
+              <div>
+                <span className="cp-status-label">Last updated</span>
+                <strong>{formatDate(listing.updated_at)}</strong>
+              </div>
+              <div>
+                <span className="cp-status-label">Completion</span>
+                <strong>{completionLabel(listing.complete_pct)}</strong>
+              </div>
+              <div>
+                <span className="cp-status-label">Public visibility</span>
+                <strong>{visible ? "Visible" : "Hidden until review"}</strong>
+              </div>
+              <div>
+                <span className="cp-status-label">HEHA Certified</span>
+                <strong>{certified ? "Certified" : "Not certified yet"}</strong>
+              </div>
+            </div>
+
+            <div className="partner-cert-note">
+              Approved/listed is not the same as HEHA Certified. HEHA certification remains admin-controlled.
+            </div>
+          </>
+        ) : (
+          <>
+            <h2>No listing found</h2>
+            <p className="partner-hub-copy">{copy}</p>
+            {isPartnerAccount && (
+              <button className="primary-button" type="button" onClick={onListBusiness}>
+                Start or continue business registration
+              </button>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="partner-hub-actions card-like">
+        <h2>Partner actions</h2>
+        <div className="partner-action-grid">
+          <button className="secondary-button" type="button" onClick={onRefresh}>
+            Refresh status
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => (listing ? comingSoon("Edit business profile") : onListBusiness?.())}
+          >
+            {listing ? "Edit business profile" : "Start business profile"}
+          </button>
+          <button className="secondary-button" type="button" onClick={() => comingSoon("Add logo / photos")}>
+            Add logo / photos
+          </button>
+          <button className="secondary-button" type="button" onClick={() => comingSoon("Preview listing")}>
+            Preview listing
+          </button>
+          <button className="secondary-button" type="button" onClick={() => comingSoon("Request local deal")}>
+            Request local deal
+          </button>
+          <button className="secondary-button" type="button" onClick={() => comingSoon("Request certification review")}>
+            Request certification review
+          </button>
+        </div>
+        {actionNote && <div className="cp-billing-note">{actionNote}</div>}
+        <p className="partner-hub-fineprint">
+          HEHA review controls visibility and certification. This hub never auto-publishes, auto-certifies, or changes paid SuperSwoop settings.
+        </p>
+      </section>
+    </>
+  );
+}
+
+export default function CommunityPassTab({ user, profile, onListBusiness }) {
+  const [ownerListing, setOwnerListing] = useState(null);
+  const [listingLoading, setListingLoading] = useState(false);
+  const [listingError, setListingError] = useState(null);
+
+  const partnerByProfile = isPartnerProfile(profile);
+
+  const fetchOwnerListing = useCallback(async () => {
+    if (!user?.id) {
+      setOwnerListing(null);
+      return;
+    }
+
+    setListingLoading(true);
+    setListingError(null);
+    try {
+      const { data, error } = await supabase
+        .from("partners")
+        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner, image_url, gallery_urls, neighborhood, tagline")
+        .eq("owner_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      setOwnerListing(data || null);
+    } catch (e) {
+      setOwnerListing(null);
+      setListingError(e);
+    } finally {
+      setListingLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchOwnerListing();
+  }, [fetchOwnerListing]);
+
+  const ownsListing = !!ownerListing;
+  const showPartnerHub = partnerByProfile || ownsListing;
+
+  return (
+    <section className="community-pass-screen">
+      {showPartnerHub ? (
+        <PartnerHubTab
+          listing={ownerListing}
+          loading={listingLoading}
+          error={listingError}
+          isPartnerAccount={partnerByProfile}
+          onRefresh={fetchOwnerListing}
+          onListBusiness={onListBusiness}
+        />
+      ) : (
+        <CustomerCommunityPass user={user} profile={profile} />
       )}
     </section>
   );
