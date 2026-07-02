@@ -499,7 +499,13 @@ onUnsave={handleUnsave}
 onDiscountCheck={handleDiscountCheck}
 />
 )}
-{tab === "deals" && <CommunityPassTab user={session.user} profile={profile} />}
+{tab === "deals" && (
+<CommunityPassTab
+user={session.user}
+profile={profile}
+onListBusiness={() => setShowPartnerWizard(true)}
+/>
+)}
 {tab === "profile" && (
 <ProfileTab
 user={session.user}
@@ -634,4 +640,3 @@ Retry
 </main>
 );
 }
-
