@@ -1,5 +1,5 @@
 import AdminWorkspace from "../shared/AdminWorkspace";
-import { allScoutTab, eventScoutTab, partnerScoutTab } from "./scoutTabs";
+import { allScoutTab, eventScoutTab, partnerScoutTab } from "./scoutLaneTabs";
 
 function tabFor(role, mode) {
   if (mode === "som") return allScoutTab;
