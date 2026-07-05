@@ -17,15 +17,22 @@ function cleanPayload(payload) {
 }
 
 async function runScoutHubSpotSync() {
+  const { data: released, error: releaseError } = await supabase.rpc("release_hubspot_sync_queue", {
+    p_limit: 10,
+  });
+
+  if (releaseError) throw releaseError;
+  if (!released) return { success: 0, released: 0 };
+
   const { data, error } = await supabase.functions.invoke("hubspot-sync", {
-    body: { limit: 10 },
+    body: { limit: Math.min(Number(released), 10) },
   });
 
   if (error) throw error;
   if (data?.configured === false) throw new Error("HubSpot sync secret is not configured.");
   if (data?.failed > 0) throw new Error(`${data.failed} HubSpot queue item${data.failed === 1 ? "" : "s"} failed to sync.`);
 
-  return data;
+  return { ...data, released };
 }
 
 export default function AdminWorkspace({ lane, title, subtitle, final, tabs, overview }) {
