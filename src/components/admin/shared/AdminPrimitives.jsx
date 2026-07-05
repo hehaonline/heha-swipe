@@ -6,8 +6,10 @@ export function label(value) {
 
 export function roleLabel(role) {
   if (role === "super_admin") return "Geronimo / Super Admin";
+  if (role === "developer_admin") return "Developer Admin";
   if (role === "pm_admin") return "Myren / PM Admin";
   if (role === "community_events_admin") return "Community Events Admin";
+  if (role === "som_admin") return "Sales Operations Admin";
   return label(role || "No admin role");
 }
 
