@@ -12,6 +12,14 @@ import "./partner-wizard-clean.css";
 import "./placeholder-photo.css";
 import "./location-modal.css";
 import "./community-pass.css";
+import "./internal-scout.css";
 import App from "./App.jsx";
+import InternalApp from "./InternalApp.jsx";
 
-createRoot(document.getElementById("root")).render(<StrictMode><App /></StrictMode>);
+const RootApp = window.location.pathname.startsWith("/internal") ? InternalApp : App;
+
+createRoot(document.getElementById("root")).render(
+  <StrictMode>
+    <RootApp />
+  </StrictMode>
+);
