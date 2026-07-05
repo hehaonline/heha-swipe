@@ -1,0 +1,10 @@
+create index if not exists scout_leads_status_idx on public.scout_leads (pipeline_status, created_at desc);
+create index if not exists scout_leads_type_idx on public.scout_leads (lead_type, created_at desc);
+create index if not exists scout_leads_partner_idx on public.scout_leads (partner_id);
+create index if not exists scout_leads_event_application_idx on public.scout_leads (event_application_id);
+create index if not exists scout_leads_pm_task_idx on public.scout_leads (pm_task_id);
+create index if not exists scout_leads_created_by_idx on public.scout_leads (created_by);
+create index if not exists scout_leads_updated_by_idx on public.scout_leads (updated_by);
+create index if not exists scout_contacts_lead_idx on public.scout_contacts (lead_id, created_at);
+create index if not exists scout_contacts_created_by_idx on public.scout_contacts (created_by);
+create index if not exists scout_contacts_updated_by_idx on public.scout_contacts (updated_by);
