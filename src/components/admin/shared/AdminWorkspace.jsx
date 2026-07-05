@@ -16,6 +16,18 @@ function cleanPayload(payload) {
   }, {});
 }
 
+async function runScoutHubSpotSync() {
+  const { data, error } = await supabase.functions.invoke("hubspot-sync", {
+    body: { limit: 10 },
+  });
+
+  if (error) throw error;
+  if (data?.configured === false) throw new Error("HubSpot sync secret is not configured.");
+  if (data?.failed > 0) throw new Error(`${data.failed} HubSpot queue item${data.failed === 1 ? "" : "s"} failed to sync.`);
+
+  return data;
+}
+
 export default function AdminWorkspace({ lane, title, subtitle, final, tabs, overview }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [rows, setRows] = useState({});
@@ -30,7 +42,7 @@ export default function AdminWorkspace({ lane, title, subtitle, final, tabs, ove
 
   function flash(message) {
     setNotice(message);
-    window.setTimeout(() => setNotice(null), 2600);
+    window.setTimeout(() => setNotice(null), 3600);
   }
 
   async function loadData() {
@@ -60,8 +72,21 @@ export default function AdminWorkspace({ lane, title, subtitle, final, tabs, ove
     const nextPayload = cleanPayload({ ...tab.defaults, ...payload });
     const { error } = await supabase.from(tab.table).insert(nextPayload);
     if (error) return flash(error.message || "Could not save this record.");
+
     reset?.();
-    flash(`${tab.label} saved.`);
+
+    if (tab.table === "scout_leads") {
+      try {
+        const sync = await runScoutHubSpotSync();
+        const synced = sync?.success || 0;
+        flash(synced > 0 ? `${tab.label} saved. HubSpot synced ${synced} queue item${synced === 1 ? "" : "s"}.` : `${tab.label} saved. No HubSpot queue item needed syncing.`);
+      } catch (syncError) {
+        flash(`${tab.label} saved. HubSpot sync remains queued: ${syncError.message || "sync unavailable"}`);
+      }
+    } else {
+      flash(`${tab.label} saved.`);
+    }
+
     loadData();
   }
 
