@@ -17,6 +17,10 @@ const pmTabs = [
     ],
   },
   {
+    id: "hubspot", label: "HubSpot Sync", table: "admin_hubspot_sync_queue_view", primary: "partner_name", secondary: "sync_error_notes", status: "sync_status", help: "Read-only HubSpot company/contact/note sync status for partner leads.", readOnly: true, orderBy: "updated_at",
+    description: "Read-only sync visibility. Supabase remains the source of truth; HubSpot writes are handled by the secure Edge Function.",
+  },
+  {
     id: "missing", label: "Missing Items", table: "admin_missing_items", primary: "missing_item_type", secondary: "follow_up_method", status: "status", help: "Missing photos, copy, menus, links, or proof points.",
     initial: { missing_item_type: "", status: "open", due_date: "", follow_up_method: "", escalation_needed: false, notes: "" },
     fields: [
@@ -67,5 +71,5 @@ const pmTabs = [
 ];
 
 export default function PmDashboard({ final }) {
-  return <AdminWorkspace lane="PM / Partner Operations" title="Myren Project Manager Dashboard" subtitle="Protected internal workspace for scout leads, partner readiness, missing items, content requests, deals, visibility QA, PM tasks, and weekly reporting. Myren coordinates; Geronimo approves final public decisions." final={final} tabs={pmTabs} overview={[{ eyebrow: "Boundary", title: "Project management, not ownership transfer.", body: "Myren coordinates partner workflow. Final HEHA decisions stay with Geronimo." }]} />;
+  return <AdminWorkspace lane="PM / Partner Operations" title="Myren Project Manager Dashboard" subtitle="Protected internal workspace for scout leads, partner readiness, HubSpot sync visibility, missing items, content requests, deals, visibility QA, PM tasks, and weekly reporting. Myren coordinates; Geronimo approves final public decisions." final={final} tabs={pmTabs} overview={[{ eyebrow: "Boundary", title: "Project management, not ownership transfer.", body: "Myren coordinates partner workflow. Final HEHA decisions stay with Geronimo." }]} />;
 }
