@@ -1,0 +1,1 @@
+The Scout Pipeline uses the existing HEHA admin and events foundation. See the architecture, role map, HubSpot handoff, test plan, and release checklist in this docs folder.
