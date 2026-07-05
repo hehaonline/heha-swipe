@@ -125,7 +125,7 @@ function TabPanel({ config, rows, onSave }) {
     <section className="admin-crud">
       <h2>{config.label}</h2>
       {config.description && <p>{config.description}</p>}
-      <RecordForm fields={config.fields || []} form={form} update={update} onSubmit={() => onSave(config, form, reset)} buttonLabel={config.buttonLabel || `Save ${config.label}`} />
+      {!config.readOnly && <RecordForm fields={config.fields || []} form={form} update={update} onSubmit={() => onSave(config, form, reset)} buttonLabel={config.buttonLabel || `Save ${config.label}`} />}
       <RecordList rows={rows} primary={config.primary} secondary={config.secondary} status={config.status} emptyText={`No ${config.label.toLowerCase()} yet.`} />
     </section>
   );
