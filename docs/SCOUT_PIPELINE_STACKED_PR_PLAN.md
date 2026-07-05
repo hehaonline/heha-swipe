@@ -1,0 +1,1 @@
+Scout Pipeline integration should be based on the existing `nina-community-dashboard` branch / PR #16. The shared module belongs inside the existing Admin, PM, Community Events, and new SOM role lanes rather than on a separate `/internal` app shell.
