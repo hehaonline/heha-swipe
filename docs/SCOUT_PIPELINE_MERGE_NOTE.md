@@ -1,0 +1,1 @@
+Merge only after the PR build workflow passes. The Supabase schema foundation is already active; the PR adds the internal UI and source-controlled migration record.
