@@ -1,8 +1,10 @@
 import AdminWorkspace from "../shared/AdminWorkspace";
+import { partnerScoutTab } from "../scout/scoutLaneTabs";
 
 const statusVisibility = ["hidden", "draft", "needs_update", "ready", "live", "paused", "error_broken_link", "not_applicable"];
 
 const pmTabs = [
+  partnerScoutTab,
   {
     id: "readiness", label: "Partner Readiness", table: "admin_partner_readiness", primary: "business_name", secondary: "partner_category", status: "pipeline_status", help: "Partner onboarding and profile readiness.",
     initial: { business_name: "", partner_category: "", pipeline_status: "new_lead", profile_status: "draft", next_step: "", blocker: "", due_date: "", approval_needed: false, internal_notes: "" },
@@ -52,7 +54,7 @@ const pmTabs = [
     id: "tasks", label: "PM Tasks", table: "admin_pm_tasks", primary: "task_title", secondary: "category", status: "status", help: "Team tasks, blockers, next steps, and approval needs.",
     initial: { task_title: "", category: "pm_myren", priority: "medium", due_date: "", status: "todo", blocker: "", next_step: "", approval_needed: false, notes: "" },
     fields: [
-      { name: "task_title", label: "Task", required: true }, { name: "category", label: "Category", type: "select", options: ["app_shahid", "wix_raj", "content", "outreach_shakil", "pm_myren", "approval_geronimo", "hubspot", "google_sheets", "qa"] }, { name: "priority", label: "Priority", type: "select", options: ["low", "medium", "high", "critical"] }, { name: "due_date", label: "Due", type: "date" }, { name: "status", label: "Status", type: "select", options: ["todo", "in_progress", "waiting", "blocked", "needs_approval", "completed", "paused"] }, { name: "approval_needed", label: "Needs approval", type: "checkbox" }, { name: "blocker", label: "Blocker", type: "textarea" }, { name: "next_step", label: "Next step", type: "textarea" }, { name: "notes", label: "Notes", type: "textarea" },
+      { name: "task_title", label: "Task", required: true }, { name: "category", label: "Category", type: "select", options: ["app_shahid", "wix_raj", "content", "outreach_shakil", "pm_myren", "approval_geronimo", "hubspot", "google_sheets", "qa", "community_events"] }, { name: "priority", label: "Priority", type: "select", options: ["low", "medium", "high", "critical"] }, { name: "due_date", label: "Due", type: "date" }, { name: "status", label: "Status", type: "select", options: ["todo", "in_progress", "waiting", "blocked", "needs_approval", "completed", "paused"] }, { name: "approval_needed", label: "Needs approval", type: "checkbox" }, { name: "blocker", label: "Blocker", type: "textarea" }, { name: "next_step", label: "Next step", type: "textarea" }, { name: "notes", label: "Notes", type: "textarea" },
     ],
   },
   {
@@ -65,5 +67,5 @@ const pmTabs = [
 ];
 
 export default function PmDashboard({ final }) {
-  return <AdminWorkspace lane="PM / Partner Operations" title="Myren Project Manager Dashboard" subtitle="Protected internal workspace for partner readiness, missing items, content requests, deals, visibility QA, PM tasks, and weekly reporting. Myren coordinates; Geronimo approves final public decisions." final={final} tabs={pmTabs} overview={[{ eyebrow: "Boundary", title: "Project management, not ownership transfer.", body: "Myren coordinates partner workflow. Final HEHA decisions stay with Geronimo." }]} />;
+  return <AdminWorkspace lane="PM / Partner Operations" title="Myren Project Manager Dashboard" subtitle="Protected internal workspace for scout leads, partner readiness, missing items, content requests, deals, visibility QA, PM tasks, and weekly reporting. Myren coordinates; Geronimo approves final public decisions." final={final} tabs={pmTabs} overview={[{ eyebrow: "Boundary", title: "Project management, not ownership transfer.", body: "Myren coordinates partner workflow. Final HEHA decisions stay with Geronimo." }]} />;
 }

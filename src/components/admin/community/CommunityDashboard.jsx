@@ -1,6 +1,8 @@
 import AdminWorkspace from "../shared/AdminWorkspace";
+import { eventScoutTab } from "../scout/scoutLaneTabs";
 
 const communityTabs = [
+  eventScoutTab,
   {
     id: "applications",
     label: "Event Applications",
@@ -160,5 +162,5 @@ const communityTabs = [
 ];
 
 export default function CommunityDashboard({ final }) {
-  return <AdminWorkspace lane="Community / Events" title="Niña Community Activation Dashboard" subtitle="A protected internal workspace for event applications, concepts, invite lists, outreach, content requests, approval requests, and recaps. Niña organizes momentum; Geronimo approves final public commitments." final={final} tabs={communityTabs} overview={[{ eyebrow: "Boundary", title: "Organize first. Approve later.", body: "This dashboard creates internal structure. It is not a public event marketplace and does not publish anything automatically." }]} />;
+  return <AdminWorkspace lane="Community / Events" title="Niña Community Activation Dashboard" subtitle="A protected internal workspace for scout and venue leads, event applications, concepts, invite lists, outreach, content requests, approval requests, and recaps. Niña organizes momentum; Geronimo approves final public commitments." final={final} tabs={communityTabs} overview={[{ eyebrow: "Boundary", title: "Organize first. Approve later.", body: "This dashboard creates internal structure. It is not a public event marketplace and does not publish anything automatically." }]} />;
 }
