@@ -197,6 +197,7 @@ export default function CommunityOfferRedemption({ user, partner }) {
                   <span>Show this code to {offer.partner_name}</span>
                   <strong>{formatCode(redemption.redemption_code)}</strong>
                   <small>Valid until {formatTime(redemption.expires_at)}. The business enters the code in its HEHA Partner Hub.</small>
+                  <button className="secondary-button" type="button" onClick={load} disabled={loading}>Business confirmed? Refresh status</button>
                 </div>
               ) : partnerConfirmed ? (
                 <div className="redemption-confirm-panel">
