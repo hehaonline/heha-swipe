@@ -5,6 +5,7 @@ import { fetchActiveSupporterSubscription } from "../lib/supporterStatus";
 import PartnerListingPreview from "./PartnerListingPreview";
 import PartnerProfileEditor from "./PartnerProfileEditor";
 import PartnerMediaManager from "./PartnerMediaManager";
+import PartnerCommunityOfferBuilder from "./PartnerCommunityOfferBuilder";
 
 // Community Pass & Local Deals dashboard.
 // Partner/business users see a read-only Partner Hub instead of customer supporter
@@ -261,6 +262,7 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
   const [showPreview, setShowPreview] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [showMedia, setShowMedia] = useState(false);
+  const [showOffer, setShowOffer] = useState(false);
   const status = normalizeStatus(listing?.status);
   const visible = Boolean(listing && VISIBLE_STATUSES.includes(status));
   const certified = listing?.heha_partner === true;
@@ -294,6 +296,15 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
     }
     setActionNote(null);
     setShowMedia(true);
+  };
+
+  const openOffer = () => {
+    if (!listing) {
+      setActionNote("Submit a business profile before creating a Community Offer.");
+      return;
+    }
+    setActionNote(null);
+    setShowOffer(true);
   };
 
   const handleEditorSaved = async (_savedListing, note) => {
@@ -369,7 +380,7 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
           <button className="secondary-button" type="button" onClick={openEditor}>{listing ? "Edit business profile" : "Start business profile"}</button>
           <button className="secondary-button" type="button" onClick={openMedia}>Add logo / photos</button>
           <button className="secondary-button" type="button" onClick={openPreview}>Preview listing</button>
-          <button className="secondary-button" type="button" onClick={() => comingSoon("Request local deal")}>Request local deal</button>
+          <button className="secondary-button" type="button" onClick={openOffer}>Community Offer</button>
           <button className="secondary-button" type="button" onClick={() => comingSoon("Request certification review")}>Request certification review</button>
         </div>
         {actionNote && <div className="cp-billing-note">{actionNote}</div>}
@@ -390,6 +401,14 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
           user={user}
           listing={listing}
           onClose={() => setShowMedia(false)}
+          onChanged={onRefresh}
+        />
+      )}
+      {showOffer && listing && (
+        <PartnerCommunityOfferBuilder
+          user={user}
+          listing={listing}
+          onClose={() => setShowOffer(false)}
           onChanged={onRefresh}
         />
       )}
