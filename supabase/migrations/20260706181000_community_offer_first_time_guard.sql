@@ -1,0 +1,1 @@
+-- First-time Community Offer redemption guard.
