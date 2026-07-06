@@ -26,6 +26,7 @@ const STEPS = [
 ];
 
 const ICONS = ["🥗", "🍜", "☕", "🥤", "🧃", "🍱", "👨‍🍳", "🏋️", "🧘", "💆", "🌿", "🏪", "🛍️", "🏆", "💪", "🌱", "🥦", "🫙", "🧴", "🎉"];
+const PUBLIC_STATUSES = ["approved", "live"];
 
 const emptyForm = {
   name: "",
@@ -50,6 +51,24 @@ function normalizeInstagram(value) {
   return value.trim().replace(/^@/, "");
 }
 
+function formatStatus(value) {
+  const status = String(value || "pending").trim();
+  return status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function completionLabel(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "0%";
+  return `${Math.round(numeric)}%`;
+}
+
 export default function PartnerWizard({ user, onComplete, onCancel }) {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -57,6 +76,9 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
   const [form, setForm] = useState(emptyForm);
   const [newOffering, setNewOffering] = useState("");
   const [newItem, setNewItem] = useState({ name: "", price: "", emoji: "✦" });
+  const [submittedListing, setSubmittedListing] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState(null);
 
   const activeStep = STEPS[step];
 
@@ -161,13 +183,45 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
         // Webhook issues should not block the user from submitting their listing.
       }
 
-      onComplete(data);
+      setSubmittedListing(data);
     } catch (error) {
       setErrors({ submit: error.message || "Could not submit this listing yet." });
     } finally {
       setLoading(false);
     }
   };
+
+  const refreshSubmittedListing = async () => {
+    if (!submittedListing?.id || !user?.id) return;
+    setStatusLoading(true);
+    setStatusError(null);
+    try {
+      const { data, error } = await supabase
+        .from("partners")
+        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner")
+        .eq("id", submittedListing.id)
+        .eq("owner_id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      if (data) setSubmittedListing(data);
+    } catch (error) {
+      setStatusError(error.message || "Could not refresh your registration status yet.");
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  if (submittedListing) {
+    return (
+      <PartnerSubmissionStatus
+        listing={submittedListing}
+        loading={statusLoading}
+        error={statusError}
+        onRefresh={refreshSubmittedListing}
+        onContinue={() => onComplete(submittedListing)}
+      />
+    );
+  }
 
   return (
     <main className="partner-wizard-screen">
@@ -392,6 +446,83 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
             <button className="wizard-text-back" type="button" onClick={back}>← Back to edit</button>
           </WizardPanel>
         )}
+      </section>
+    </main>
+  );
+}
+
+function PartnerSubmissionStatus({ listing, loading, error, onRefresh, onContinue }) {
+  const status = String(listing?.status || "pending").toLowerCase();
+  const visible = PUBLIC_STATUSES.includes(status);
+  const certified = listing?.heha_partner === true;
+
+  return (
+    <main className="partner-wizard-screen">
+      <section className="partner-wizard-shell">
+        <div className="wizard-topbar">
+          <div className="wizard-logo" aria-label="HEHA Swipe">
+            <span />
+            <strong>HEHA</strong>
+            <em>swipe</em>
+          </div>
+          <strong>Registration saved</strong>
+        </div>
+
+        <header className="wizard-step-header">
+          <span className="wizard-step-icon">✓</span>
+          <div>
+            <p>Business registration</p>
+            <h1>Submitted</h1>
+          </div>
+        </header>
+
+        <WizardPanel>
+          <p className="wizard-helper-copy">
+            Your business profile was submitted. HEHA reviews listings before they become publicly visible.
+          </p>
+
+          <div className="wizard-review-card">
+            <div className="wizard-review-top" style={{ "--preview-color": "#114f35" }}>
+              <span>✓</span>
+              <div>
+                <p>{listing.category || "Business"}</p>
+                <h2>{listing.name || "Your business"}</h2>
+              </div>
+            </div>
+          </div>
+
+          <div className="wizard-review-list">
+            {[
+              ["Status", formatStatus(status)],
+              ["Submitted", formatDate(listing.created_at)],
+              ["Completion", completionLabel(listing.complete_pct)],
+              ["Public visibility", visible ? "Visible" : "Hidden until review"],
+              ["HEHA Certified", certified ? "Certified" : "Not certified yet"],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+
+          <div className="wizard-note">
+            Your submission is saved. Public visibility and HEHA Certified status remain separate HEHA review decisions.
+          </div>
+
+          {error && <Error>{error}</Error>}
+
+          <button className="wizard-submit-button" type="button" onClick={onContinue}>
+            Continue to business profile
+          </button>
+          <button className="wizard-text-back" type="button" onClick={onRefresh} disabled={loading}>
+            {loading ? "Refreshing…" : "Refresh status"}
+          </button>
+
+          <p className="wizard-helper-copy">
+            Profile editing, logo/photo upload, and listing preview are the next reviewed Partner Hub tools. Your submitted information stays saved.
+          </p>
+        </WizardPanel>
       </section>
     </main>
   );
