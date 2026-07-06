@@ -1,6 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
+const VISIBLE_LISTING_STATUSES = ["approved", "listed", "live"];
+
+function formatMonthYear(value) {
+  if (!value) return "recently";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "recently";
+  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function formatStatus(value, fallback = "Pending") {
+  const status = String(value || "").trim();
+  if (!status) return fallback;
+  return status
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function completionLabel(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "0%";
+  return `${Math.round(numeric)}%`;
+}
+
 export default function ProfileTab({
   user,
   profile,
@@ -17,6 +40,7 @@ export default function ProfileTab({
   const [profileError, setProfileError] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [ownedListing, setOwnedListing] = useState(listing);
   const [form, setForm] = useState({
     full_name: "",
     phone: "",
@@ -38,6 +62,39 @@ export default function ProfileTab({
     loadMessages();
   }, [user?.id]);
 
+  useEffect(() => {
+    setOwnedListing(listing || null);
+  }, [listing]);
+
+  useEffect(() => {
+    if (!isBusiness || !user?.id) return;
+
+    let cancelled = false;
+    const loadOwnedListing = async () => {
+      const { data, error } = await supabase
+        .from("partners")
+        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner")
+        .eq("owner_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (error) {
+        setProfileError(error.message || "Could not load your business listing details.");
+        return;
+      }
+      setOwnedListing(data || null);
+    };
+
+    loadOwnedListing();
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusiness, user?.id]);
+
+  const activeListing = ownedListing || listing;
+
   const certifiedCount = useMemo(
     () => partners.filter((partner) => partner.heha_partner).length,
     [partners]
@@ -49,10 +106,18 @@ export default function ProfileTab({
   );
 
   const listedCount = partners.length;
-  const initial = (profile?.full_name?.charAt(0) || form.full_name?.charAt(0) || user?.email?.charAt(0) || "H").toUpperCase();
-  const joinDate = user?.created_at
-    ? new Date(user.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" })
-    : "recently";
+  const initialSource = isBusiness
+    ? activeListing?.name || user?.email || "B"
+    : profile?.full_name || form.full_name || user?.email || "H";
+  const initial = (initialSource.charAt(0) || "H").toUpperCase();
+  const joinDate = formatMonthYear(user?.created_at);
+  const partnerSinceDate = formatMonthYear(
+    activeListing?.created_at || profile?.created_at || user?.created_at
+  );
+  const listingStatus = String(activeListing?.status || "").toLowerCase();
+  const listingIsVisible = VISIBLE_LISTING_STATUSES.includes(listingStatus);
+  const businessTitle = activeListing?.name || "Business partner";
+  const businessCertified = activeListing?.heha_partner === true ? "Yes" : "Not certified yet";
 
   const updateForm = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -128,7 +193,11 @@ export default function ProfileTab({
       });
 
       if (error) throw error;
-      setProfileMessage("Profile saved. This information can support future HEHA ordering and delivery.");
+      setProfileMessage(
+        isBusiness
+          ? "Business contact details saved."
+          : "Profile saved. This information can support future HEHA ordering and delivery."
+      );
       onRefresh?.();
     } catch (error) {
       setProfileError(error.message || "Could not save your profile yet.");
@@ -138,7 +207,9 @@ export default function ProfileTab({
   };
 
   const resetAppProfile = async () => {
-    const confirmed = window.confirm("Reset your HEHA Swipe profile data? This clears saved partners and onboarding profile data, but does not delete your login account.");
+    const confirmed = window.confirm(
+      "Reset your HEHA Swipe profile data? This clears saved partners and onboarding profile data, but does not delete your login account."
+    );
     if (!confirmed) return;
 
     setBusy(true);
@@ -160,7 +231,9 @@ export default function ProfileTab({
   };
 
   const requestAccountDeletion = async () => {
-    const confirmed = window.confirm("Request full account deletion? HEHA will receive a deletion request. Your login may remain active until the account is removed from Supabase Auth by an admin.");
+    const confirmed = window.confirm(
+      "Request full account deletion? HEHA will receive a deletion request. Your login may remain active until the account is removed from Supabase Auth by an admin."
+    );
     if (!confirmed) return;
 
     setBusy(true);
@@ -191,17 +264,44 @@ export default function ProfileTab({
       <div className="profile-hero">
         <div className="profile-avatar">{initial}</div>
         <div>
-          <p className="eyebrow">Local Explorer</p>
-          <h2>{profile?.full_name || form.full_name || "Healthy local explorer"}</h2>
+          <p className="eyebrow">{isBusiness ? "Business Account" : "Local Explorer"}</p>
+          <h2>
+            {isBusiness
+              ? businessTitle
+              : profile?.full_name || form.full_name || "Healthy local explorer"}
+          </h2>
           <p>{user?.email || user?.phone || "Signed in"}</p>
-          <small>Member since {joinDate}</small>
+          <small>
+            {isBusiness
+              ? `Partner account since ${partnerSinceDate}`
+              : `Member since ${joinDate}`}
+          </small>
         </div>
       </div>
 
-      <div className="metric-grid">
-        <div><strong>{certifiedCount}</strong><span>HEHA certified</span></div>
-        <div><strong>{listedCount}</strong><span>listed</span></div>
-        <div><strong>{unreadCount}</strong><span>inbox</span></div>
+      <div className={isBusiness ? "metric-grid business-metrics" : "metric-grid"}>
+        {isBusiness ? (
+          <>
+            <div>
+              <strong>{formatStatus(activeListing?.status, activeListing ? "Pending" : "No listing")}</strong>
+              <span>Listing status</span>
+            </div>
+            <div>
+              <strong>{completionLabel(activeListing?.complete_pct)}</strong>
+              <span>Completion %</span>
+            </div>
+            <div>
+              <strong>{businessCertified}</strong>
+              <span>HEHA Certified</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div><strong>{certifiedCount}</strong><span>HEHA certified</span></div>
+            <div><strong>{listedCount}</strong><span>listed</span></div>
+            <div><strong>{unreadCount}</strong><span>inbox</span></div>
+          </>
+        )}
       </div>
 
       <div className="profile-card card-like">
@@ -236,37 +336,49 @@ export default function ProfileTab({
       </div>
 
       <div className="profile-card card-like">
-        <p className="eyebrow">Your profile</p>
-        <h3>Prepare your HEHA account for future orders.</h3>
-        <p>Add the basic details HEHA will need later for ordering, delivery coordination, and local recommendations.</p>
+        <p className="eyebrow">{isBusiness ? "Business contact" : "Your profile"}</p>
+        <h3>
+          {isBusiness
+            ? "Manage your HEHA business contact details."
+            : "Prepare your HEHA account for future orders."}
+        </h3>
+        <p>
+          {isBusiness
+            ? "Keep your business contact info ready for HEHA review, partner updates, and future customer coordination."
+            : "Add the basic details HEHA will need later for ordering, delivery coordination, and local recommendations."}
+        </p>
 
         <div className="profile-form">
           <label className="field-block">
-            <span>Full name</span>
+            <span>{isBusiness ? "Contact name" : "Full name"}</span>
             <input
               value={form.full_name}
               onChange={(event) => updateForm("full_name", event.target.value)}
-              placeholder="Your name"
+              placeholder={isBusiness ? "Best HEHA contact" : "Your name"}
               autoComplete="name"
             />
           </label>
 
           <label className="field-block">
-            <span>Phone number</span>
+            <span>{isBusiness ? "Business phone number" : "Phone number"}</span>
             <input
               value={form.phone}
               onChange={(event) => updateForm("phone", event.target.value)}
-              placeholder="For order/delivery updates later"
+              placeholder={isBusiness ? "For partner updates" : "For order/delivery updates later"}
               autoComplete="tel"
             />
           </label>
 
           <label className="field-block">
-            <span>Default delivery area / address</span>
+            <span>{isBusiness ? "Business area / address" : "Default delivery area / address"}</span>
             <textarea
               value={form.location}
               onChange={(event) => updateForm("location", event.target.value)}
-              placeholder="Example: South Tampa, Hyde Park, or full delivery address for future orders"
+              placeholder={
+                isBusiness
+                  ? "Example: South Tampa, Hyde Park, or business address"
+                  : "Example: South Tampa, Hyde Park, or full delivery address for future orders"
+              }
               autoComplete="street-address"
             />
           </label>
@@ -281,33 +393,32 @@ export default function ProfileTab({
           </label>
 
           <button className="primary-button" onClick={saveUserProfile} disabled={busy}>
-            {busy ? "Saving…" : "Save profile"}
+            {busy ? "Saving…" : isBusiness ? "Save contact details" : "Save profile"}
           </button>
         </div>
       </div>
 
       {isBusiness ? (
-        listing ? (
+        activeListing ? (
           <div className="profile-card card-like">
             <p className="eyebrow">Your business</p>
             <h3>Your business listing</h3>
             <p>
-              {["approved", "listed", "live"].includes(String(listing.status || "").toLowerCase())
-                ? "Your business is live on HEHA Swipe."
-                : "Your business has been submitted. HEHA reviews listings before they appear publicly."}
+              {listingIsVisible
+                ? "Your business is visible on HEHA Swipe. HEHA Certified status is separate and remains admin-controlled."
+                : listingStatus === "pending"
+                ? "Your business has been submitted. HEHA reviews listings before they appear publicly."
+                : "Your business is not publicly visible right now. HEHA reviews listing changes before they appear publicly."}
             </p>
-            <p>You can add Community Pass deals and SuperSwoop offers later, after your listing is reviewed.</p>
-            <p className="fine-print">Follow HEHA on Instagram or connect with our team to stay updated while your listing is reviewed.</p>
+            <p className="fine-print">Approved/listed status is not the same as HEHA Certified.</p>
           </div>
         ) : (
           <div className="profile-card card-like">
-            <p className="eyebrow">Free business registration</p>
-            <h3>Register your business now to be seen by HEHA users.</h3>
-            <p>Register your business to be reviewed for HEHA Swipe and future local offers. Submit your business for HEHA review — listings appear publicly only after review.</p>
+            <p className="eyebrow">Business registration</p>
+            <h3>Start or continue your business registration.</h3>
+            <p>Your business account is active, but no listing was found yet. Start or continue your business registration.</p>
             <button className="primary-button" onClick={onListBusiness}>Register my business</button>
             <p className="fine-print">Already submitted? HEHA will review listings before they appear publicly.</p>
-            <p className="fine-print">Community Pass deals and SuperSwoop offers can be added later, after your listing is reviewed. Partner support options coming soon.</p>
-            <p className="fine-print">Follow HEHA on Instagram or connect with our team to stay updated while your listing is reviewed.</p>
           </div>
         )
       ) : (
