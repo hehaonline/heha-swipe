@@ -12,6 +12,7 @@ import "./partner-wizard-clean.css";
 import "./placeholder-photo.css";
 import "./location-modal.css";
 import "./community-pass.css";
+import "./partner-media.css";
 import "./embed.css";
 import App from "./App.jsx";
 import AdminApp from "./components/admin/AdminApp.jsx";
