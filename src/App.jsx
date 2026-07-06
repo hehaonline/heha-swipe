@@ -87,6 +87,8 @@ export default function App() {
   const [dataLoading, setDataLoading] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showPartnerWizard, setShowPartnerWizard] = useState(false);
+  // The signed-in user's own partner listing if they own one, so role-aware
+  // Profile and Community screens can use business copy without schema changes.
   const [myListing, setMyListing] = useState(null);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -199,15 +201,17 @@ export default function App() {
       setNeedsOnboarding(!(isOnboarded(nextProfile) || supporterBySub));
 
       const signupIntent = localStorage.getItem("heha_signup_role");
-      setMyListing(null);
-      if (isPartnerProfile(nextProfile) || signupIntent === "partner") {
-        const { data: existing, error } = await supabase
-          .from("partners")
-          .select("id, name, status")
-          .eq("owner_id", uid)
-          .maybeSingle();
-        if (error) throw error;
-        setMyListing(existing || null);
+      const { data: ownedListings, error: ownedListingError } = await supabase
+        .from("partners")
+        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner")
+        .eq("owner_id", uid)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (ownedListingError) throw ownedListingError;
+      const existing = ownedListings?.[0] || null;
+      setMyListing(existing);
+
+      if (isPartnerProfile(nextProfile) || existing || signupIntent === "partner") {
         if (!existing) {
           setShowPartnerWizard(true);
           setNeedsOnboarding(false);

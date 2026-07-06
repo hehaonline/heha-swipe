@@ -221,6 +221,8 @@ a { color: inherit; }
 .metric-grid div { background: #fff; border: 1px solid var(--heha-line); border-radius: 18px; padding: 14px 10px; text-align: center; }
 .metric-grid strong { display: block; font-size: 24px; font-family: 'Syne', sans-serif; }
 .metric-grid span { font-size: 11px; color: var(--heha-muted); }
+.business-metrics strong { font-size: 17px; line-height: 1.15; overflow-wrap: anywhere; }
+.business-metrics div { min-width: 0; }
 .partner-cta { width: 100%; border: 0; border-radius: 26px; padding: 18px; background: linear-gradient(135deg, var(--heha-green-dark), var(--heha-green)); color: #fff; display: flex; justify-content: space-between; gap: 12px; text-align: left; cursor: pointer; box-shadow: var(--heha-shadow); }
 .partner-cta h3, .partner-cta p { margin: 4px 0; }
 .partner-cta p { opacity: .78; line-height: 1.4; }
