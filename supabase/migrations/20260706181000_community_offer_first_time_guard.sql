@@ -1,5 +1,9 @@
 -- First-time Community Offer redemption guard.
 
+create unique index if not exists community_offer_redemptions_one_active_per_customer
+  on public.community_offer_redemptions(user_id, deal_request_id)
+  where status in ('issued', 'confirmed_by_partner');
+
 create or replace function app_private.guard_first_time_community_offer_redemption()
 returns trigger
 language plpgsql
