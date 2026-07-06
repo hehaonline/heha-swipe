@@ -45,6 +45,7 @@ function latestByDeal(rows = []) {
 }
 
 export default function CommunityOfferRedemption({ user, partner }) {
+  const [resolvedUserId, setResolvedUserId] = useState(user?.id || null);
   const [offers, setOffers] = useState([]);
   const [redemptions, setRedemptions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -55,8 +56,23 @@ export default function CommunityOfferRedemption({ user, partner }) {
 
   const redemptionByDeal = useMemo(() => latestByDeal(redemptions), [redemptions]);
 
+  useEffect(() => {
+    if (user?.id) {
+      setResolvedUserId(user.id);
+      return;
+    }
+
+    let cancelled = false;
+    supabase.auth.getUser().then(({ data }) => {
+      if (!cancelled) setResolvedUserId(data?.user?.id || null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
   const load = useCallback(async () => {
-    if (!partner?.id || !user?.id) return;
+    if (!partner?.id || !resolvedUserId) return;
     setLoading(true);
     setError(null);
 
@@ -70,7 +86,7 @@ export default function CommunityOfferRedemption({ user, partner }) {
         supabase
           .from("community_offer_redemptions")
           .select("id, deal_request_id, partner_id, redemption_code, status, offer_title_snapshot, offer_text_snapshot, first_time_only_snapshot, issued_at, expires_at, partner_confirmed_at, customer_confirmed_at, customer_outcome, customer_problem_note, created_at")
-          .eq("user_id", user.id)
+          .eq("user_id", resolvedUserId)
           .eq("partner_id", partner.id)
           .order("created_at", { ascending: false })
           .limit(20),
@@ -85,7 +101,7 @@ export default function CommunityOfferRedemption({ user, partner }) {
     } finally {
       setLoading(false);
     }
-  }, [partner?.id, user?.id]);
+  }, [partner?.id, resolvedUserId]);
 
   useEffect(() => {
     load();
