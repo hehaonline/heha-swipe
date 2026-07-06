@@ -4,6 +4,7 @@ import { startSupporterCheckout } from "../lib/supporterCheckout";
 import { fetchActiveSupporterSubscription } from "../lib/supporterStatus";
 import PartnerListingPreview from "./PartnerListingPreview";
 import PartnerProfileEditor from "./PartnerProfileEditor";
+import PartnerMediaManager from "./PartnerMediaManager";
 
 // Community Pass & Local Deals dashboard.
 // Partner/business users see a read-only Partner Hub instead of customer supporter
@@ -259,6 +260,7 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
   const [actionNote, setActionNote] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
+  const [showMedia, setShowMedia] = useState(false);
   const status = normalizeStatus(listing?.status);
   const visible = Boolean(listing && VISIBLE_STATUSES.includes(status));
   const certified = listing?.heha_partner === true;
@@ -283,6 +285,15 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
     }
     setActionNote(null);
     setShowEditor(true);
+  };
+
+  const openMedia = () => {
+    if (!listing) {
+      setActionNote("Submit a business profile before adding logo or photos.");
+      return;
+    }
+    setActionNote(null);
+    setShowMedia(true);
   };
 
   const handleEditorSaved = async (_savedListing, note) => {
@@ -356,7 +367,7 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
         <div className="partner-action-grid">
           <button className="secondary-button" type="button" onClick={onRefresh}>Refresh status</button>
           <button className="secondary-button" type="button" onClick={openEditor}>{listing ? "Edit business profile" : "Start business profile"}</button>
-          <button className="secondary-button" type="button" onClick={() => comingSoon("Add logo / photos")}>Add logo / photos</button>
+          <button className="secondary-button" type="button" onClick={openMedia}>Add logo / photos</button>
           <button className="secondary-button" type="button" onClick={openPreview}>Preview listing</button>
           <button className="secondary-button" type="button" onClick={() => comingSoon("Request local deal")}>Request local deal</button>
           <button className="secondary-button" type="button" onClick={() => comingSoon("Request certification review")}>Request certification review</button>
@@ -372,6 +383,14 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
           listing={listing}
           onClose={() => setShowEditor(false)}
           onSaved={handleEditorSaved}
+        />
+      )}
+      {showMedia && listing && (
+        <PartnerMediaManager
+          user={user}
+          listing={listing}
+          onClose={() => setShowMedia(false)}
+          onChanged={onRefresh}
         />
       )}
     </>
@@ -396,7 +415,7 @@ export default function CommunityPassTab({ user, profile, onListBusiness }) {
     try {
       const { data, error } = await supabase
         .from("partners")
-        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours, contact, business_type, phone, delivery_days, pricing_notes")
+        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner, logo_url, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours, contact, business_type, phone, delivery_days, pricing_notes")
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
