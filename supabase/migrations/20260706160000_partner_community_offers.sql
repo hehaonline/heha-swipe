@@ -1,0 +1,1 @@
+-- Partner Community Offer submission foundation.
