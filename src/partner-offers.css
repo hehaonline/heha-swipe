@@ -1,0 +1,109 @@
+.partner-offer-sheet {
+  max-width: 680px;
+}
+
+.partner-offer-body {
+  padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+}
+
+.partner-offer-current {
+  border: 1px solid var(--heha-border, #ece7dd);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--heha-card, #fff);
+}
+
+.partner-offer-current h3 {
+  margin: 5px 0 8px;
+  font-size: 22px;
+  color: var(--heha-ink, #1f2a24);
+}
+
+.partner-offer-current > strong {
+  display: block;
+  color: var(--heha-green, #174d38);
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+.partner-offer-current > p {
+  color: var(--heha-muted, #6b746e);
+  line-height: 1.5;
+}
+
+.partner-offer-current .secondary-button {
+  margin-top: 12px;
+  width: 100%;
+}
+
+.partner-offer-form select,
+.partner-offer-form input,
+.partner-offer-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.partner-offer-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.partner-offer-days button {
+  min-width: 0;
+  border: 1px solid var(--heha-border, #e6d9c8);
+  border-radius: 999px;
+  padding: 9px 4px;
+  background: var(--heha-card, #fff);
+  color: var(--heha-ink, #1f2a24);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.partner-offer-days button.selected {
+  background: var(--heha-green, #174d38);
+  color: #fff;
+  border-color: var(--heha-green, #174d38);
+}
+
+.partner-offer-form .field-block small {
+  display: block;
+  margin-top: 7px;
+  color: var(--heha-muted, #6b746e);
+  line-height: 1.45;
+}
+
+.partner-offer-date-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.partner-offer-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--heha-border, #e6d9c8);
+  border-radius: 14px;
+  background: var(--heha-card, #fff);
+  color: var(--heha-ink, #1f2a24);
+  font-weight: 700;
+}
+
+.partner-offer-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--heha-green, #174d38);
+}
+
+@media (max-width: 520px) {
+  .partner-offer-days {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .partner-offer-date-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
