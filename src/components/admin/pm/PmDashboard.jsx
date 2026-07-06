@@ -30,11 +30,14 @@ const pmTabs = [
   },
   {
     id: "deals", label: "Deals / Offers", table: "admin_deal_requests", primary: "deal_title", secondary: "deal_type", status: "approval_status", help: "Community Pass, Swoop, SuperSwoop, and event offers.",
-    initial: { deal_title: "", deal_type: "general_discount", proposed_discount: "", deal_terms: "", redemption_method: "", start_date: "", end_date: "", content_needed: false, approval_status: "draft", final_status: "draft", risk_notes: "" },
+    initial: { deal_title: "", deal_type: "general_discount", proposed_discount: "", custom_offer: "", deal_terms: "", redemption_method: "", start_date: "", end_date: "", available_days: [], minimum_purchase: "", first_time_only: false, max_uses_per_day: "", verification_preference: "heha_help_decide", partner_note: "", content_needed: false, approval_status: "draft", final_status: "draft", risk_notes: "" },
     fields: [
       { name: "deal_title", label: "Deal title", required: true }, { name: "deal_type", label: "Type", type: "select", options: ["community_pass", "swoop", "superswoop", "founding_partner_offer", "general_discount", "event_offer"] },
-      { name: "proposed_discount", label: "Discount" }, { name: "redemption_method", label: "Redemption" }, { name: "start_date", label: "Start", type: "date" }, { name: "end_date", label: "End", type: "date" },
-      { name: "content_needed", label: "Content needed", type: "checkbox" }, { name: "approval_status", label: "Approval", type: "select", options: ["draft", "needs_geronimo_review", "changes_requested", "rejected", "paused"] },
+      { name: "proposed_discount", label: "Discount / offer" }, { name: "custom_offer", label: "Custom offer" }, { name: "redemption_method", label: "Redemption" },
+      { name: "available_days", label: "Available days" }, { name: "start_date", label: "Start", type: "date" }, { name: "end_date", label: "End", type: "date" },
+      { name: "minimum_purchase", label: "Minimum purchase", type: "number" }, { name: "first_time_only", label: "First-time only", type: "checkbox" }, { name: "max_uses_per_day", label: "Max uses / day", type: "number" },
+      { name: "verification_preference", label: "Verification preference", type: "select", options: ["in_app_code", "show_swipe_app", "weekly_partner_code", "heha_help_decide"] },
+      { name: "partner_note", label: "Partner note", type: "textarea" }, { name: "content_needed", label: "Content needed", type: "checkbox" }, { name: "approval_status", label: "Approval", type: "select", options: ["draft", "needs_geronimo_review", "changes_requested", "rejected", "paused"] },
       { name: "deal_terms", label: "Terms", type: "textarea" }, { name: "risk_notes", label: "Risk notes", type: "textarea" },
     ],
   },
