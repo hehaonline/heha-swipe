@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { filterPublicTags } from "../lib/partnerTags";
 import { publicDescription, TWO_LINE_CLAMP } from "../lib/cardCopy";
+import CommunityOfferRedemption from "./CommunityOfferRedemption";
 
 function fallbackImage(partner) {
   if (partner.image_url) return partner.image_url;
@@ -136,6 +137,8 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
             )}
           </div>
         </article>
+
+        <CommunityOfferRedemption partner={selectedPartner} />
 
         <section className="detail-section card-like">
           <div className="detail-section-heading">
