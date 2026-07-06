@@ -90,27 +90,33 @@ export default function SwipeTab({
   const [deck, setDeck] = useState([]);
   const [seenIds, setSeenIds] = useState(new Set());
   const [reshuffled, setReshuffled] = useState(false);
+  const featuredPartnerId = useMemo(() => new URLSearchParams(window.location.search).get("partner"), []);
 
   const savedIds = useMemo(() => new Set(saves.map((save) => save.partner_id)), [saves]);
+  const swipePartners = useMemo(() => partners.filter((partner) => partner.swipe_eligible !== false), [partners]);
 
   const buildDeck = useCallback(
     (activeCategory, seen, isReshuffle = false) => {
-      const pool = partners.filter((partner) => {
+      const pool = swipePartners.filter((partner) => {
         const matchesCategory = partnerMatchesCategory(partner, activeCategory);
         const alreadySaved = savedIds.has(partner.id);
-        return matchesCategory && !alreadySaved;
+        const isFeatured = partner.id === featuredPartnerId;
+        return matchesCategory && (!alreadySaved || isFeatured);
       });
 
-      if (isReshuffle) return shuffle(pool);
-      const unseen = pool.filter((partner) => !seen.has(partner.id));
+      const featured = pool.find((partner) => partner.id === featuredPartnerId);
+      const orderedPool = featured ? [featured, ...pool.filter((partner) => partner.id !== featured.id)] : pool;
+
+      if (isReshuffle) return featured ? [featured, ...shuffle(orderedPool.slice(1))] : shuffle(orderedPool);
+      const unseen = orderedPool.filter((partner) => !seen.has(partner.id));
       return unseen.length ? unseen : null;
     },
-    [partners, savedIds]
+    [swipePartners, savedIds, featuredPartnerId]
   );
 
   useEffect(() => {
     const result = buildDeck(category, seenIds);
-    if (result === null && partners.length) {
+    if (result === null && swipePartners.length) {
       setDeck(buildDeck(category, new Set(), true) || []);
       setSeenIds(new Set());
       setReshuffled(true);
@@ -118,7 +124,7 @@ export default function SwipeTab({
     } else {
       setDeck(result || []);
     }
-  }, [partners, saves, category, buildDeck]);
+  }, [swipePartners, saves, category, buildDeck]);
 
   const current = deck[0];
 
@@ -134,9 +140,9 @@ export default function SwipeTab({
   };
 
   const activeCategoryCount = useMemo(() => {
-    if (category === "All") return partners.length;
-    return partners.filter((partner) => partnerMatchesCategory(partner, category)).length;
-  }, [partners, category]);
+    if (category === "All") return swipePartners.length;
+    return swipePartners.filter((partner) => partnerMatchesCategory(partner, category)).length;
+  }, [swipePartners, category]);
 
   return (
     <section className="discover-screen compact-discover luxe-discover">

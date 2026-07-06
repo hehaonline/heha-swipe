@@ -3,6 +3,7 @@ import { supabase } from "../../lib/supabase";
 import AuthScreen from "../AuthScreen";
 import CommunityDashboard from "./community/CommunityDashboard";
 import PmDashboard from "./pm/PmDashboard";
+import RoutingDashboard from "./routing/RoutingDashboard";
 import ScoutDashboard from "./scout/ScoutDashboard";
 import { AdminCard, roleLabel } from "./shared/AdminPrimitives";
 
@@ -10,6 +11,7 @@ const ROLE_ORDER = ["super_admin", "developer_admin", "pm_admin", "community_eve
 
 function areaFromPath() {
   const path = window.location.pathname;
+  if (path.includes("/routing")) return "routing";
   if (path.includes("/scout")) return "scout";
   if (path.includes("/som")) return "som";
   if (path.includes("/community")) return "community";
@@ -31,6 +33,7 @@ export default function AdminApp({ session, loading, onSignOut }) {
     return {
       internal: ROLE_ORDER.includes(role),
       pm: admin || role === "pm_admin",
+      routing: admin || role === "pm_admin",
       community: admin || role === "community_events_admin",
       som: admin || role === "som_admin",
       scout: ROLE_ORDER.includes(role),
@@ -76,6 +79,7 @@ export default function AdminApp({ session, loading, onSignOut }) {
         <div><p className="eyebrow">admin.hehaswipe.app</p><h1>HEHA Internal Dashboard</h1></div>
         <div className="admin-actions">
           <span>{roleLabel(role)}</span>
+          {area !== "routing" && access.routing && <button onClick={() => openArea("routing")}>Partner Routing</button>}
           {area !== "scout" && <button onClick={() => openArea("scout")}>Scout Pipeline</button>}
           {area !== "home" && <button onClick={() => openArea("home")}>Home</button>}
           <button onClick={onSignOut}>Sign out</button>
@@ -83,6 +87,7 @@ export default function AdminApp({ session, loading, onSignOut }) {
       </header>
       {area === "home" && <AdminHome access={access} openArea={openArea} />}
       {area === "pm" && (access.pm ? <PmDashboard final={access.final} /> : <BlockedArea openArea={openArea} />)}
+      {area === "routing" && (access.routing ? <RoutingDashboard final={access.final} /> : <BlockedArea openArea={openArea} />)}
       {area === "community" && (access.community ? <CommunityDashboard final={access.final} /> : <BlockedArea openArea={openArea} />)}
       {area === "som" && (access.som ? <ScoutDashboard role={role} final={access.final} mode="som" /> : <BlockedArea openArea={openArea} />)}
       {area === "scout" && <ScoutDashboard role={role} final={access.final} />}
@@ -95,7 +100,7 @@ function AdminShell({ title, message = "Protected HEHA admin area.", action }) {
 }
 
 function AdminHome({ access, openArea }) {
-  return <main className="admin-home"><AdminCard eyebrow="command center" title="Choose dashboard" wide><p>One internal system with role-specific lanes.</p></AdminCard>{access.pm && <Dash title="PM Dashboard" text="Partner readiness and project management." onClick={() => openArea("pm")} />}{access.community && <Dash title="Community / Events" text="Events, venues, outreach, and recaps." onClick={() => openArea("community")} />}{access.som && <Dash title="Sales Operations" text="Scout and route potential partners." onClick={() => openArea("som")} />}{access.scout && <Dash title="Scout & Partner Pipeline" text="Shared field visit and lead intake." onClick={() => openArea("scout")} />}</main>;
+  return <main className="admin-home"><AdminCard eyebrow="command center" title="Choose dashboard" wide><p>One internal system with role-specific lanes.</p></AdminCard>{access.pm && <Dash title="PM Dashboard" text="Partner readiness and project management." onClick={() => openArea("pm")} />}{access.routing && <Dash title="Partner Routing" text="Decide Website, HEHA Local, HEHA Swipe, and primary CTA placement." onClick={() => openArea("routing")} />}{access.community && <Dash title="Community / Events" text="Events, venues, outreach, and recaps." onClick={() => openArea("community")} />}{access.som && <Dash title="Sales Operations" text="Scout and route potential partners." onClick={() => openArea("som")} />}{access.scout && <Dash title="Scout & Partner Pipeline" text="Shared field visit and lead intake." onClick={() => openArea("scout")} />}</main>;
 }
 
 function Dash({ title, text, onClick }) {
