@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import PartnerRedemptionConfirm from "./PartnerRedemptionConfirm";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -121,6 +122,7 @@ export default function PartnerCommunityOfferBuilder({ user, listing, onClose, o
   const [terms, setTerms] = useState("");
   const [partnerNote, setPartnerNote] = useState("");
   const [latestRequest, setLatestRequest] = useState(null);
+  const [showRedemption, setShowRedemption] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -218,6 +220,10 @@ export default function PartnerCommunityOfferBuilder({ user, listing, onClose, o
     }
   };
 
+  if (showRedemption) {
+    return <PartnerRedemptionConfirm listing={listing} onClose={() => setShowRedemption(false)} />;
+  }
+
   return (
     <div className="preview-backdrop" role="dialog" aria-modal="true" aria-label="Create Community Offer" onClick={onClose}>
       <section className="partner-preview-sheet partner-offer-sheet" onClick={(event) => event.stopPropagation()}>
@@ -229,6 +235,11 @@ export default function PartnerCommunityOfferBuilder({ user, listing, onClose, o
           <p className="preview-tagline">
             Offer something special to the HEHA community. You control the idea and availability; HEHA reviews every offer before activation.
           </p>
+
+          <button className="secondary-button partner-confirm-code-launch" type="button" onClick={() => setShowRedemption(true)}>
+            Confirm a customer HEHA code
+          </button>
+          <p className="partner-confirm-code-copy">A customer using an active Community Offer will show you a six-digit code. Enter it here to confirm the offer.</p>
 
           {loading ? (
             <div className="cp-billing-note">Checking your current Community Offer status…</div>
