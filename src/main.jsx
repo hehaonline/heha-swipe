@@ -12,9 +12,18 @@ import "./partner-wizard-clean.css";
 import "./placeholder-photo.css";
 import "./location-modal.css";
 import "./community-pass.css";
+import "./embed.css";
 import App from "./App.jsx";
 import AdminApp from "./components/admin/AdminApp.jsx";
+import BecomePartnerEmbed from "./components/embed/BecomePartnerEmbed.jsx";
+import PartnerDirectoryEmbed from "./components/embed/PartnerDirectoryEmbed.jsx";
 import { supabase } from "./lib/supabase";
+
+const SIGNUP_ROLE_KEY = "heha_signup_role";
+
+if (new URLSearchParams(window.location.search).get("becomePartner") === "1") {
+  localStorage.setItem(SIGNUP_ROLE_KEY, "partner");
+}
 
 function shouldRenderAdminApp() {
   const hostIsAdmin = window.location.hostname.startsWith("admin.");
@@ -23,10 +32,21 @@ function shouldRenderAdminApp() {
   return hostIsAdmin || buildIsAdmin || localAdminRoute;
 }
 
+function embedFromPath() {
+  if (window.location.pathname === "/embed/partners") return "partners";
+  if (window.location.pathname === "/embed/become-partner") return "become-partner";
+  return null;
+}
+
 function Root() {
   const isAdminRoute = shouldRenderAdminApp();
+  const embed = embedFromPath();
+
   if (isAdminRoute) import("./admin-dashboard.css");
-  return isAdminRoute ? <AdminSessionGate /> : <App />;
+  if (isAdminRoute) return <AdminSessionGate />;
+  if (embed === "partners") return <PartnerDirectoryEmbed />;
+  if (embed === "become-partner") return <BecomePartnerEmbed />;
+  return <App />;
 }
 
 function AdminSessionGate() {
@@ -58,4 +78,8 @@ function AdminSessionGate() {
   return <AdminApp session={session} loading={loading} onSignOut={handleSignOut} />;
 }
 
-createRoot(document.getElementById("root")).render(<StrictMode><Root /></StrictMode>);
+createRoot(document.getElementById("root")).render(
+  <StrictMode>
+    <Root />
+  </StrictMode>
+);
