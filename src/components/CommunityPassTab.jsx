@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { startSupporterCheckout } from "../lib/supporterCheckout";
 import { fetchActiveSupporterSubscription } from "../lib/supporterStatus";
+import PartnerListingPreview from "./PartnerListingPreview";
 
 // Community Pass & Local Deals dashboard.
 // Partner/business users see a read-only Partner Hub instead of customer supporter
@@ -29,7 +30,7 @@ const PARTNER_TYPES = [
   "partner",
   "listed",
 ];
-const VISIBLE_STATUSES = ["approved", "listed", "live"];
+const VISIBLE_STATUSES = ["approved", "live"];
 
 function isActiveSupporter(profile) {
   if (!profile) return false;
@@ -288,12 +289,22 @@ function CustomerCommunityPass({ user, profile }) {
 
 function PartnerHubTab({ listing, loading, error, isPartnerAccount, onRefresh, onListBusiness }) {
   const [actionNote, setActionNote] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
   const status = normalizeStatus(listing?.status);
   const visible = Boolean(listing && VISIBLE_STATUSES.includes(status));
   const certified = listing?.heha_partner === true;
 
   const comingSoon = (label) => {
     setActionNote(`${label} will open after the next dashboard update.`);
+  };
+
+  const openPreview = () => {
+    if (!listing) {
+      setActionNote("Submit a business profile before previewing your listing.");
+      return;
+    }
+    setActionNote(null);
+    setShowPreview(true);
   };
 
   const copy = !listing
@@ -373,7 +384,7 @@ function PartnerHubTab({ listing, loading, error, isPartnerAccount, onRefresh, o
             </div>
 
             <div className="partner-cert-note">
-              Approved/listed is not the same as HEHA Certified. HEHA certification remains admin-controlled.
+              Approved/live status is not the same as HEHA Certified. HEHA certification remains admin-controlled.
             </div>
           </>
         ) : (
@@ -405,7 +416,7 @@ function PartnerHubTab({ listing, loading, error, isPartnerAccount, onRefresh, o
           <button className="secondary-button" type="button" onClick={() => comingSoon("Add logo / photos")}>
             Add logo / photos
           </button>
-          <button className="secondary-button" type="button" onClick={() => comingSoon("Preview listing")}>
+          <button className="secondary-button" type="button" onClick={openPreview}>
             Preview listing
           </button>
           <button className="secondary-button" type="button" onClick={() => comingSoon("Request local deal")}>
@@ -420,6 +431,10 @@ function PartnerHubTab({ listing, loading, error, isPartnerAccount, onRefresh, o
           HEHA review controls visibility and certification. This hub never auto-publishes, auto-certifies, or changes paid SuperSwoop settings.
         </p>
       </section>
+
+      {showPreview && listing && (
+        <PartnerListingPreview listing={listing} onClose={() => setShowPreview(false)} />
+      )}
     </>
   );
 }
@@ -442,7 +457,7 @@ export default function CommunityPassTab({ user, profile, onListBusiness }) {
     try {
       const { data, error } = await supabase
         .from("partners")
-        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner, image_url, gallery_urls, neighborhood, tagline")
+        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours")
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
