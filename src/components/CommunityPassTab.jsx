@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { startSupporterCheckout } from "../lib/supporterCheckout";
 import { fetchActiveSupporterSubscription } from "../lib/supporterStatus";
 import PartnerListingPreview from "./PartnerListingPreview";
+import PartnerProfileEditor from "./PartnerProfileEditor";
 
 // Community Pass & Local Deals dashboard.
 // Partner/business users see a read-only Partner Hub instead of customer supporter
@@ -98,21 +99,10 @@ function ManageSupportModal({ portalUrl, onClose }) {
         </p>
 
         <div className="cp-modal-actions">
-          <button className="primary-button" type="button" onClick={onClose}>
-            Keep my support
-          </button>
-
-          <button className="secondary-button" type="button" disabled title="Coming soon">
-            Lower to $1/month · Coming soon
-          </button>
-
-          <button className="secondary-button" type="button" onClick={goToBilling}>
-            Pause support
-          </button>
-
-          <button className="text-button center" type="button" onClick={goToBilling}>
-            Continue to billing
-          </button>
+          <button className="primary-button" type="button" onClick={onClose}>Keep my support</button>
+          <button className="secondary-button" type="button" disabled title="Coming soon">Lower to $1/month · Coming soon</button>
+          <button className="secondary-button" type="button" onClick={goToBilling}>Pause support</button>
+          <button className="text-button center" type="button" onClick={goToBilling}>Continue to billing</button>
         </div>
 
         {billingNote && <div className="cp-billing-note">{billingNote}</div>}
@@ -197,9 +187,7 @@ function CustomerCommunityPass({ user, profile }) {
                 <strong className="cp-status-value">{supporterStatus}</strong>
               </div>
             </div>
-            <p className="cp-thanks">
-              Thank you for helping HEHA Swipe grow Tampa Bay’s local healthy discovery network.
-            </p>
+            <p className="cp-thanks">Thank you for helping HEHA Swipe grow Tampa Bay’s local healthy discovery network.</p>
           </div>
 
           <h2 className="cp-section-title">Benefits unlocked</h2>
@@ -213,24 +201,15 @@ function CustomerCommunityPass({ user, profile }) {
           </div>
 
           <h2 className="cp-section-title">Local deals &amp; partner offers</h2>
-          <div className="cp-panel card-like">
-            <p>Supporter local deal drops are on the way. New partner offers will appear here as HEHA activates them — no fake deals until they’re real.</p>
-          </div>
+          <div className="cp-panel card-like"><p>Supporter local deal drops are on the way. New partner offers will appear here as HEHA activates them — no fake deals until they’re real.</p></div>
 
           <h2 className="cp-section-title">HEHA updates</h2>
-          <div className="cp-panel card-like">
-            <p>Community and Freebird mission updates, new partner announcements, and event invites will show up here.</p>
-          </div>
+          <div className="cp-panel card-like"><p>Community and Freebird mission updates, new partner announcements, and event invites will show up here.</p></div>
 
           <h2 className="cp-section-title">Community impact</h2>
-          <div className="cp-panel card-like">
-            <p>Your monthly support helps highlight small local businesses and keeps early-access features moving forward for the whole HEHA Swipe community.</p>
-          </div>
+          <div className="cp-panel card-like"><p>Your monthly support helps highlight small local businesses and keeps early-access features moving forward for the whole HEHA Swipe community.</p></div>
 
-          <button className="secondary-button cp-manage-btn" type="button" onClick={() => setShowManage(true)}>
-            Manage support
-          </button>
-
+          <button className="secondary-button cp-manage-btn" type="button" onClick={() => setShowManage(true)}>Manage support</button>
           {showManage && <ManageSupportModal portalUrl={portalUrl} onClose={() => setShowManage(false)} />}
         </>
       ) : (
@@ -260,23 +239,12 @@ function CustomerCommunityPass({ user, profile }) {
               </div>
               <strong className="cp-status-value">${amount}/month</strong>
             </div>
-            <input
-              type="range"
-              min="1"
-              max="100"
-              step="1"
-              value={amount}
-              onChange={(e) => setAmount(Number(e.target.value))}
-              aria-label="Monthly support amount"
-              disabled={busy}
-            />
+            <input type="range" min="1" max="100" step="1" value={amount} onChange={(e) => setAmount(Number(e.target.value))} aria-label="Monthly support amount" disabled={busy} />
 
             <button className="primary-button" type="button" onClick={() => goToCheckout(amount)} disabled={busy}>
               {busy ? "Opening checkout…" : `Become a Supporter · $${amount}/month`}
             </button>
-            <button className="secondary-button" type="button" onClick={() => goToCheckout(1)} disabled={busy}>
-              Start at $1/month
-            </button>
+            <button className="secondary-button" type="button" onClick={() => goToCheckout(1)} disabled={busy}>Start at $1/month</button>
 
             {error && <div className="cp-billing-note">{error}</div>}
             <p className="cp-reminder">{REMINDER_COPY}</p>
@@ -287,9 +255,10 @@ function CustomerCommunityPass({ user, profile }) {
   );
 }
 
-function PartnerHubTab({ listing, loading, error, isPartnerAccount, onRefresh, onListBusiness }) {
+function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefresh, onListBusiness }) {
   const [actionNote, setActionNote] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
   const status = normalizeStatus(listing?.status);
   const visible = Boolean(listing && VISIBLE_STATUSES.includes(status));
   const certified = listing?.heha_partner === true;
@@ -307,6 +276,21 @@ function PartnerHubTab({ listing, loading, error, isPartnerAccount, onRefresh, o
     setShowPreview(true);
   };
 
+  const openEditor = () => {
+    if (!listing) {
+      onListBusiness?.();
+      return;
+    }
+    setActionNote(null);
+    setShowEditor(true);
+  };
+
+  const handleEditorSaved = async (_savedListing, note) => {
+    setShowEditor(false);
+    setActionNote(note || "Business profile saved.");
+    await onRefresh?.();
+  };
+
   const copy = !listing
     ? "Your business account is active, but no listing was found yet. Start or continue your business registration."
     : status === "pending"
@@ -320,9 +304,7 @@ function PartnerHubTab({ listing, loading, error, isPartnerAccount, onRefresh, o
       <header className="cp-hero partner-hub-hero">
         <p className="eyebrow">Business Partner Hub</p>
         <h1>Your HEHA Swipe listing</h1>
-        <p className="cp-sub">
-          Track your listing status, update missing info, and prepare your profile for HEHA review.
-        </p>
+        <p className="cp-sub">Track your listing status, update missing info, and prepare your profile for HEHA review.</p>
       </header>
 
       <section className="partner-hub-card card-like" aria-busy={loading}>
@@ -331,12 +313,8 @@ function PartnerHubTab({ listing, loading, error, isPartnerAccount, onRefresh, o
         ) : error ? (
           <>
             <h2>Listing status unavailable</h2>
-            <p className="partner-hub-copy">
-              HEHA Swipe could not load your business listing yet. This may be a Supabase/RLS access issue or a temporary connection problem.
-            </p>
-            <button className="secondary-button" type="button" onClick={onRefresh}>
-              Refresh status
-            </button>
+            <p className="partner-hub-copy">HEHA Swipe could not load your business listing yet. This may be a Supabase/RLS access issue or a temporary connection problem.</p>
+            <button className="secondary-button" type="button" onClick={onRefresh}>Refresh status</button>
           </>
         ) : listing ? (
           <>
@@ -345,56 +323,29 @@ function PartnerHubTab({ listing, loading, error, isPartnerAccount, onRefresh, o
                 <span className="cp-status-label">Business name</span>
                 <h2>{listing.name || "Unnamed business"}</h2>
               </div>
-              <span className={visible ? "partner-status-pill visible" : "partner-status-pill hidden"}>
-                {formatStatus(status)}
-              </span>
+              <span className={visible ? "partner-status-pill visible" : "partner-status-pill hidden"}>{formatStatus(status)}</span>
             </div>
 
             <p className="partner-hub-copy">{copy}</p>
 
             <div className="partner-hub-grid">
-              <div>
-                <span className="cp-status-label">Category</span>
-                <strong>{listing.category || "Not set"}</strong>
-              </div>
-              <div>
-                <span className="cp-status-label">Status</span>
-                <strong>{formatStatus(status)}</strong>
-              </div>
-              <div>
-                <span className="cp-status-label">Submitted</span>
-                <strong>{formatDate(listing.created_at)}</strong>
-              </div>
-              <div>
-                <span className="cp-status-label">Last updated</span>
-                <strong>{formatDate(listing.updated_at)}</strong>
-              </div>
-              <div>
-                <span className="cp-status-label">Completion</span>
-                <strong>{completionLabel(listing.complete_pct)}</strong>
-              </div>
-              <div>
-                <span className="cp-status-label">Public visibility</span>
-                <strong>{visible ? "Visible" : "Hidden until review"}</strong>
-              </div>
-              <div>
-                <span className="cp-status-label">HEHA Certified</span>
-                <strong>{certified ? "Certified" : "Not certified yet"}</strong>
-              </div>
+              <div><span className="cp-status-label">Category</span><strong>{listing.category || "Not set"}</strong></div>
+              <div><span className="cp-status-label">Status</span><strong>{formatStatus(status)}</strong></div>
+              <div><span className="cp-status-label">Submitted</span><strong>{formatDate(listing.created_at)}</strong></div>
+              <div><span className="cp-status-label">Last updated</span><strong>{formatDate(listing.updated_at)}</strong></div>
+              <div><span className="cp-status-label">Completion</span><strong>{completionLabel(listing.complete_pct)}</strong></div>
+              <div><span className="cp-status-label">Public visibility</span><strong>{visible ? "Visible" : "Hidden until review"}</strong></div>
+              <div><span className="cp-status-label">HEHA Certified</span><strong>{certified ? "Certified" : "Not certified yet"}</strong></div>
             </div>
 
-            <div className="partner-cert-note">
-              Approved/live status is not the same as HEHA Certified. HEHA certification remains admin-controlled.
-            </div>
+            <div className="partner-cert-note">Approved/live status is not the same as HEHA Certified. HEHA certification remains admin-controlled.</div>
           </>
         ) : (
           <>
             <h2>No listing found</h2>
             <p className="partner-hub-copy">{copy}</p>
             {isPartnerAccount && (
-              <button className="primary-button" type="button" onClick={onListBusiness}>
-                Start or continue business registration
-              </button>
+              <button className="primary-button" type="button" onClick={onListBusiness}>Start or continue business registration</button>
             )}
           </>
         )}
@@ -403,37 +354,25 @@ function PartnerHubTab({ listing, loading, error, isPartnerAccount, onRefresh, o
       <section className="partner-hub-actions card-like">
         <h2>Partner actions</h2>
         <div className="partner-action-grid">
-          <button className="secondary-button" type="button" onClick={onRefresh}>
-            Refresh status
-          </button>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => (listing ? comingSoon("Edit business profile") : onListBusiness?.())}
-          >
-            {listing ? "Edit business profile" : "Start business profile"}
-          </button>
-          <button className="secondary-button" type="button" onClick={() => comingSoon("Add logo / photos")}>
-            Add logo / photos
-          </button>
-          <button className="secondary-button" type="button" onClick={openPreview}>
-            Preview listing
-          </button>
-          <button className="secondary-button" type="button" onClick={() => comingSoon("Request local deal")}>
-            Request local deal
-          </button>
-          <button className="secondary-button" type="button" onClick={() => comingSoon("Request certification review")}>
-            Request certification review
-          </button>
+          <button className="secondary-button" type="button" onClick={onRefresh}>Refresh status</button>
+          <button className="secondary-button" type="button" onClick={openEditor}>{listing ? "Edit business profile" : "Start business profile"}</button>
+          <button className="secondary-button" type="button" onClick={() => comingSoon("Add logo / photos")}>Add logo / photos</button>
+          <button className="secondary-button" type="button" onClick={openPreview}>Preview listing</button>
+          <button className="secondary-button" type="button" onClick={() => comingSoon("Request local deal")}>Request local deal</button>
+          <button className="secondary-button" type="button" onClick={() => comingSoon("Request certification review")}>Request certification review</button>
         </div>
         {actionNote && <div className="cp-billing-note">{actionNote}</div>}
-        <p className="partner-hub-fineprint">
-          HEHA review controls visibility and certification. This hub never auto-publishes, auto-certifies, or changes paid SuperSwoop settings.
-        </p>
+        <p className="partner-hub-fineprint">HEHA review controls visibility and certification. This hub never auto-publishes, auto-certifies, or changes paid SuperSwoop settings.</p>
       </section>
 
-      {showPreview && listing && (
-        <PartnerListingPreview listing={listing} onClose={() => setShowPreview(false)} />
+      {showPreview && listing && <PartnerListingPreview listing={listing} onClose={() => setShowPreview(false)} />}
+      {showEditor && listing && (
+        <PartnerProfileEditor
+          user={user}
+          listing={listing}
+          onClose={() => setShowEditor(false)}
+          onSaved={handleEditorSaved}
+        />
       )}
     </>
   );
@@ -457,7 +396,7 @@ export default function CommunityPassTab({ user, profile, onListBusiness }) {
     try {
       const { data, error } = await supabase
         .from("partners")
-        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours")
+        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours, contact, business_type, phone, delivery_days, pricing_notes")
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -484,6 +423,7 @@ export default function CommunityPassTab({ user, profile, onListBusiness }) {
     <section className="community-pass-screen">
       {showPartnerHub ? (
         <PartnerHubTab
+          user={user}
           listing={ownerListing}
           loading={listingLoading}
           error={listingError}
