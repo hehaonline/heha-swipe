@@ -146,15 +146,16 @@ Deno.serve(async (req: Request) => {
             metadata: buildSessionMetadata(session, supportType),
           }, { onConflict: 'stripe_checkout_session_id' });
 
-          await supabase.from('contributions').insert({
+          const stripePaymentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? session.id;
+          await supabase.from('contributions').upsert({
             user_id: userId,
             type: supportType,
             amount: sessionAmount / 100,
             freebird_portion: 0,
             heha_portion: sessionAmount / 100,
-            stripe_payment_id: typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? session.id,
+            stripe_payment_id: stripePaymentId,
             status: session.payment_status === 'paid' ? 'paid' : 'pending',
-          });
+          }, { onConflict: 'stripe_payment_id' });
         }
         break;
       }
@@ -184,6 +185,7 @@ Deno.serve(async (req: Request) => {
           metadata: {
             ...(subscription.metadata ?? {}),
             support_type: 'supporter_membership',
+            environment: subscription.livemode ? 'live' : 'test',
           },
         }, { onConflict: 'stripe_subscription_id' });
 

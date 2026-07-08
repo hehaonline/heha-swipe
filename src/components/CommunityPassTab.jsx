@@ -24,7 +24,6 @@ const BENEFITS = [
   { icon: "🎉", title: "Event invites and local partner announcements" },
 ];
 
-const SUPPORTER_TYPES = ["supporter_membership", "customer_supporter", "partner_supporter"];
 const PARTNER_TYPES = [
   "partner_free",
   "partner_supporter",
@@ -34,12 +33,6 @@ const PARTNER_TYPES = [
   "listed",
 ];
 const VISIBLE_STATUSES = ["approved", "live"];
-
-function isActiveSupporter(profile) {
-  if (!profile) return false;
-  const type = profile.subscription_type || "";
-  return profile.subscription_active === true && SUPPORTER_TYPES.includes(type);
-}
 
 function isPartnerProfile(profile) {
   return PARTNER_TYPES.includes(profile?.subscription_type || "");
@@ -65,15 +58,6 @@ function completionLabel(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return "Not calculated yet";
   return `${Math.max(0, Math.min(100, Math.round(parsed)))}%`;
-}
-
-function statusLabel(profile) {
-  const s = (profile?.subscription_status || "").toLowerCase();
-  if (s === "active") return "Active";
-  if (s === "trialing") return "Trialing";
-  if (s === "past_due") return "Payment past due";
-  if (s === "canceled" || s === "cancelled") return "Canceled";
-  return profile?.subscription_active ? "Active" : "—";
 }
 
 function ManageSupportModal({ portalUrl, onClose }) {
@@ -120,10 +104,8 @@ function CustomerCommunityPass({ user, profile }) {
   const [error, setError] = useState(null);
   const [subRow, setSubRow] = useState(null);
 
-  const profileSupporter = isActiveSupporter(profile);
-
   useEffect(() => {
-    if (profileSupporter || !user?.id) {
+    if (!user?.id) {
       setSubRow(null);
       return undefined;
     }
@@ -138,19 +120,15 @@ function CustomerCommunityPass({ user, profile }) {
     return () => {
       cancelled = true;
     };
-  }, [profileSupporter, user?.id]);
+  }, [user?.id]);
 
-  const supporter = profileSupporter || !!subRow;
-  const currentAmount = profileSupporter
-    ? Number(profile?.subscription_amount || 0)
-    : subRow
-    ? Number(subRow.amount_cents || 0) / 100
+  const supporter = !!subRow;
+  const currentAmount = subRow
+    ? Number(subRow.amount_cents || Number(subRow.quantity || 0) * 100 || 0) / 100
     : 0;
-  const supporterStatus = profileSupporter
-    ? statusLabel(profile)
-    : subRow
+  const supporterStatus = subRow
     ? (subRow.status === "trialing" ? "Trialing" : "Active")
-    : statusLabel(profile);
+    : "—";
   const portalUrl = import.meta.env.VITE_STRIPE_CUSTOMER_PORTAL_URL || null;
 
   const goToCheckout = async (qty) => {

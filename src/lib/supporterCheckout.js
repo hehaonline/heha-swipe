@@ -22,13 +22,8 @@ export async function startSupporterCheckout(amount) {
     throw new Error("Please sign in again to start monthly support.");
   }
 
-  const origin = window.location.origin;
   const { data, error: checkoutError } = await supabase.functions.invoke("create-supporter-checkout", {
-    body: {
-      quantity,
-      successUrl: `${origin}/support/success`,
-      cancelUrl: `${origin}/support/cancel`,
-    },
+    body: { quantity },
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 

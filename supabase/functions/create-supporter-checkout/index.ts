@@ -34,6 +34,11 @@ function getBearerToken(req: Request): string | null {
   return match?.[1] ?? null;
 }
 
+function getHehaSwipeBaseUrl(): string {
+  const configured = Deno.env.get('HEHA_SWIPE_URL') ?? 'https://www.hehaswipe.app';
+  return configured.replace(/\/+$/, '');
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -46,7 +51,7 @@ Deno.serve(async (req: Request) => {
   try {
     const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
     const membershipPriceId = Deno.env.get('STRIPE_SUPPORTER_MEMBERSHIP_PRICE_ID');
-    const hehaSwipeUrl = Deno.env.get('HEHA_SWIPE_URL') ?? 'https://www.hehaswipe.app';
+    const hehaSwipeUrl = getHehaSwipeBaseUrl();
 
     if (!stripeSecretKey) {
       return json({ error: 'STRIPE_SECRET_KEY is not configured.' }, 500);
@@ -76,12 +81,8 @@ Deno.serve(async (req: Request) => {
       ? Math.max(1, Math.min(100, Math.floor(requestedQuantity)))
       : 1;
 
-    const successUrl = typeof body?.successUrl === 'string'
-      ? body.successUrl
-      : `${hehaSwipeUrl}/subscribe?checkout=success`;
-    const cancelUrl = typeof body?.cancelUrl === 'string'
-      ? body.cancelUrl
-      : `${hehaSwipeUrl}/subscribe?checkout=cancelled`;
+    const successUrl = `${hehaSwipeUrl}/support/success`;
+    const cancelUrl = `${hehaSwipeUrl}/support/cancel`;
 
     const stripe = new Stripe(stripeSecretKey, { apiVersion: '2025-02-24.acacia' });
 
