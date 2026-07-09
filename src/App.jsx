@@ -416,9 +416,11 @@ export default function App() {
     return (
       <PartnerWizard
         user={session.user}
-        onComplete={() => {
+        onComplete={(submittedListing) => {
+          if (submittedListing) setMyListing(submittedListing);
           setShowPartnerWizard(false);
           setTab("profile");
+          flashNotice(`${submittedListing?.name || "Business"} registration saved. You're in your business profile.`);
           loadData(session.user.id);
         }}
         onCancel={() => setShowPartnerWizard(false)}
