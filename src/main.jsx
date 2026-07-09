@@ -30,8 +30,8 @@ if (new URLSearchParams(window.location.search).get("becomePartner") === "1") {
 function shouldRenderAdminApp() {
   const hostIsAdmin = window.location.hostname.startsWith("admin.");
   const buildIsAdmin = import.meta.env.VITE_APP_MODE === "admin";
-  const localAdminRoute = import.meta.env.DEV && window.location.pathname.startsWith("/admin");
-  return hostIsAdmin || buildIsAdmin || localAdminRoute;
+  const adminRoute = window.location.pathname.startsWith("/admin");
+  return hostIsAdmin || buildIsAdmin || adminRoute;
 }
 
 function embedFromPath() {
