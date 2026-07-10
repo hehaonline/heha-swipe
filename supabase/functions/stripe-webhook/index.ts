@@ -53,6 +53,17 @@ function buildSessionMetadata(session: Stripe.Checkout.Session, supportType: Sup
   };
 }
 
+async function persistCritical<T extends { error: { message?: string } | null }>(
+  label: string,
+  operation: Promise<T>,
+): Promise<T> {
+  const result = await operation;
+  if (result.error) {
+    throw new Error(`${label} failed: ${result.error.message ?? 'Supabase persistence error'}`);
+  }
+  return result;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
@@ -102,60 +113,72 @@ Deno.serve(async (req: Request) => {
           const quantity = subscription.items.data[0]?.quantity ?? Number(session.metadata?.quantity ?? 1);
           const unitAmount = subscription.items.data[0]?.price?.unit_amount ?? 100;
 
-          await supabase.from('supporter_subscriptions').upsert({
-            user_id: userId,
-            stripe_subscription_id: subscription.id,
-            stripe_customer_id: customerId,
-            stripe_price_id: priceId,
-            quantity,
-            amount_cents: (unitAmount ?? 100) * quantity,
-            currency,
-            status: subscription.status,
-            current_period_start: toTimestamp(subscription.current_period_start),
-            current_period_end: toTimestamp(subscription.current_period_end),
-            cancel_at_period_end: subscription.cancel_at_period_end,
-            canceled_at: toTimestamp(subscription.canceled_at),
-            metadata: {
-              ...(subscription.metadata ?? {}),
-              support_type: 'supporter_membership',
-              checkout_session_id: session.id,
-              environment: session.livemode ? 'live' : 'test',
-            },
-          }, { onConflict: 'stripe_subscription_id' });
+          await persistCritical(
+            'supporter_subscriptions checkout upsert',
+            supabase.from('supporter_subscriptions').upsert({
+              user_id: userId,
+              stripe_subscription_id: subscription.id,
+              stripe_customer_id: customerId,
+              stripe_price_id: priceId,
+              quantity,
+              amount_cents: (unitAmount ?? 100) * quantity,
+              currency,
+              status: subscription.status,
+              current_period_start: toTimestamp(subscription.current_period_start),
+              current_period_end: toTimestamp(subscription.current_period_end),
+              cancel_at_period_end: subscription.cancel_at_period_end,
+              canceled_at: toTimestamp(subscription.canceled_at),
+              metadata: {
+                ...(subscription.metadata ?? {}),
+                support_type: 'supporter_membership',
+                checkout_session_id: session.id,
+                environment: session.livemode ? 'live' : 'test',
+              },
+            }, { onConflict: 'stripe_subscription_id' }),
+          );
 
           if (userId) {
-            await supabase.from('profiles').update({
-              stripe_customer_id: customerId,
-              stripe_subscription_id: subscription.id,
-              subscription_type: 'supporter_membership',
-              subscription_amount: ((unitAmount ?? 100) * quantity) / 100,
-              subscription_active: ['active', 'trialing'].includes(subscription.status),
-              subscription_status: subscription.status,
-            }).eq('id', userId);
+            await persistCritical(
+              'profiles subscription checkout update',
+              supabase.from('profiles').update({
+                stripe_customer_id: customerId,
+                stripe_subscription_id: subscription.id,
+                subscription_type: 'supporter_membership',
+                subscription_amount: ((unitAmount ?? 100) * quantity) / 100,
+                subscription_active: ['active', 'trialing'].includes(subscription.status),
+                subscription_status: subscription.status,
+              }).eq('id', userId),
+            );
           }
         } else {
-          await supabase.from('supporter_payments').upsert({
-            user_id: userId,
-            stripe_checkout_session_id: session.id,
-            stripe_payment_intent_id: typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null,
-            stripe_customer_id: customerId,
-            amount_cents: sessionAmount,
-            currency,
-            support_type: supportType,
-            status: session.payment_status === 'paid' ? 'paid' : 'pending',
-            metadata: buildSessionMetadata(session, supportType),
-          }, { onConflict: 'stripe_checkout_session_id' });
+          await persistCritical(
+            'supporter_payments checkout upsert',
+            supabase.from('supporter_payments').upsert({
+              user_id: userId,
+              stripe_checkout_session_id: session.id,
+              stripe_payment_intent_id: typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null,
+              stripe_customer_id: customerId,
+              amount_cents: sessionAmount,
+              currency,
+              support_type: supportType,
+              status: session.payment_status === 'paid' ? 'paid' : 'pending',
+              metadata: buildSessionMetadata(session, supportType),
+            }, { onConflict: 'stripe_checkout_session_id' }),
+          );
 
           const stripePaymentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? session.id;
-          await supabase.from('contributions').upsert({
-            user_id: userId,
-            type: supportType,
-            amount: sessionAmount / 100,
-            freebird_portion: 0,
-            heha_portion: sessionAmount / 100,
-            stripe_payment_id: stripePaymentId,
-            status: session.payment_status === 'paid' ? 'paid' : 'pending',
-          }, { onConflict: 'stripe_payment_id' });
+          await persistCritical(
+            'contributions checkout upsert',
+            supabase.from('contributions').upsert({
+              user_id: userId,
+              type: supportType,
+              amount: sessionAmount / 100,
+              freebird_portion: 0,
+              heha_portion: sessionAmount / 100,
+              stripe_payment_id: stripePaymentId,
+              status: session.payment_status === 'paid' ? 'paid' : 'pending',
+            }, { onConflict: 'stripe_payment_id' }),
+          );
         }
         break;
       }
@@ -169,35 +192,41 @@ Deno.serve(async (req: Request) => {
         const quantity = subscription.items.data[0]?.quantity ?? Number(subscription.metadata?.quantity ?? 1);
         const unitAmount = subscription.items.data[0]?.price?.unit_amount ?? 100;
 
-        await supabase.from('supporter_subscriptions').upsert({
-          user_id: userId,
-          stripe_subscription_id: subscription.id,
-          stripe_customer_id: customerId,
-          stripe_price_id: priceId,
-          quantity,
-          amount_cents: (unitAmount ?? 100) * quantity,
-          currency: subscription.currency ?? 'usd',
-          status: subscription.status,
-          current_period_start: toTimestamp(subscription.current_period_start),
-          current_period_end: toTimestamp(subscription.current_period_end),
-          cancel_at_period_end: subscription.cancel_at_period_end,
-          canceled_at: toTimestamp(subscription.canceled_at),
-          metadata: {
-            ...(subscription.metadata ?? {}),
-            support_type: 'supporter_membership',
-            environment: subscription.livemode ? 'live' : 'test',
-          },
-        }, { onConflict: 'stripe_subscription_id' });
+        await persistCritical(
+          'supporter_subscriptions subscription event upsert',
+          supabase.from('supporter_subscriptions').upsert({
+            user_id: userId,
+            stripe_subscription_id: subscription.id,
+            stripe_customer_id: customerId,
+            stripe_price_id: priceId,
+            quantity,
+            amount_cents: (unitAmount ?? 100) * quantity,
+            currency: subscription.currency ?? 'usd',
+            status: subscription.status,
+            current_period_start: toTimestamp(subscription.current_period_start),
+            current_period_end: toTimestamp(subscription.current_period_end),
+            cancel_at_period_end: subscription.cancel_at_period_end,
+            canceled_at: toTimestamp(subscription.canceled_at),
+            metadata: {
+              ...(subscription.metadata ?? {}),
+              support_type: 'supporter_membership',
+              environment: subscription.livemode ? 'live' : 'test',
+            },
+          }, { onConflict: 'stripe_subscription_id' }),
+        );
 
         if (userId) {
-          await supabase.from('profiles').update({
-            stripe_customer_id: customerId,
-            stripe_subscription_id: subscription.id,
-            subscription_type: 'supporter_membership',
-            subscription_amount: ((unitAmount ?? 100) * quantity) / 100,
-            subscription_active: ['active', 'trialing'].includes(subscription.status),
-            subscription_status: subscription.status,
-          }).eq('id', userId);
+          await persistCritical(
+            'profiles subscription event update',
+            supabase.from('profiles').update({
+              stripe_customer_id: customerId,
+              stripe_subscription_id: subscription.id,
+              subscription_type: 'supporter_membership',
+              subscription_amount: ((unitAmount ?? 100) * quantity) / 100,
+              subscription_active: ['active', 'trialing'].includes(subscription.status),
+              subscription_status: subscription.status,
+            }).eq('id', userId),
+          );
         }
         break;
       }
