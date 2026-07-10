@@ -112,6 +112,24 @@ create table if not exists public.partner_interest_requests (
 create index if not exists partner_interest_requests_partner_idx
   on public.partner_interest_requests(partner_id, created_at desc);
 
+do $migration$
+begin
+  if exists (
+    select 1
+    from public.partner_interest_requests
+    where status in ('submitted', 'reviewing', 'needs_info')
+    group by partner_id
+    having count(*) > 1
+  ) then
+    raise exception 'Duplicate active partner_interest_requests exist; resolve before creating one-active-request protection';
+  end if;
+end;
+$migration$;
+
+create unique index if not exists partner_interest_requests_one_active_partner_idx
+  on public.partner_interest_requests(partner_id)
+  where status in ('submitted', 'reviewing', 'needs_info');
+
 create index if not exists partner_interest_requests_owner_idx
   on public.partner_interest_requests(owner_id, created_at desc);
 
@@ -137,7 +155,7 @@ create or replace function app_private.guard_partner_interest_request()
 returns trigger
 language plpgsql
 security definer
-set search_path = pg_catalog, public, app_private, auth, pg_temp
+set search_path = ''
 as $$
 declare
   actor_id uuid := auth.uid();
@@ -163,19 +181,19 @@ begin
   if actor_id is null then
     if tg_op = 'INSERT' then
       if new.contact_consent is true and new.contact_consent_at is null then
-        new.contact_consent_at := now();
+        new.contact_consent_at := pg_catalog.now();
       end if;
-      new.created_at := now();
-      new.updated_at := now();
+      new.created_at := pg_catalog.now();
+      new.updated_at := pg_catalog.now();
     elsif tg_op = 'UPDATE' then
-      new.updated_at := now();
+      new.updated_at := pg_catalog.now();
     end if;
     return new;
   end if;
 
   if app_private.has_internal_role(array['super_admin', 'developer_admin', 'pm_admin']) then
     if tg_op = 'UPDATE' then
-      new.updated_at := now();
+      new.updated_at := pg_catalog.now();
 
       if new.owner_id is distinct from old.owner_id
          or new.partner_id is distinct from old.partner_id then
@@ -184,18 +202,18 @@ begin
           message = 'Internal users cannot retarget partnership interest requests.';
       end if;
 
-      if (to_jsonb(new) - internal_status_keys) is distinct from (to_jsonb(old) - internal_status_keys) then
+      if (pg_catalog.to_jsonb(new) - internal_status_keys) is distinct from (pg_catalog.to_jsonb(old) - internal_status_keys) then
         raise exception using
           errcode = '42501',
           message = 'Internal users may only update partnership request workflow status.';
       end if;
     elsif tg_op = 'INSERT' then
       if new.contact_consent is true and new.contact_consent_at is null then
-        new.contact_consent_at := now();
+        new.contact_consent_at := pg_catalog.now();
       end if;
       new.status := 'submitted';
-      new.created_at := now();
-      new.updated_at := now();
+      new.created_at := pg_catalog.now();
+      new.updated_at := pg_catalog.now();
     end if;
 
     return new;
@@ -226,9 +244,9 @@ begin
     end if;
 
     new.status := 'submitted';
-    new.contact_consent_at := coalesce(new.contact_consent_at, now());
-    new.created_at := now();
-    new.updated_at := now();
+    new.contact_consent_at := pg_catalog.now();
+    new.created_at := pg_catalog.now();
+    new.updated_at := pg_catalog.now();
     return new;
   end if;
 
@@ -253,9 +271,9 @@ begin
         message = 'Owners cannot change partnership request workflow, owner, or listing target.';
     end if;
 
-    new.updated_at := now();
+    new.updated_at := pg_catalog.now();
 
-    if (to_jsonb(new) - owner_editable_keys) is distinct from (to_jsonb(old) - owner_editable_keys) then
+    if (pg_catalog.to_jsonb(new) - owner_editable_keys) is distinct from (pg_catalog.to_jsonb(old) - owner_editable_keys) then
       raise exception using
         errcode = '42501',
         message = 'Owners may only update partnership questionnaire fields while the request is open.';
@@ -280,7 +298,7 @@ create or replace function app_private.apply_partner_interest_request_state()
 returns trigger
 language plpgsql
 security definer
-set search_path = pg_catalog, public, app_private, auth, pg_temp
+set search_path = ''
 as $$
 begin
   perform pg_catalog.set_config('app.partner_interest_request_context', 'true', true);
@@ -288,8 +306,8 @@ begin
   update public.partners
   set relationship_status = 'partnership_requested',
       contract_status = 'not_signed',
-      partnership_requested_at = now(),
-      updated_at = now()
+      partnership_requested_at = pg_catalog.now(),
+      updated_at = pg_catalog.now()
   where id = new.partner_id
     and owner_id is not distinct from new.owner_id
     and relationship_status = 'listed_only';
