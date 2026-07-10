@@ -77,6 +77,8 @@ $$;
 do $$
 declare
   v_columns text[];
+  v_guard_config text[];
+  v_apply_config text[];
 begin
   select array_agg(column_name order by column_name)
   into v_columns
@@ -121,8 +123,49 @@ begin
     raise exception 'partner_interest_requests table privileges do not match intended matrix';
   end if;
 
+  if not exists (
+    select 1
+    from pg_catalog.pg_indexes
+    where schemaname = 'public'
+      and tablename = 'partner_interest_requests'
+      and indexname = 'partner_interest_requests_one_active_partner_idx'
+      and indexdef like '%UNIQUE%'
+      and indexdef like '%partner_id%'
+      and indexdef like '%submitted%'
+      and indexdef like '%reviewing%'
+      and indexdef like '%needs_info%'
+  ) then
+    raise exception 'active partner_interest_requests unique index is missing or has unexpected predicate';
+  end if;
+
+  select p.proconfig
+  into v_guard_config
+  from pg_catalog.pg_proc p
+  where p.oid = 'app_private.guard_partner_interest_request()'::regprocedure;
+
+  select p.proconfig
+  into v_apply_config
+  from pg_catalog.pg_proc p
+  where p.oid = 'app_private.apply_partner_interest_request_state()'::regprocedure;
+
+  if not exists (
+    select 1
+    from unnest(coalesce(v_guard_config, array[]::text[])) as cfg(value)
+    where cfg.value in ('search_path=', 'search_path=""')
+  ) then
+    raise exception 'guard_partner_interest_request must pin search_path to empty string';
+  end if;
+
+  if not exists (
+    select 1
+    from unnest(coalesce(v_apply_config, array[]::text[])) as cfg(value)
+    where cfg.value in ('search_path=', 'search_path=""')
+  ) then
+    raise exception 'apply_partner_interest_request_state must pin search_path to empty string';
+  end if;
+
   insert into pg_temp.partner_relationship_results(label, ok, detail)
-  values ('metadata and grants', true, 'columns, function grants, and table privileges verified');
+  values ('metadata and grants', true, 'columns, function grants, table privileges, active uniqueness, and trigger search_path verified');
 end;
 $$;
 
@@ -132,11 +175,17 @@ declare
   v_other_owner uuid := :'other_owner_user_id'::uuid;
   v_partner uuid := pg_catalog.gen_random_uuid();
   v_other_partner uuid := pg_catalog.gen_random_uuid();
-  v_local_partner uuid := pg_catalog.gen_random_uuid();
+  v_local_partner_empty uuid := pg_catalog.gen_random_uuid();
+  v_local_partner_items uuid := pg_catalog.gen_random_uuid();
+  v_duplicate_partner uuid := pg_catalog.gen_random_uuid();
   v_request uuid;
+  v_duplicate_request uuid;
   v_relationship text;
   v_contract text;
   v_requested_at timestamptz;
+  v_consent_at timestamptz;
+  v_window_start timestamptz;
+  v_window_end timestamptz;
 begin
   perform pg_temp.clear_auth_context();
 
@@ -144,7 +193,9 @@ begin
   values
     (v_partner, v_owner, 'Proof Listed Business', 'Proof', 'approved', false),
     (v_other_partner, v_other_owner, 'Other Proof Business', 'Proof', 'approved', false),
-    (v_local_partner, v_owner, 'Proof Local Intake Business', 'Proof', 'approved', false);
+    (v_local_partner_empty, v_owner, 'Proof Local Empty Intake Business', 'Proof', 'approved', false),
+    (v_local_partner_items, v_owner, 'Proof Local Items Intake Business', 'Proof', 'approved', false),
+    (v_duplicate_partner, v_owner, 'Proof Duplicate Protection Business', 'Proof', 'approved', false);
 
   select relationship_status, contract_status
   into v_relationship, v_contract
@@ -160,10 +211,12 @@ begin
 
   perform pg_temp.set_auth_context('authenticated', v_owner);
 
+  v_window_start := pg_catalog.now() - interval '1 second';
   insert into public.partner_interest_requests (
     partner_id,
     owner_id,
     contact_consent,
+    contact_consent_at,
     swipe_card_interest,
     heha_local_interest,
     starter_items
@@ -171,10 +224,19 @@ begin
     v_partner,
     v_owner,
     true,
+    '2001-01-01 00:00:00+00'::timestamptz,
     true,
     false,
     '[]'::jsonb
-  ) returning id into v_request;
+  ) returning id, contact_consent_at into v_request, v_consent_at;
+  v_window_end := pg_catalog.now() + interval '1 second';
+
+  if v_consent_at = '2001-01-01 00:00:00+00'::timestamptz
+     or v_consent_at < v_window_start
+     or v_consent_at > v_window_end then
+    raise exception 'owner-supplied contact_consent_at was not replaced with server timestamp: % outside % - %',
+      v_consent_at, v_window_start, v_window_end;
+  end if;
 
   select relationship_status, contract_status, partnership_requested_at
   into v_relationship, v_contract, v_requested_at
@@ -188,7 +250,7 @@ begin
   end if;
 
   insert into pg_temp.partner_relationship_results(label, ok, detail)
-  values ('owner valid request', true, 'owner request created and partner moved to partnership_requested/not_signed');
+  values ('owner valid request', true, 'owner request created, client consent timestamp replaced, and partner moved to partnership_requested/not_signed');
 
   perform pg_temp.expect_sqlstate(
     'owner request requires contact consent',
@@ -267,7 +329,77 @@ begin
     heha_local_interest,
     starter_items
   ) values (
-    v_local_partner,
+    v_duplicate_partner,
+    v_owner,
+    true,
+    false,
+    '[]'::jsonb
+  ) returning id into v_duplicate_request;
+
+  perform pg_temp.expect_sqlstate(
+    'duplicate active request rejected',
+    '23505',
+    format(
+      'insert into public.partner_interest_requests (partner_id, owner_id, contact_consent) values (%L, %L, true)',
+      v_duplicate_partner,
+      v_owner
+    )
+  );
+
+  insert into pg_temp.partner_relationship_results(label, ok, detail)
+  values ('duplicate active request protection', true, 'second submitted/reviewing/needs_info request for the same partner is rejected by unique index');
+
+  perform pg_temp.set_auth_context('service_role');
+  update public.partner_interest_requests
+  set status = 'converted'
+  where id = v_duplicate_request;
+
+  perform pg_temp.set_auth_context('authenticated', v_owner);
+  insert into public.partner_interest_requests (
+    partner_id,
+    owner_id,
+    contact_consent,
+    heha_local_interest,
+    starter_items
+  ) values (
+    v_duplicate_partner,
+    v_owner,
+    true,
+    false,
+    '[]'::jsonb
+  ) returning id into v_duplicate_request;
+
+  perform pg_temp.set_auth_context('service_role');
+  update public.partner_interest_requests
+  set status = 'closed'
+  where id = v_duplicate_request;
+
+  perform pg_temp.set_auth_context('authenticated', v_owner);
+  insert into public.partner_interest_requests (
+    partner_id,
+    owner_id,
+    contact_consent,
+    heha_local_interest,
+    starter_items
+  ) values (
+    v_duplicate_partner,
+    v_owner,
+    true,
+    false,
+    '[]'::jsonb
+  );
+
+  insert into pg_temp.partner_relationship_results(label, ok, detail)
+  values ('historical request reuse', true, 'converted and closed historical requests do not block a future active request');
+
+  insert into public.partner_interest_requests (
+    partner_id,
+    owner_id,
+    contact_consent,
+    heha_local_interest,
+    starter_items
+  ) values (
+    v_local_partner_empty,
     v_owner,
     true,
     false,
@@ -282,7 +414,7 @@ begin
     '23514',
     format(
       'insert into public.partner_interest_requests (partner_id, owner_id, contact_consent, heha_local_interest, starter_items) values (%L, %L, true, true, %L::jsonb)',
-      v_local_partner,
+      v_local_partner_items,
       v_owner,
       '[{"name":"one"},{"name":"two"}]'
     )
@@ -295,7 +427,7 @@ begin
     heha_local_interest,
     starter_items
   ) values (
-    v_local_partner,
+    v_local_partner_items,
     v_owner,
     true,
     true,
@@ -310,7 +442,7 @@ begin
     '23514',
     format(
       'insert into public.partner_interest_requests (partner_id, owner_id, contact_consent, heha_local_interest, starter_items) values (%L, %L, true, true, %L::jsonb)',
-      v_local_partner,
+      v_local_partner_items,
       v_owner,
       '[{"name":"one"},{"name":"two"},{"name":"three"},{"name":"four"},{"name":"five"},{"name":"six"},{"name":"seven"}]'
     )
