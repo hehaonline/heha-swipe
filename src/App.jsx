@@ -22,8 +22,6 @@ const COMPLETED_SUBSCRIPTION_TYPES = [
   "instagram",
   "monthly",
   "customer_free",
-  "customer_supporter",
-  "supporter_membership",
   "partner_free",
   "partner_supporter",
   "partner_instagram",
@@ -43,14 +41,7 @@ const PARTNER_SUBSCRIPTION_TYPES = [
   "listed",
 ];
 
-function isActiveSupporter(profile) {
-  if (!profile) return false;
-  const status = (profile.subscription_status || "").toLowerCase();
-  return profile.subscription_active === true && (status === "active" || status === "trialing");
-}
-
 function isOnboarded(profile) {
-  if (isActiveSupporter(profile)) return true;
   const type = profile?.subscription_type;
   if (!type) return false;
   return COMPLETED_SUBSCRIPTION_TYPES.some(
@@ -197,8 +188,8 @@ export default function App() {
       setProfile(nextProfile);
       setPartners(nextPartners);
       setSaves(nextSaves);
-      const supporterBySub = isActiveSupporter(nextProfile) ? true : await hasActiveSupporterSub(uid);
-      setNeedsOnboarding(!(isOnboarded(nextProfile) || supporterBySub));
+      const supporterByEntitlement = await hasActiveSupporterSub(uid);
+      setNeedsOnboarding(!(isOnboarded(nextProfile) || supporterByEntitlement));
 
       const signupIntent = localStorage.getItem("heha_signup_role");
       const { data: ownedListings, error: ownedListingError } = await supabase
@@ -370,10 +361,9 @@ export default function App() {
     if (!uid) return false;
     const { data } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
     if (data) setProfile(data);
-    const profileSupporter = isActiveSupporter(data);
-    const supporterActive = profileSupporter ? true : await hasActiveSupporterSub(uid);
+    const supporterActive = await hasActiveSupporterSub(uid);
     setNeedsOnboarding(!(((data && isOnboarded(data)) || supporterActive)));
-    return profileSupporter || supporterActive;
+    return supporterActive;
   };
 
   const handleSupportStatusContinue = () => {

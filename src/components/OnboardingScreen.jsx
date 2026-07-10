@@ -23,20 +23,15 @@ export default function OnboardingScreen({ user, onComplete }) {
     setStep("access");
   };
 
-  const saveProfile = async (statusOverride, accessOverride = access) => {
+  const saveProfile = async () => {
     const isPartner = role === "partner";
-    const subscriptionType = isPartner
-      ? accessOverride === "supporter" ? "partner_supporter" : "partner_free"
-      : accessOverride === "supporter" ? "customer_supporter" : "customer_free";
+    const subscriptionType = isPartner ? "partner_free" : "customer_free";
 
     const { error: profileError } = await supabase.from("profiles").upsert({
       id: user.id,
       email: user.email || null,
       phone: user.phone || null,
       subscription_type: subscriptionType,
-      subscription_active: accessOverride === "free" || statusOverride === "active",
-      subscription_amount: 0,
-      subscription_status: statusOverride || (accessOverride === "supporter" ? "supporter_coming_soon" : accessOverride),
     });
     if (profileError) throw profileError;
 
@@ -49,7 +44,7 @@ export default function OnboardingScreen({ user, onComplete }) {
 
     try {
       if (forceFree) setAccess("free");
-      await saveProfile(forceFree ? "free" : undefined, forceFree ? "free" : access);
+      await saveProfile();
       onComplete?.(role || "customer");
     } catch (completeError) {
       setError(completeError.message || "Could not finish setup yet.");
