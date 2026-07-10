@@ -2,26 +2,39 @@
 --
 -- Safety:
 -- * No existing profile, subscription, payment, or contribution rows are rewritten.
--- * The entitlement view exposes only minimal client fields and filters to live active/trialing rows.
+-- * The entitlement RPC exposes only minimal client fields and filters to live active/trialing rows.
 -- * The profile guard blocks authenticated browser writes to server-owned payment cache fields.
 -- * Contribution dedupe fails closed if duplicate non-null Stripe payment identifiers already exist.
 
-create or replace view public.my_active_supporter_entitlements
-with (security_invoker = true)
-as
-select
-  user_id,
-  status,
-  quantity,
-  amount_cents
-from public.supporter_subscriptions
-where status in ('active', 'trialing')
-  and metadata ->> 'environment' = 'live';
+drop view if exists public.my_active_supporter_entitlements;
 
-revoke all on table public.my_active_supporter_entitlements from public;
-revoke all on table public.my_active_supporter_entitlements from anon;
-revoke all on table public.my_active_supporter_entitlements from authenticated;
-grant select on table public.my_active_supporter_entitlements to authenticated;
+create or replace function public.get_my_active_supporter_entitlement()
+returns table (
+  status text,
+  quantity integer,
+  amount_cents integer
+)
+language sql
+security definer
+set search_path = ''
+stable
+as $function$
+  select
+    ss.status,
+    ss.quantity,
+    ss.amount_cents
+  from public.supporter_subscriptions ss
+  where ss.user_id = auth.uid()
+    and ss.status in ('active', 'trialing')
+    and ss.metadata ->> 'environment' = 'live'
+  order by ss.updated_at desc nulls last, ss.created_at desc nulls last
+  limit 1;
+$function$;
+
+revoke all on function public.get_my_active_supporter_entitlement() from public;
+revoke all on function public.get_my_active_supporter_entitlement() from anon;
+revoke all on function public.get_my_active_supporter_entitlement() from authenticated;
+grant execute on function public.get_my_active_supporter_entitlement() to authenticated;
 
 create or replace function public.guard_profile_entitlement_fields()
 returns trigger
@@ -183,13 +196,12 @@ begin
 end;
 $migration$;
 
--- Entitlement source table: authenticated SELECT is retained because
--- security_invoker views require the caller to satisfy the base table's
--- privileges and RLS. Browser writes are removed; RLS remains the row boundary.
+-- Entitlement source table: browser reads must use
+-- public.get_my_active_supporter_entitlement(). Direct base table access is
+-- removed for anon/authenticated; service_role remains the backend writer.
 revoke all on table public.supporter_subscriptions from public;
 revoke all on table public.supporter_subscriptions from anon;
-revoke insert, update, delete, truncate, references, trigger on table public.supporter_subscriptions from authenticated;
-grant select on table public.supporter_subscriptions to authenticated;
+revoke all on table public.supporter_subscriptions from authenticated;
 grant all on table public.supporter_subscriptions to service_role;
 
 revoke all on table public.supporter_payments from public;
