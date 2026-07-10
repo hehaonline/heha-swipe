@@ -68,41 +68,70 @@ as $$
   );
 $$;
 
+create or replace function pg_temp.public_has_function_privilege(p_function regprocedure, p_privilege text)
+returns boolean
+language sql
+as $$
+  select exists (
+    select 1
+    from pg_catalog.pg_proc p
+    cross join lateral pg_catalog.aclexplode(
+      coalesce(p.proacl, pg_catalog.acldefault('f', p.proowner))
+    ) acl
+    where p.oid = p_function
+      and acl.grantee = 0
+      and acl.privilege_type = p_privilege
+  );
+$$;
+
 do $$
 declare
-  v_view_options text[];
-  v_columns text[];
-  v_viewdef text;
+  v_config text[];
+  v_arg_count integer;
+  v_functiondef text;
+  v_function_result text;
 begin
-  select reloptions into v_view_options
-  from pg_catalog.pg_class
-  where oid = 'public.my_active_supporter_entitlements'::regclass;
-
-  if not ('security_invoker=true' = any (coalesce(v_view_options, array[]::text[]))) then
-    raise exception 'my_active_supporter_entitlements must use security_invoker=true';
+  if to_regclass('public.my_active_supporter_entitlements') is not null then
+    raise exception 'my_active_supporter_entitlements view must be removed; browser reads must use RPC';
   end if;
 
-  select array_agg(column_name order by ordinal_position) into v_columns
-  from information_schema.columns
-  where table_schema = 'public'
-    and table_name = 'my_active_supporter_entitlements';
+  select p.proconfig, p.pronargs
+  into v_config, v_arg_count
+  from pg_catalog.pg_proc p
+  where p.oid = 'public.get_my_active_supporter_entitlement()'::regprocedure;
 
-  if v_columns is distinct from array['user_id', 'status', 'quantity', 'amount_cents']::text[] then
-    raise exception 'my_active_supporter_entitlements exposes unexpected columns: %', v_columns;
+  if v_arg_count <> 0 then
+    raise exception 'get_my_active_supporter_entitlement must take no user_id or other arguments';
   end if;
 
-  v_viewdef := pg_catalog.pg_get_viewdef('public.my_active_supporter_entitlements'::regclass, true);
-  if position('stripe_subscription_id' in v_viewdef) > 0
-     or position('stripe_customer_id' in v_viewdef) > 0
-     or position('stripe_price_id' in v_viewdef) > 0 then
-    raise exception 'my_active_supporter_entitlements view definition exposes Stripe identifiers';
+  if not ('search_path=' = any (coalesce(v_config, array[]::text[]))) then
+    raise exception 'get_my_active_supporter_entitlement must pin search_path to empty string';
   end if;
 
-  if position('active' in v_viewdef) = 0
-     or position('trialing' in v_viewdef) = 0
-     or position('environment' in v_viewdef) = 0
-     or position('live' in v_viewdef) = 0 then
-    raise exception 'my_active_supporter_entitlements must filter active/trialing live subscriptions';
+  v_function_result := pg_catalog.pg_get_function_result('public.get_my_active_supporter_entitlement()'::regprocedure);
+  if v_function_result <> 'TABLE(status text, quantity integer, amount_cents integer)' then
+    raise exception 'get_my_active_supporter_entitlement exposes unexpected return shape: %', v_function_result;
+  end if;
+
+  v_functiondef := pg_catalog.pg_get_functiondef('public.get_my_active_supporter_entitlement()'::regprocedure);
+  if position('auth.uid()' in v_functiondef) = 0
+     or position('ss.user_id = auth.uid()' in v_functiondef) = 0 then
+    raise exception 'get_my_active_supporter_entitlement must be bound to auth.uid()';
+  end if;
+
+  if position('active' in v_functiondef) = 0
+     or position('trialing' in v_functiondef) = 0
+     or position('environment' in v_functiondef) = 0
+     or position('live' in v_functiondef) = 0 then
+    raise exception 'get_my_active_supporter_entitlement must filter active/trialing live subscriptions';
+  end if;
+
+  if position('stripe_subscription_id' in v_functiondef) > 0
+     or position('stripe_customer_id' in v_functiondef) > 0
+     or position('stripe_price_id' in v_functiondef) > 0
+     or position('metadata,' in v_functiondef) > 0
+     or position('checkout_session_id' in v_functiondef) > 0 then
+    raise exception 'get_my_active_supporter_entitlement exposes Stripe identifiers or metadata';
   end if;
 
   if not (
@@ -113,30 +142,27 @@ begin
     raise exception 'supporter_subscriptions RLS must remain enabled';
   end if;
 
-  if pg_temp.public_has_table_privilege('public.my_active_supporter_entitlements'::regclass, 'SELECT') then
-    raise exception 'PUBLIC must not have SELECT on my_active_supporter_entitlements';
+  if pg_temp.public_has_function_privilege('public.get_my_active_supporter_entitlement()'::regprocedure, 'EXECUTE') then
+    raise exception 'PUBLIC must not have EXECUTE on get_my_active_supporter_entitlement';
   end if;
 
-  if pg_catalog.has_table_privilege('anon', 'public.my_active_supporter_entitlements', 'SELECT') then
-    raise exception 'anon must not have SELECT on my_active_supporter_entitlements';
+  if pg_catalog.has_function_privilege('anon', 'public.get_my_active_supporter_entitlement()', 'EXECUTE') then
+    raise exception 'anon must not have EXECUTE on get_my_active_supporter_entitlement';
   end if;
 
-  if not pg_catalog.has_table_privilege('authenticated', 'public.my_active_supporter_entitlements', 'SELECT') then
-    raise exception 'authenticated must have SELECT on my_active_supporter_entitlements';
+  if not pg_catalog.has_function_privilege('authenticated', 'public.get_my_active_supporter_entitlement()', 'EXECUTE') then
+    raise exception 'authenticated must have EXECUTE on get_my_active_supporter_entitlement';
   end if;
 
   insert into pg_temp.supporter_security_results(label, ok, detail)
-  values ('entitlement view', true, 'security_invoker, minimal columns, live active/trialing filter, and grants verified');
+  values ('entitlement rpc', true, 'no-arg SECURITY DEFINER RPC, empty search_path, minimal columns, auth.uid boundary, and grants verified');
 end;
 $$;
 
 do $$
 begin
-  if not pg_catalog.has_table_privilege('authenticated', 'public.supporter_subscriptions', 'SELECT') then
-    raise exception 'authenticated SELECT on supporter_subscriptions is required for the security_invoker entitlement view';
-  end if;
-
   if pg_catalog.has_table_privilege('anon', 'public.supporter_subscriptions', 'SELECT')
+     or pg_catalog.has_table_privilege('authenticated', 'public.supporter_subscriptions', 'SELECT')
      or pg_catalog.has_table_privilege('authenticated', 'public.supporter_subscriptions', 'INSERT')
      or pg_catalog.has_table_privilege('authenticated', 'public.supporter_subscriptions', 'UPDATE')
      or pg_catalog.has_table_privilege('authenticated', 'public.supporter_subscriptions', 'DELETE') then
@@ -163,6 +189,52 @@ begin
 
   insert into pg_temp.supporter_security_results(label, ok, detail)
   values ('table privileges', true, 'payment table and profile privilege matrix verified');
+end;
+$$;
+
+do $$
+declare
+  v_user_id uuid := :'ordinary_user_id'::uuid;
+  v_entitlement record;
+  v_count integer;
+begin
+  perform pg_temp.set_auth_context('service_role', v_user_id);
+
+  insert into public.supporter_subscriptions (
+    user_id,
+    stripe_subscription_id,
+    stripe_customer_id,
+    stripe_price_id,
+    quantity,
+    amount_cents,
+    currency,
+    status,
+    metadata
+  ) values
+    (v_user_id, 'sub_codex_test_old_' || pg_catalog.txid_current()::text, 'cus_codex_test', 'price_codex', 1, 100, 'usd', 'canceled', '{"environment":"live"}'::jsonb),
+    (v_user_id, 'sub_codex_test_env_' || pg_catalog.txid_current()::text, 'cus_codex_test', 'price_codex', 2, 200, 'usd', 'active', '{"environment":"test"}'::jsonb),
+    (null, 'sub_codex_test_no_user_' || pg_catalog.txid_current()::text, 'cus_codex_other', 'price_codex', 99, 9900, 'usd', 'active', '{"environment":"live"}'::jsonb),
+    (v_user_id, 'sub_codex_test_live_' || pg_catalog.txid_current()::text, 'cus_codex_test', 'price_codex', 7, 700, 'usd', 'trialing', '{"environment":"live"}'::jsonb);
+
+  perform pg_temp.set_auth_context('authenticated', v_user_id);
+  select * into v_entitlement
+  from public.get_my_active_supporter_entitlement();
+
+  if v_entitlement.status <> 'trialing'
+     or v_entitlement.quantity <> 7
+     or v_entitlement.amount_cents <> 700 then
+    raise exception 'entitlement RPC returned wrong row or fields: %, %, %',
+      v_entitlement.status, v_entitlement.quantity, v_entitlement.amount_cents;
+  end if;
+
+  select count(*) into v_count
+  from public.get_my_active_supporter_entitlement();
+  if v_count <> 1 then
+    raise exception 'entitlement RPC must return at most one row, got %', v_count;
+  end if;
+
+  insert into pg_temp.supporter_security_results(label, ok, detail)
+  values ('entitlement rpc behavior', true, 'only the caller live active/trialing row qualifies; test/inactive/non-caller rows do not leak');
 end;
 $$;
 
