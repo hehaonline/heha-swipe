@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import SwipeCard from "./SwipeCard";
+import { hehaLocalItemUrl, isHehaLocalPartner } from "../lib/hehaLocalRouting";
 
 const CATEGORIES = [
   "All",
@@ -78,6 +79,20 @@ function partnerMatchesCategory(partner, activeCategory) {
   return partner.category === activeCategory;
 }
 
+function withHehaLocalItemLinks(partner) {
+  if (!partner || !isHehaLocalPartner(partner)) return partner;
+  const items = Array.isArray(partner.items) ? partner.items : [];
+  return {
+    ...partner,
+    items: items.map((item) => ({
+      ...item,
+      // HEHA Local is the order/detail source for Local-eligible partners.
+      // This intentionally overrides stale GoDaddy product URLs in Swipe.
+      url: hehaLocalItemUrl(partner, item),
+    })),
+  };
+}
+
 export default function SwipeTab({
   partners = [],
   saves = [],
@@ -127,6 +142,7 @@ export default function SwipeTab({
   }, [swipePartners, saves, category, buildDeck]);
 
   const current = deck[0];
+  const routedCurrent = useMemo(() => withHehaLocalItemLinks(current), [current]);
 
   const handleSwipe = async (direction) => {
     if (!current) return;
@@ -175,10 +191,10 @@ export default function SwipeTab({
       {dataLoading && <div className="inline-loader">Refreshing businesses…</div>}
 
       <div className="deck-stage compact-stage clean-stage luxe-stage">
-        {current ? (
+        {routedCurrent ? (
           <>
             {deck[1] && <div className="next-card-shadow clean-shadow luxe-shadow" />}
-            <SwipeCard partner={current} onSwipe={handleSwipe} />
+            <SwipeCard partner={routedCurrent} onSwipe={handleSwipe} />
           </>
         ) : (
           <EmptyDeck category={CATEGORY_LABELS[category] || category} onReset={() => setCategory("All")} />
