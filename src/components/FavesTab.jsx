@@ -1,6 +1,11 @@
 import { useMemo, useState } from "react";
 import { filterPublicTags } from "../lib/partnerTags";
 import { publicDescription, TWO_LINE_CLAMP } from "../lib/cardCopy";
+import {
+  isHehaLocalPartner,
+  partnerOrderLabel,
+  partnerOrderUrl,
+} from "../lib/hehaLocalRouting";
 
 function fallbackImage(partner) {
   if (partner.image_url) return partner.image_url;
@@ -19,10 +24,6 @@ function instagramUrl(handle) {
   if (!handle) return null;
   if (handle.startsWith("http")) return handle;
   return `https://instagram.com/${handle.replace("@", "")}`;
-}
-
-function itemUrl(item) {
-  return item?.url || item?.product_url || item?.link || null;
 }
 
 function hasRealWebsite(url) {
@@ -47,13 +48,16 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
     .map((save) => partners.find((partner) => partner.id === save.partner_id))
     .filter(Boolean);
 
+  const selectedItem = useMemo(() => {
+    if (!selectedPartner || !selectedItems.length) return null;
+    const items = Array.isArray(selectedPartner.items) ? selectedPartner.items : [];
+    return items.find((item) => selectedItems.includes(item.name)) || null;
+  }, [selectedPartner, selectedItems]);
+
   const selectedOrderUrl = useMemo(() => {
     if (!selectedPartner) return null;
-    const items = Array.isArray(selectedPartner.items) ? selectedPartner.items : [];
-    if (!selectedItems.length) return null;
-    const firstSelected = items.find((item) => selectedItems.includes(item.name));
-    return itemUrl(firstSelected);
-  }, [selectedPartner, selectedItems]);
+    return partnerOrderUrl(selectedPartner, selectedItem);
+  }, [selectedPartner, selectedItem]);
 
   const toggleItem = (itemName) => {
     setSelectedItems((current) => (
@@ -96,6 +100,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
     const images = galleryImages(selectedPartner);
     const currentImage = images[galleryIndex] || fallbackImage(selectedPartner);
     const isOfficialPartner = Boolean(selectedPartner.heha_partner);
+    const isLocalPartner = isHehaLocalPartner(selectedPartner);
     const website = hasRealWebsite(selectedPartner.website) ? selectedPartner.website : null;
     const canSubmitDiscount = discountForm.user_phone.trim().length >= 7 && discountForm.consent_to_contact;
 
@@ -140,7 +145,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
         <section className="detail-section card-like">
           <div className="detail-section-heading">
             <p className="eyebrow">{items.length ? "Select items" : isOfficialPartner ? "Ordering" : "Community interest"}</p>
-            <h3>{items.length ? "Choose what you want to order" : isOfficialPartner ? "Ordering coming soon" : "Want HEHA member discounts here?"}</h3>
+            <h3>{items.length ? "Choose what you want to view or order" : isOfficialPartner ? "Ordering coming soon" : "Want HEHA member discounts here?"}</h3>
           </div>
 
           {items.length ? (
@@ -148,7 +153,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
               {items.map((item, index) => {
                 const name = item.name || `Item ${index + 1}`;
                 const active = selectedItems.includes(name);
-                const url = itemUrl(item);
+                const destination = partnerOrderUrl(selectedPartner, item);
                 return (
                   <button
                     key={`${name}-${index}`}
@@ -157,7 +162,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
                   >
                     <span>{item.emoji || "✦"}</span>
                     <strong>{name}</strong>
-                    <small>{url ? "Order ↗" : "Soon"}</small>
+                    <small>{isLocalPartner ? "HEHA Local ↗" : destination ? "Order ↗" : "Soon"}</small>
                   </button>
                 );
               })}
@@ -173,7 +178,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
           <div className="detail-order-actions">
             {selectedOrderUrl ? (
               <a className="primary-button" href={selectedOrderUrl} target="_blank" rel="noreferrer">
-                Order selected item on HEHA
+                {partnerOrderLabel(selectedPartner, selectedItem)}
               </a>
             ) : isOfficialPartner ? (
               <button className="primary-button" disabled>
@@ -232,7 +237,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
             )}
             {ig && <a className="secondary-button" href={ig} target="_blank" rel="noreferrer">Open Instagram</a>}
             {website && <a className="secondary-button" href={website} target="_blank" rel="noreferrer">Open website</a>}
-            {!website && !ig && <button className="secondary-button" type="button" onClick={closeDetails}>Back to saved list</button>}
+            {!website && !ig && !selectedOrderUrl && <button className="secondary-button" type="button" onClick={closeDetails}>Back to saved list</button>}
           </div>
         </section>
       </section>
@@ -276,6 +281,9 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
               <div className="saved-actions">
                 <button type="button" onClick={(event) => { event.stopPropagation(); openDetails(partner); }}>View details</button>
                 {!partner.heha_partner && <button type="button" onClick={(event) => { event.stopPropagation(); openDetails(partner); setShowDiscountForm(true); }}>Check discounts</button>}
+                {isHehaLocalPartner(partner) && (
+                  <a onClick={(event) => event.stopPropagation()} href={partnerOrderUrl(partner)} target="_blank" rel="noreferrer">HEHA Local</a>
+                )}
                 {partner.instagram && <a onClick={(event) => event.stopPropagation()} href={instagramUrl(partner.instagram)} target="_blank" rel="noreferrer">Instagram</a>}
               </div>
             </div>
