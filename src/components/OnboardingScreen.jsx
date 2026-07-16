@@ -23,20 +23,65 @@ export default function OnboardingScreen({ user, onComplete }) {
     setStep("access");
   };
 
-  const saveProfile = async () => {
-    const isPartner = role === "partner";
-    const subscriptionType = isPartner ? "partner_free" : "customer_free";
+const saveProfile = async () => {
+  const isPartner = role === "partner";
+  const subscriptionType = isPartner ? "partner_free" : "customer_free";
 
-    const { error: profileError } = await supabase.from("profiles").upsert({
-      id: user.id,
-      email: user.email || null,
-      phone: user.phone || null,
-      subscription_type: subscriptionType,
-    });
-    if (profileError) throw profileError;
+    // Safe update-first flow: never blindly upsert into the profiles table.
+    // The entitlement-security trigger evaluates the INSERT-candidate row of an
+    // upsert (including column defaults for fields we don't set) before conflict
+    // resolution runs, so a bare upsert can be rejected for existing profiles
+    // whose defaulted subscription_status isn't in the trigger's safe insert list.
+    const { data: existingProfile, error: lookupError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
 
-    await supabase.from("customer_profiles").upsert({ user_id: user.id });
-  };
+    if (lookupError) throw lookupError;
+
+    const safeProfileFields = {
+          subscription_type: subscriptionType,
+          email: user.email || null,
+          phone: user.phone || null,
+    };
+
+    if (existingProfile) {
+          const { error: updateError } = await supabase
+            .from("profiles")
+            .update(safeProfileFields)
+            .eq("id", user.id);
+
+          if (updateError) throw updateError;
+    } else {
+
+        const { error: insertError } = await supabase.from("profiles").insert({
+              id: user.id,
+              ...safeProfileFields,
+              subscription_status: "free",
+              subscription_active: false,
+              subscription_amount: 0,
+        });
+
+        if (insertError && insertError.code === "23505") {
+              // A concurrent request already created this profile row; fall back to
+              // a safe update instead of surfacing a duplicate-key error.
+              const { error: fallbackUpdateError } = await supabase
+                .from("profiles")
+                .update(safeProfileFields)
+                .eq("id", user.id);
+
+              if (fallbackUpdateError) throw fallbackUpdateError;
+        } else if (insertError) {
+              throw insertError;
+        }
+
+
+    }
+  
+  await supabase.from("customer_profiles").upsert({ user_id: user.id });
+    };
+  
 
   const complete = async ({ forceFree = false } = {}) => {
     setLoading(true);
