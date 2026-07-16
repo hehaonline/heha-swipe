@@ -5,6 +5,7 @@ import { AdminCard, Guard } from "../shared/AdminPrimitives";
 const LANES = ["meals", "market", "vendors", "chef", "group_orders"];
 const PILLARS = ["nourish", "educate", "relax", "elevate"];
 const DESTINATIONS = ["local", "swipe", "external"];
+const PUBLIC_SWIPE_URL = (import.meta.env.VITE_HEHA_SWIPE_URL || "https://www.hehaswipe.app").replace(/\/$/, "");
 
 function laneDefaults(lane, partnerId) {
   const config = {
@@ -31,6 +32,11 @@ function formFrom(partner) {
   };
 }
 
+function relationshipLabel(partner) {
+  if (partner?.relationship_status) return partner.relationship_status.replace(/_/g, " ");
+  return partner?.owner_id ? "claimed" : "community listed";
+}
+
 export default function RoutingDashboard({ final = false }) {
   const [partners, setPartners] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -40,6 +46,9 @@ export default function RoutingDashboard({ final = false }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
+  const [claimBusy, setClaimBusy] = useState(false);
+  const [claimLink, setClaimLink] = useState("");
+  const [claimExpiresAt, setClaimExpiresAt] = useState(null);
 
   useEffect(() => { loadPartners(); }, []);
 
@@ -47,6 +56,8 @@ export default function RoutingDashboard({ final = false }) {
 
   useEffect(() => {
     if (selected) setForm(formFrom(selected));
+    setClaimLink("");
+    setClaimExpiresAt(null);
   }, [selected?.id]);
 
   const visible = useMemo(() => {
@@ -54,7 +65,7 @@ export default function RoutingDashboard({ final = false }) {
     return partners.filter((partner) => {
       if (statusFilter !== "all" && partner.routing_status !== statusFilter) return false;
       if (!needle) return true;
-      return [partner.name, partner.category, partner.business_type, partner.neighborhood, partner.local_lane]
+      return [partner.name, partner.category, partner.business_type, partner.neighborhood, partner.local_lane, partner.relationship_status]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -66,13 +77,14 @@ export default function RoutingDashboard({ final = false }) {
     review: partners.filter((partner) => partner.routing_status === "needs_review").length,
     approved: partners.filter((partner) => partner.routing_status === "approved").length,
     local: partners.filter((partner) => partner.local_eligible).length,
+    unclaimed: partners.filter((partner) => !partner.owner_id && !["opted_out", "removed"].includes(partner.relationship_status)).length,
   }), [partners]);
 
   async function loadPartners() {
     setLoading(true);
     const { data, error } = await supabase
       .from("partners")
-      .select("id,name,status,category,business_type,neighborhood,website,heha_pillar,website_eligible,swipe_eligible,local_eligible,local_lane,primary_cta_destination,primary_cta_label,primary_cta_path,routing_status,routing_notes,routing_updated_at")
+      .select("id,name,status,category,business_type,neighborhood,website,owner_id,relationship_status,listing_source,claimed_at,heha_pillar,website_eligible,swipe_eligible,local_eligible,local_lane,primary_cta_destination,primary_cta_label,primary_cta_path,routing_status,routing_notes,routing_updated_at")
       .order("updated_at", { ascending: false })
       .limit(400);
 
@@ -156,6 +168,46 @@ export default function RoutingDashboard({ final = false }) {
     if (!error) await loadPartners();
   }
 
+  async function createClaimInvite() {
+    if (!selected || selected.owner_id || claimBusy) return;
+    setClaimBusy(true);
+    setClaimLink("");
+    setClaimExpiresAt(null);
+    setNotice("");
+
+    const { data, error } = await supabase.rpc("create_partner_claim_invite", {
+      p_partner_id: selected.id,
+      p_expires_in: "7 days",
+      p_outreach_channel: "manual",
+      p_recipient_hint: null,
+    });
+
+    if (error) {
+      setNotice(error.message);
+    } else {
+      const invite = data?.[0];
+      if (!invite?.raw_token) {
+        setNotice("The secure claim link was not returned. No token was copied or stored in the browser.");
+      } else {
+        setClaimLink(`${PUBLIC_SWIPE_URL}/claim-partner?token=${encodeURIComponent(invite.raw_token)}`);
+        setClaimExpiresAt(invite.expires_at || null);
+        setNotice("Secure one-time claim link created. Copy it now; the raw token is not stored in the database.");
+        await loadPartners();
+      }
+    }
+    setClaimBusy(false);
+  }
+
+  async function copyClaimLink() {
+    if (!claimLink) return;
+    try {
+      await navigator.clipboard.writeText(claimLink);
+      setNotice("Claim link copied. Share it only with the verified business contact.");
+    } catch {
+      setNotice("Automatic copy was blocked. Select and copy the link manually.");
+    }
+  }
+
   return (
     <main className="admin-panel">
       {notice && <div className="admin-toast">{notice}</div>}
@@ -168,6 +220,7 @@ export default function RoutingDashboard({ final = false }) {
         <div><strong>{counts.review}</strong><span>Needs review</span></div>
         <div><strong>{counts.approved}</strong><span>Finalized</span></div>
         <div><strong>{counts.local}</strong><span>Local eligible</span></div>
+        <div><strong>{counts.unclaimed}</strong><span>Unclaimed</span></div>
       </section>
 
       <section className="routing-layout">
@@ -186,7 +239,7 @@ export default function RoutingDashboard({ final = false }) {
             <button key={partner.id} className={selectedId === partner.id ? "routing-row active" : "routing-row"} onClick={() => setSelectedId(partner.id)}>
               <strong>{partner.name}</strong>
               <span>{[partner.category, partner.business_type, partner.local_lane].filter(Boolean).join(" · ")}</span>
-              <small>{partner.routing_status}</small>
+              <small>{partner.routing_status} · {relationshipLabel(partner)}</small>
             </button>
           ))}
         </aside>
@@ -197,6 +250,28 @@ export default function RoutingDashboard({ final = false }) {
               <p className="eyebrow">{selected.status} · {selected.routing_status}</p>
               <h2>{selected.name}</h2>
               <p>{[selected.category, selected.business_type, selected.neighborhood].filter(Boolean).join(" · ")}</p>
+
+              <div className="admin-card">
+                <p className="eyebrow">Profile ownership</p>
+                <h3>{selected.owner_id ? "Claimed profile" : "Community Listing — Not Yet Claimed"}</h3>
+                <p>Relationship: {relationshipLabel(selected)} · Source: {selected.listing_source || "legacy/unclassified"}</p>
+                {selected.claimed_at && <p>Claimed: {new Date(selected.claimed_at).toLocaleString()}</p>}
+                {!selected.owner_id && !["opted_out", "removed"].includes(selected.relationship_status) && (
+                  <button disabled={claimBusy} onClick={createClaimInvite}>
+                    {claimBusy ? "Creating secure link…" : "Create 7-day claim link"}
+                  </button>
+                )}
+                {claimLink && (
+                  <div className="admin-form">
+                    <label className="wide">
+                      <span>One-time claim link {claimExpiresAt ? `· expires ${new Date(claimExpiresAt).toLocaleString()}` : ""}</span>
+                      <textarea readOnly value={claimLink} aria-label="One-time business claim link" />
+                    </label>
+                    <button onClick={copyClaimLink}>Copy claim link</button>
+                    <small>Do not paste this raw token into public docs, screenshots, CRM notes, or GitHub. Creating another link revokes the previous active link.</small>
+                  </div>
+                )}
+              </div>
 
               <div className="admin-form routing-form">
                 <label><span>HEHA pillar</span><select value={form.heha_pillar} onChange={(event) => update("heha_pillar", event.target.value)}><option value="">Not chosen</option>{PILLARS.map((pillar) => <option key={pillar} value={pillar}>{pillar}</option>)}</select></label>
