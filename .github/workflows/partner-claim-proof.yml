@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/partner-claim-proof.yml
       - supabase/migrations/20260716090000_partner_claim_foundation.sql
+      - supabase/migrations/20260718194500_fix_partner_claim_profile_ambiguity.sql
       - supabase/tests/**
   pull_request:
     branches:
@@ -14,6 +15,7 @@ on:
     paths:
       - .github/workflows/partner-claim-proof.yml
       - supabase/migrations/20260716090000_partner_claim_foundation.sql
+      - supabase/migrations/20260718194500_fix_partner_claim_profile_ambiguity.sql
       - supabase/tests/**
   workflow_dispatch:
 
@@ -57,6 +59,8 @@ jobs:
             supabase/migrations/20260716080000_partner_claim_minimal_baseline.sql
           cp ../../supabase/migrations/20260716090000_partner_claim_foundation.sql \
             supabase/migrations/20260716090000_partner_claim_foundation.sql
+          cp ../../supabase/migrations/20260718194500_fix_partner_claim_profile_ambiguity.sql \
+            supabase/migrations/20260718194500_fix_partner_claim_profile_ambiguity.sql
 
       - name: Start isolated Supabase stack and apply migrations
         shell: bash
