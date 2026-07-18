@@ -111,6 +111,7 @@ as $$
 $$;
 
 revoke all on function app_private.has_internal_role(text[]) from public, anon, authenticated;
+grant execute on function app_private.has_internal_role(text[]) to anon, authenticated, service_role;
 
 insert into auth.users (
   id,
@@ -118,7 +119,6 @@ insert into auth.users (
   role,
   email,
   email_confirmed_at,
-  confirmed_at,
   raw_app_meta_data,
   raw_user_meta_data,
   is_sso_user,
@@ -131,7 +131,6 @@ insert into auth.users (
     'authenticated',
     'authenticated',
     'claim-owner-a@example.invalid',
-    now(),
     now(),
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{}'::jsonb,
@@ -146,7 +145,6 @@ insert into auth.users (
     'authenticated',
     'claim-owner-b@example.invalid',
     now(),
-    now(),
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{}'::jsonb,
     false,
@@ -159,7 +157,6 @@ insert into auth.users (
     'authenticated',
     'authenticated',
     'claim-admin@example.invalid',
-    now(),
     now(),
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{}'::jsonb,
