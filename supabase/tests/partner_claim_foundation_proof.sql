@@ -6,6 +6,14 @@
 
 begin;
 
+-- psql does not reliably interpolate variables inside dollar-quoted DO blocks.
+-- Store the supplied fixture IDs in transaction-local settings for those blocks.
+select set_config('heha.proof.partner_a_id', :'partner_a_id', true);
+select set_config('heha.proof.partner_b_id', :'partner_b_id', true);
+select set_config('heha.proof.user_a_id', :'user_a_id', true);
+select set_config('heha.proof.user_b_id', :'user_b_id', true);
+select set_config('heha.proof.internal_admin_user_id', :'internal_admin_user_id', true);
+
 create temporary table partner_claim_results (
   label text primary key,
   detail text not null
@@ -114,7 +122,10 @@ do $$
 begin
   if exists (
     select 1 from public.partners
-    where id in (:'partner_a_id'::uuid, :'partner_b_id'::uuid)
+    where id in (
+      current_setting('heha.proof.partner_a_id')::uuid,
+      current_setting('heha.proof.partner_b_id')::uuid
+    )
       and relationship_status <> 'community_listed'
   ) then
     raise exception 'creating an invite must not change relationship/publication state';
@@ -159,11 +170,19 @@ select * from public.claim_partner_profile((select raw_token from claim_tokens w
 
 do $$
 declare
-  before_row jsonb := (select row_data from partner_a_before);
-  after_row jsonb := (select to_jsonb(p) from public.partners p where id = :'partner_a_id'::uuid);
+  before_row jsonb := (
+    select row_data
+    from partner_a_before
+  );
+  after_row jsonb := (
+    select to_jsonb(p)
+    from public.partners p
+    where id = current_setting('heha.proof.partner_a_id')::uuid
+  );
   allowed_keys constant text[] := array['owner_id','relationship_status','claimed_at','claimed_by','updated_at'];
 begin
-  if after_row->>'id' <> :'partner_a_id'::text or after_row->>'owner_id' <> :'user_a_id'::text then
+  if after_row->>'id' <> current_setting('heha.proof.partner_a_id')
+     or after_row->>'owner_id' <> current_setting('heha.proof.user_a_id') then
     raise exception 'claim did not preserve canonical partner ID and assign expected owner';
   end if;
   if (before_row - allowed_keys) is distinct from (after_row - allowed_keys) then
