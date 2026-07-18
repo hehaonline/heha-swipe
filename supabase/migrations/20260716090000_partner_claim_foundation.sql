@@ -52,10 +52,6 @@ alter table public.partners
 -- not evidence of Official HEHA Partner or HEHA Certified status.
 update public.partners
 set relationship_status = 'claimed',
-    listing_source = case
-      when listing_source = 'heha_created' then 'partner_created'
-      else listing_source
-    end,
     claimed_at = coalesce(claimed_at, created_at, now()),
     claimed_by = coalesce(claimed_by, owner_id)
 where owner_id is not null
@@ -94,7 +90,7 @@ execute function app_private.set_partner_listing_origin();
 
 create table if not exists public.partner_claim_invites (
   id uuid primary key default gen_random_uuid(),
-  partner_id uuid not null references public.partners(id) on delete cascade,
+  partner_id uuid not null references public.partners(id) on delete restrict,
   token_hash bytea not null unique,
   created_by uuid not null references auth.users(id) on delete restrict,
   created_at timestamptz not null default now(),
@@ -169,7 +165,9 @@ begin
     raise exception using errcode = '42501', message = 'HEHA internal claim-invite access required.';
   end if;
 
-  if p_expires_in < interval '15 minutes' or p_expires_in > interval '30 days' then
+  if p_expires_in is null
+     or p_expires_in < interval '15 minutes'
+     or p_expires_in > interval '30 days' then
     raise exception using errcode = '22023', message = 'Claim invite expiry must be between 15 minutes and 30 days.';
   end if;
 
@@ -221,11 +219,6 @@ begin
     nullif(btrim(p_recipient_hint), '')
   );
 
-  update public.partners
-  set relationship_status = 'claim_invited',
-      updated_at = now()
-  where id = p_partner_id;
-
   insert into public.admin_audit_logs (
     user_id,
     action_type,
@@ -240,7 +233,7 @@ begin
     p_partner_id,
     jsonb_build_object('relationship_status', partner_row.relationship_status),
     jsonb_build_object(
-      'relationship_status', 'claim_invited',
+      'relationship_status', partner_row.relationship_status,
       'invite_id', generated_invite_id,
       'expires_at', generated_expires_at,
       'outreach_channel', nullif(btrim(p_outreach_channel), '')
@@ -359,8 +352,6 @@ begin
       end,
       claimed_at = coalesce(claimed_at, claim_time),
       claimed_by = coalesce(claimed_by, actor_id),
-      opted_out_at = null,
-      opted_out_by = null,
       updated_at = claim_time
   where id = partner_row.id;
 
@@ -417,6 +408,7 @@ as $$
 declare
   actor_id uuid := auth.uid();
   affected integer;
+  revoked_partner_id uuid;
 begin
   if actor_id is null then
     raise exception using errcode = '28000', message = 'Authentication required.';
@@ -433,9 +425,29 @@ begin
       revoked_by = actor_id
   where id = p_invite_id
     and consumed_at is null
-    and revoked_at is null;
+    and revoked_at is null
+  returning partner_id into revoked_partner_id;
 
   get diagnostics affected = row_count;
+
+  if affected = 1 then
+    insert into public.admin_audit_logs (
+      user_id,
+      action_type,
+      related_type,
+      related_id,
+      previous_value,
+      new_value
+    ) values (
+      actor_id,
+      'partner_claim_invite_revoked',
+      'partner',
+      revoked_partner_id,
+      jsonb_build_object('invite_id', p_invite_id, 'revoked_at', null),
+      jsonb_build_object('invite_id', p_invite_id, 'revoked_at', now())
+    );
+  end if;
+
   return affected = 1;
 end;
 $$;

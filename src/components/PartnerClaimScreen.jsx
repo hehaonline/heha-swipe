@@ -154,17 +154,24 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
       const claimed = data?.[0];
       if (!claimed?.partner_id) throw new Error("HEHA did not receive a confirmed profile claim.");
 
-      const { error: profileError } = await supabase.from("profiles").upsert({
-        id: session.user.id,
-        email: session.user.email || null,
-        phone: session.user.phone || null,
-        subscription_type: "partner_free",
-      });
-      if (profileError) throw profileError;
-
-      await supabase.from("customer_profiles").upsert({ user_id: session.user.id });
+      // Ownership is committed atomically by claim_partner_profile. Account-profile
+      // bootstrap is secondary and must never make a successful one-time claim look
+      // like it failed (the token is already consumed at this point).
+      const [{ error: profileError }, { error: customerProfileError }] = await Promise.all([
+        supabase.from("profiles").upsert({
+          id: session.user.id,
+          email: session.user.email || null,
+          phone: session.user.phone || null,
+          subscription_type: "partner_free",
+        }),
+        supabase.from("customer_profiles").upsert({ user_id: session.user.id }),
+      ]);
       localStorage.setItem(SIGNUP_ROLE_KEY, "partner");
-      setMessage(`${claimed.partner_name} is now connected to your HEHA account.`);
+      setMessage(
+        profileError || customerProfileError
+          ? `${claimed.partner_name} is connected to your HEHA account. HEHA will finish setting up the account profile.`
+          : `${claimed.partner_name} is now connected to your HEHA account.`,
+      );
 
       window.setTimeout(() => {
         window.location.replace("/?claim=success");
