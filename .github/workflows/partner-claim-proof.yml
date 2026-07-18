@@ -62,8 +62,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p artifacts/partner-claim-proof
           cd .ci/partner-claim
-          supabase start
+          supabase start 2>&1 | tee ../../artifacts/partner-claim-proof/supabase-start.txt
 
       - name: Run core and extended rollback proofs
         shell: bash
@@ -81,12 +82,12 @@ jobs:
             -v user_b_id=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb \
             -v internal_admin_user_id=cccccccc-cccc-4ccc-8ccc-cccccccccccc \
             -f supabase/tests/partner_claim_foundation_proof.sql \
-            | tee artifacts/partner-claim-proof/core-proof.txt
+            2>&1 | tee artifacts/partner-claim-proof/core-proof.txt
 
           psql "$DATABASE_URL" \
             -v ON_ERROR_STOP=1 \
             -f supabase/tests/partner_claim_extended_proof.sql \
-            | tee artifacts/partner-claim-proof/extended-proof.txt
+            2>&1 | tee artifacts/partner-claim-proof/extended-proof.txt
 
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -A -F '|' -c "
             select 'claim_table_exists', (to_regclass('public.partner_claim_invites') is not null)::text
