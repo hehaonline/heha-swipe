@@ -134,10 +134,12 @@ begin
 end;
 $$;
 
--- Expiry and revocation are terminal.
+-- Expiry and revocation are terminal. Backdate both fields so the fixture remains
+-- valid under partner_claim_invites_expiry_check while still being expired.
 select pg_temp.set_auth_context('service_role');
 update public.partner_claim_invites
-set expires_at = now() - interval '1 second'
+set created_at = now() - interval '2 days',
+    expires_at = now() - interval '1 day'
 where id = (select invite_id from claim_tokens where fixture = 'b');
 
 select pg_temp.set_auth_context('authenticated', :'user_b_id'::uuid);
