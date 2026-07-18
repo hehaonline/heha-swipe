@@ -187,7 +187,7 @@ export default function RoutingDashboard({ final = false }) {
     } else {
       const invite = data?.[0];
       if (!invite?.raw_token) {
-        setNotice("The secure claim link was not returned. No token was copied or stored in the browser.");
+        setNotice("The one-time claim link was not returned. No token was copied or stored in the browser.");
       } else {
         setClaimLink(`${PUBLIC_SWIPE_URL}/claim-partner?token=${encodeURIComponent(invite.raw_token)}`);
         setClaimExpiresAt(invite.expires_at || null);
@@ -258,7 +258,7 @@ export default function RoutingDashboard({ final = false }) {
                 {selected.claimed_at && <p>Claimed: {new Date(selected.claimed_at).toLocaleString()}</p>}
                 {!selected.owner_id && !["opted_out", "removed"].includes(selected.relationship_status) && (
                   <button disabled={claimBusy} onClick={createClaimInvite}>
-                    {claimBusy ? "Creating secure link…" : "Create 7-day claim link"}
+                    {claimBusy ? "Creating one-time claim link…" : "Create 7-day one-time claim link"}
                   </button>
                 )}
                 {claimLink && (
@@ -267,7 +267,7 @@ export default function RoutingDashboard({ final = false }) {
                       <span>One-time claim link {claimExpiresAt ? `· expires ${new Date(claimExpiresAt).toLocaleString()}` : ""}</span>
                       <textarea readOnly value={claimLink} aria-label="One-time business claim link" />
                     </label>
-                    <button onClick={copyClaimLink}>Copy claim link</button>
+                    <button onClick={copyClaimLink}>Copy one-time claim link</button>
                     <small>Do not paste this raw token into public docs, screenshots, CRM notes, or GitHub. Creating another link revokes the previous active link.</small>
                   </div>
                 )}

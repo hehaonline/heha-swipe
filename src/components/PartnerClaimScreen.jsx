@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
+import {
+  CLAIM_ERRORS,
+  friendlyAuthError,
+  friendlyClaimError,
+  saveClaimSuccess,
+} from "../lib/partnerClaimUx";
 
 const SIGNUP_ROLE_KEY = "heha_signup_role";
 
@@ -9,20 +15,6 @@ function currentClaimRedirect() {
 
 function claimTokenFromUrl() {
   return new URLSearchParams(window.location.search).get("token")?.trim() || "";
-}
-
-function friendlyClaimError(error) {
-  const message = String(error?.message || "");
-  if (/invalid|expired|revoked|already used|not found/i.test(message)) {
-    return "This claim link is no longer available. Ask HEHA for a new secure claim link.";
-  }
-  if (/already been claimed/i.test(message)) {
-    return "This business profile has already been claimed. Contact HEHA if you believe this is incorrect.";
-  }
-  if (/authentication required/i.test(message)) {
-    return "Please sign in before claiming this business profile.";
-  }
-  return message || "HEHA could not complete this profile claim yet.";
 }
 
 export default function PartnerClaimScreen({ session, authLoading = false, onSignOut }) {
@@ -59,7 +51,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
       } else {
         setPreview(data?.[0] || null);
         if (!data?.[0]) {
-          setError("This claim link is no longer available. Ask HEHA for a new secure claim link.");
+          setError(CLAIM_ERRORS.invalid);
         }
       }
       setPreviewLoading(false);
@@ -103,7 +95,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
         if (signInError) throw signInError;
       }
     } catch (authError) {
-      setError(authError.message || "Could not complete sign-in.");
+      setError(friendlyAuthError(authError, mode));
     } finally {
       setBusy(false);
       authPending.current = false;
@@ -132,7 +124,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
       if (linkError) throw linkError;
       setMessage("We sent a secure email. Open it on this device to return to the business-profile claim.");
     } catch (linkError) {
-      setError(linkError.message || "Could not send the secure sign-in email.");
+      setError("We couldn't send the secure sign-in email. Check the address and try again.");
     } finally {
       setBusy(false);
       authPending.current = false;
@@ -167,15 +159,14 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
         supabase.from("customer_profiles").upsert({ user_id: session.user.id }),
       ]);
       localStorage.setItem(SIGNUP_ROLE_KEY, "partner");
+      saveClaimSuccess(sessionStorage, claimed.partner_name, profileError || customerProfileError);
       setMessage(
         profileError || customerProfileError
           ? `${claimed.partner_name} is connected to your HEHA account. HEHA will finish setting up the account profile.`
           : `${claimed.partner_name} is now connected to your HEHA account.`,
       );
 
-      window.setTimeout(() => {
-        window.location.replace("/?claim=success");
-      }, 900);
+      window.location.replace("/?claim=success");
     } catch (claimError) {
       setError(friendlyClaimError(claimError));
     } finally {
@@ -201,6 +192,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
           <p className="eyebrow">Secure business claim</p>
           <h1>This claim link is incomplete.</h1>
           <p>Ask HEHA for a new business-profile claim link. For your security, HEHA never asks you to paste a claim token into a public form.</p>
+          <p className="claim-support-copy">Need a new link? Contact HEHA support and we'll send one.</p>
           <a className="primary-button" href="/">Return to HEHA Swipe</a>
         </section>
       </main>
@@ -210,7 +202,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
   if (!session) {
     return (
       <main className="auth-screen">
-        <section className="auth-card role-auth-card">
+        <section className="auth-card role-auth-card claim-auth-card">
           <div className="auth-hero">
             <div className="brand-mark large">✦</div>
             <p className="eyebrow">Secure business claim</p>
@@ -229,10 +221,12 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
 
             <label>Password</label>
             <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "create" ? "new-password" : "current-password"} required />
+            <span className="field-guidance">At least 8 characters.</span>
 
             <button className="primary-button" type="submit" disabled={busy}>
               {busy ? "Working…" : mode === "create" ? "Create account" : "Sign in and continue"}
             </button>
+            {error && <div className="error-banner auth-action-error" role="alert">{error}</div>}
             <button className="secondary-button" type="button" onClick={sendSecureEmail} disabled={busy || !email.trim()}>
               Email me a secure sign-in link
             </button>
@@ -240,7 +234,6 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
 
           <p className="fine-print">A “YES” reply to an outreach message does not verify ownership by itself. The secure claim link and authenticated account complete the claim.</p>
           {message && <div className="success-banner">{message}</div>}
-          {error && <div className="error-banner">{error}</div>}
         </section>
       </main>
     );
@@ -248,7 +241,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
 
   return (
     <main className="auth-screen">
-      <section className="auth-card role-auth-card">
+      <section className="auth-card role-auth-card claim-auth-card">
         <div className="auth-hero">
           <div className="brand-mark large">🏪</div>
           <p className="eyebrow">Secure business claim</p>
@@ -263,16 +256,17 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
             <div className="soft-note">
               Claiming connects this existing profile to your account. It does not automatically approve new products, publish profile edits, create HEHA Certified status, or activate ordering.
             </div>
+            <p className="claim-review-gate">Profile edits, products, and offers stay saved as drafts until HEHA reviews them.</p>
             <button className="primary-button" type="button" onClick={claimProfile} disabled={busy}>
               {busy ? "Claiming profile…" : `Claim ${preview.partner_name}`}
             </button>
           </>
         ) : (
-          <div className="error-banner">This claim link is invalid, expired, revoked, already used, or the profile is no longer claimable.</div>
+          !error && <div className="error-banner">{CLAIM_ERRORS.unavailable}</div>
         )}
 
         <button className="secondary-button" type="button" onClick={onSignOut} disabled={busy}>Sign out</button>
-        <p className="fine-print">The link is single-use and expires. HEHA stores only a cryptographic hash of the claim token.</p>
+        <p className="fine-print">The one-time claim link expires. HEHA stores only a cryptographic hash of the claim token.</p>
         {message && <div className="success-banner">{message}</div>}
         {error && <div className="error-banner">{error}</div>}
       </section>

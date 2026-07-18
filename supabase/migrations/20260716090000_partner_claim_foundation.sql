@@ -257,6 +257,9 @@ security definer
 stable
 set search_path = pg_catalog, public, extensions, pg_temp
 as $$
+declare
+  invite_row public.partner_claim_invites%rowtype;
+  partner_row public.partners%rowtype;
 begin
   if auth.uid() is null then
     raise exception using errcode = '28000', message = 'Authentication required.';
@@ -266,22 +269,39 @@ begin
     raise exception using errcode = '22023', message = 'Claim token is required.';
   end if;
 
-  return query
-  select
-    p.id,
-    p.name,
-    i.expires_at,
-    (
-      i.consumed_at is null
-      and i.revoked_at is null
-      and i.expires_at > now()
-      and p.owner_id is null
-      and p.relationship_status not in ('opted_out', 'removed')
-    ) as claimable
-  from public.partner_claim_invites i
-  join public.partners p on p.id = i.partner_id
-  where i.token_hash = extensions.digest(btrim(p_raw_token), 'sha256')
+  select * into invite_row
+  from public.partner_claim_invites
+  where token_hash = extensions.digest(btrim(p_raw_token), 'sha256')
   limit 1;
+
+  if not found then
+    raise exception using errcode = 'P0002', message = 'This claim link is not recognized.';
+  end if;
+  if invite_row.consumed_at is not null then
+    raise exception using errcode = 'P0002', message = 'This claim link has already been used.';
+  end if;
+  if invite_row.revoked_at is not null then
+    raise exception using errcode = 'P0002', message = 'This claim link is revoked.';
+  end if;
+  if invite_row.expires_at <= now() then
+    raise exception using errcode = 'P0002', message = 'This claim link has expired.';
+  end if;
+
+  select * into partner_row
+  from public.partners
+  where id = invite_row.partner_id;
+
+  if not found then
+    raise exception using errcode = 'P0002', message = 'Partner profile not found.';
+  end if;
+  if partner_row.owner_id is not null and partner_row.owner_id <> auth.uid() then
+    raise exception using errcode = '23505', message = 'This business profile has already been claimed by another account.';
+  end if;
+  if partner_row.relationship_status in ('opted_out', 'removed') then
+    raise exception using errcode = '42501', message = 'This profile is no longer claimable.';
+  end if;
+
+  return query select partner_row.id, partner_row.name, invite_row.expires_at, true;
 end;
 $$;
 
@@ -316,14 +336,17 @@ begin
   where token_hash = extensions.digest(btrim(p_raw_token), 'sha256')
   for update;
 
-  if not found
-    or invite_row.consumed_at is not null
-    or invite_row.revoked_at is not null
-    or invite_row.expires_at <= claim_time
-  then
-    raise exception using
-      errcode = 'P0002',
-      message = 'This claim link is invalid, expired, revoked, or already used.';
+  if not found then
+    raise exception using errcode = 'P0002', message = 'This claim link is not recognized.';
+  end if;
+  if invite_row.consumed_at is not null then
+    raise exception using errcode = 'P0002', message = 'This claim link has already been used.';
+  end if;
+  if invite_row.revoked_at is not null then
+    raise exception using errcode = 'P0002', message = 'This claim link is revoked.';
+  end if;
+  if invite_row.expires_at <= claim_time then
+    raise exception using errcode = 'P0002', message = 'This claim link has expired.';
   end if;
 
   select *
@@ -337,11 +360,11 @@ begin
   end if;
 
   if partner_row.relationship_status in ('opted_out', 'removed') then
-    raise exception using errcode = '42501', message = 'This listing is no longer claimable.';
+    raise exception using errcode = '42501', message = 'This profile is no longer claimable.';
   end if;
 
   if partner_row.owner_id is not null and partner_row.owner_id <> actor_id then
-    raise exception using errcode = '23505', message = 'This partner profile has already been claimed.';
+    raise exception using errcode = '23505', message = 'This business profile has already been claimed by another account.';
   end if;
 
   update public.partners
