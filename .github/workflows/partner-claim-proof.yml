@@ -82,11 +82,11 @@ jobs:
             | tee artifacts/partner-claim-proof/extended-proof.txt
 
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -A -F '|' -c "
-            select 'claim_table_exists', to_regclass('public.partner_claim_invites') is not null
+            select 'claim_table_exists', (to_regclass('public.partner_claim_invites') is not null)::text
             union all
-            select 'claim_rpc_exists', to_regprocedure('public.claim_partner_profile(text)') is not null
+            select 'claim_rpc_exists', (to_regprocedure('public.claim_partner_profile(text)') is not null)::text
             union all
-            select 'synthetic_partner_count', (select count(*)::text from public.partners where is_test_record = true)::boolean;
+            select 'synthetic_partner_count', (select count(*)::text from public.partners where is_test_record = true);
           " > artifacts/partner-claim-proof/schema-evidence.txt
 
       - name: Upload proof evidence
