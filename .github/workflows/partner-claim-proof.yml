@@ -8,6 +8,13 @@ on:
       - .github/workflows/partner-claim-proof.yml
       - supabase/migrations/20260716090000_partner_claim_foundation.sql
       - supabase/tests/**
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/partner-claim-proof.yml
+      - supabase/migrations/20260716090000_partner_claim_foundation.sql
+      - supabase/tests/**
   workflow_dispatch:
 
 permissions:
