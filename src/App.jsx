@@ -10,7 +10,7 @@ import PasswordResetScreen from "./components/PasswordResetScreen";
 import LocationModal, { getActiveLocationLabel } from "./components/LocationModal";
 import CommunityPassTab from "./components/CommunityPassTab";
 import { fetchActiveSupporterSubscription } from "./lib/supporterStatus";
-import { clearClaimSuccess, readClaimSuccess } from "./lib/partnerClaimUx";
+import { clearClaimSuccess, consumeClaimSuccess, removeClaimSuccessParam } from "./lib/partnerClaimUx";
 
 const TABS = [
   { id: "swipe", label: "Discover", icon: "⌕" },
@@ -95,7 +95,7 @@ export default function App() {
       ? "cancel"
       : null
   );
-  const [claimSuccess, setClaimSuccess] = useState(() => readClaimSuccess(window.location.search, sessionStorage));
+  const [claimSuccess, setClaimSuccess] = useState(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSplashReady(true), 3400);
@@ -105,6 +105,14 @@ export default function App() {
   useEffect(() => {
     setLocationLabel(getActiveLocationLabel(profile?.location || null));
   }, [profile]);
+
+  useEffect(() => {
+    if (!session?.user?.id || claimSuccess) return;
+    const success = consumeClaimSuccess(window.location.search, sessionStorage, session.user.id);
+    if (!success) return;
+    setClaimSuccess(success);
+    window.history.replaceState(null, "", removeClaimSuccessParam(window.location));
+  }, [session?.user?.id, claimSuccess]);
 
   useEffect(() => {
     let mounted = true;
@@ -379,7 +387,7 @@ export default function App() {
   const dismissClaimSuccess = () => {
     clearClaimSuccess(sessionStorage);
     setClaimSuccess(null);
-    window.history.replaceState(null, "", window.location.pathname);
+    window.history.replaceState(null, "", removeClaimSuccessParam(window.location));
   };
 
   const reviewClaimedAccount = () => {
@@ -451,7 +459,7 @@ export default function App() {
       {claimSuccess && (
         <section className="claim-success-panel" role="status" aria-live="polite">
           <div>
-            <strong>{claimSuccess.partnerName || myListing?.name || "Your business profile"} is now connected to your HEHA account.</strong>
+            <strong>{claimSuccess.partnerName} is now connected to your HEHA account.</strong>
             <p>Your saves, swipes, and history carried over—nothing was published or changed publicly yet. Head to your profile to review and prepare updates.</p>
             {claimSuccess.profileSetupPending && <p>HEHA will finish setting up the account profile; your business claim was successful.</p>}
           </div>

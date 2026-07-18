@@ -159,7 +159,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
         supabase.from("customer_profiles").upsert({ user_id: session.user.id }),
       ]);
       localStorage.setItem(SIGNUP_ROLE_KEY, "partner");
-      saveClaimSuccess(sessionStorage, claimed.partner_name, profileError || customerProfileError);
+      saveClaimSuccess(sessionStorage, claimed.partner_name, profileError || customerProfileError, session.user.id);
       setMessage(
         profileError || customerProfileError
           ? `${claimed.partner_name} is connected to your HEHA account. HEHA will finish setting up the account profile.`

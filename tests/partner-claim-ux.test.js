@@ -5,9 +5,11 @@ import {
   CLAIM_ERRORS,
   CLAIM_SUCCESS_KEY,
   clearClaimSuccess,
+  consumeClaimSuccess,
   friendlyAuthError,
   friendlyClaimError,
   readClaimSuccess,
+  removeClaimSuccessParam,
   saveClaimSuccess,
 } from "../src/lib/partnerClaimUx.js";
 
@@ -38,23 +40,88 @@ test("unknown auth and claim errors stay generic", () => {
   assert.equal(friendlyClaimError({ message: "sensitive backend detail" }).includes("sensitive"), false);
 });
 
-test("claim success persists for the redirect and clears on dismissal", () => {
-  const values = new Map();
-  const storage = {
+function memoryStorage(initial = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
     getItem: (key) => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, value),
     removeItem: (key) => values.delete(key),
   };
+}
 
-  saveClaimSuccess(storage, "A Very Long Business Name That Must Wrap Safely", true);
-  assert.deepEqual(readClaimSuccess("?claim=success", storage), {
+const USER_A = "11111111-1111-4111-8111-111111111111";
+const USER_B = "22222222-2222-4222-8222-222222222222";
+
+test("prevents false claim-success confirmation from query-only navigation", () => {
+  assert.equal(readClaimSuccess("?claim=success", memoryStorage(), USER_A, 10_000), null);
+});
+
+test("rejects missing, cleared, empty, malformed, and invalid success payloads", () => {
+  const now = 1_000_000;
+  const invalidPayloads = [
+    null,
+    "{}",
+    "not-json",
+    "[]",
+    JSON.stringify({ marker: "partner_claim_completed", version: 1, createdAt: now, userId: USER_A, partnerName: "" }),
+    JSON.stringify({ marker: "partner_claim_completed", version: 1, createdAt: now, userId: USER_A, partnerName: "   " }),
+    JSON.stringify({ marker: "partner_claim_completed", version: 99, createdAt: now, userId: USER_A, partnerName: "Business" }),
+    JSON.stringify({ marker: "wrong", version: 1, createdAt: now, userId: USER_A, partnerName: "Business" }),
+    JSON.stringify({ marker: "partner_claim_completed", version: 1, createdAt: now - 16 * 60 * 1000, userId: USER_A, partnerName: "Business" }),
+  ];
+
+  for (const payload of invalidPayloads) {
+    const storage = memoryStorage(payload === null ? {} : { [CLAIM_SUCCESS_KEY]: payload });
+    assert.equal(readClaimSuccess("?claim=success", storage, USER_A, now), null);
+  }
+});
+
+test("genuine claim success survives redirect, renders its exact name, and is consumed once", () => {
+  const now = 1_000_000;
+  const storage = memoryStorage();
+  assert.equal(saveClaimSuccess(storage, "  A Very Long Business Name That Must Wrap Safely  ", true, USER_A, now), true);
+  assert.deepEqual(consumeClaimSuccess("?claim=success", storage, USER_A, now + 1_000), {
     partnerName: "A Very Long Business Name That Must Wrap Safely",
     profileSetupPending: true,
   });
-  assert.equal(readClaimSuccess("", storage), null);
+  assert.equal(storage.getItem(CLAIM_SUCCESS_KEY), null);
+  assert.equal(readClaimSuccess("?claim=success", storage, USER_A, now + 2_000), null);
+});
+
+test("claim success persists for the redirect and clears on dismissal", () => {
+  const now = 1_000_000;
+  const storage = memoryStorage();
+
+  saveClaimSuccess(storage, "A Very Long Business Name That Must Wrap Safely", true, USER_A, now);
+  assert.deepEqual(readClaimSuccess("?claim=success", storage, USER_A, now), {
+    partnerName: "A Very Long Business Name That Must Wrap Safely",
+    profileSetupPending: true,
+  });
+  assert.equal(readClaimSuccess("", storage, USER_A, now), null);
   clearClaimSuccess(storage);
   assert.equal(storage.getItem(CLAIM_SUCCESS_KEY), null);
-  assert.deepEqual(readClaimSuccess("?claim=success", storage), {});
+  assert.equal(readClaimSuccess("?claim=success", storage, USER_A, now), null);
+});
+
+test("copied URL in another session and refresh after consumption show no banner", () => {
+  const now = 1_000_000;
+  assert.equal(consumeClaimSuccess("?claim=success", memoryStorage(), USER_A, now), null);
+  const storage = memoryStorage();
+  saveClaimSuccess(storage, "Current Session Business", false, USER_A, now);
+  assert.equal(consumeClaimSuccess("?claim=success", storage, USER_B, now), null);
+  assert.equal(storage.getItem(CLAIM_SUCCESS_KEY), null);
+  assert.equal(consumeClaimSuccess("?claim=success", storage, USER_A, now), null);
+
+  saveClaimSuccess(storage, "Current Session Business", false, USER_A, now);
+  assert.ok(consumeClaimSuccess("?claim=success", storage, USER_A, now));
+  assert.equal(consumeClaimSuccess("?claim=success", storage, USER_A, now), null);
+});
+
+test("query cleanup removes only claim success and preserves unrelated parameters and hash", () => {
+  assert.equal(
+    removeClaimSuccessParam({ pathname: "/", search: "?claim=success&source=invite&tab=profile", hash: "#details" }),
+    "/?source=invite&tab=profile#details",
+  );
 });
 
 test("claim UI includes persistent, review-gated, non-public confirmation copy", async () => {
@@ -65,6 +132,7 @@ test("claim UI includes persistent, review-gated, non-public confirmation copy",
   assert.match(app, /nothing was published or changed publicly yet/);
   assert.match(app, /Review your HEHA account/);
   assert.match(app, /Dismiss claim confirmation/);
+  assert.doesNotMatch(app, /claimSuccess\.partnerName \|\||myListing\?\.name \|\||Your business profile.*connected/);
   assert.doesNotMatch(app, /now (an )?Official HEHA Partner|now HEHA Certified|HEHA Local is active/);
   assert.match(screen, /Profile edits, products, and offers stay saved as drafts until HEHA reviews them/);
   assert.match(screen, /At least 8 characters/);
