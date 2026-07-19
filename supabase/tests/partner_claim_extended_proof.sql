@@ -139,6 +139,138 @@ begin
 end;
 $$;
 
+-- Every approved claim-administration role independently creates, reads through
+-- RLS, and revokes an invitation on a dedicated synthetic partner.
+create temporary table allowed_role_invites (
+  proof_role text primary key,
+  invite_id uuid not null,
+  partner_id uuid not null,
+  raw_token text not null,
+  expires_at timestamptz not null,
+  recipient_hint text not null
+) on commit drop;
+grant select, insert on pg_temp.allowed_role_invites to authenticated;
+
+select pg_temp.set_auth_context('authenticated', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+set local role authenticated;
+insert into pg_temp.allowed_role_invites
+select 'developer_admin', claim_invite.*
+from public.create_partner_claim_invite(
+  '77777777-7777-4777-8777-777777777777',
+  interval '1 day',
+  'developer-role-proof',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  null
+) as claim_invite;
+do $$
+begin
+  if not exists (
+    select 1
+    from public.partner_claim_invites
+    where id = (select invite_id from pg_temp.allowed_role_invites where proof_role = 'developer_admin')
+  ) then
+    raise exception 'developer_admin could not see its synthetic invitation through RLS';
+  end if;
+end;
+$$;
+select public.revoke_partner_claim_invite((select invite_id from pg_temp.allowed_role_invites where proof_role = 'developer_admin'));
+reset role;
+do $$
+begin
+  if not exists (
+    select 1
+    from public.partner_claim_invites
+    where id = (select invite_id from pg_temp.allowed_role_invites where proof_role = 'developer_admin')
+      and revoked_at is not null
+      and revoked_by = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'::uuid
+  ) then
+    raise exception 'developer_admin did not revoke its synthetic invitation';
+  end if;
+  insert into pg_temp.partner_claim_extended_results
+  values ('allowed role developer_admin', 'developer_admin created, read through RLS and revoked its synthetic invitation');
+end;
+$$;
+
+select pg_temp.set_auth_context('authenticated', 'ffffffff-ffff-4fff-8fff-ffffffffffff');
+set local role authenticated;
+insert into pg_temp.allowed_role_invites
+select 'super_admin', claim_invite.*
+from public.create_partner_claim_invite(
+  '88888888-8888-4888-8888-888888888888',
+  interval '1 day',
+  'super-role-proof',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  null
+) as claim_invite;
+do $$
+begin
+  if not exists (
+    select 1
+    from public.partner_claim_invites
+    where id = (select invite_id from pg_temp.allowed_role_invites where proof_role = 'super_admin')
+  ) then
+    raise exception 'super_admin could not see its synthetic invitation through RLS';
+  end if;
+end;
+$$;
+select public.revoke_partner_claim_invite((select invite_id from pg_temp.allowed_role_invites where proof_role = 'super_admin'));
+reset role;
+do $$
+begin
+  if not exists (
+    select 1
+    from public.partner_claim_invites
+    where id = (select invite_id from pg_temp.allowed_role_invites where proof_role = 'super_admin')
+      and revoked_at is not null
+      and revoked_by = 'ffffffff-ffff-4fff-8fff-ffffffffffff'::uuid
+  ) then
+    raise exception 'super_admin did not revoke its synthetic invitation';
+  end if;
+  insert into pg_temp.partner_claim_extended_results
+  values ('allowed role super_admin', 'super_admin created, read through RLS and revoked its synthetic invitation');
+end;
+$$;
+
+select pg_temp.set_auth_context('authenticated', '99999999-9999-4999-8999-999999999999');
+set local role authenticated;
+insert into pg_temp.allowed_role_invites
+select 'pm_admin', claim_invite.*
+from public.create_partner_claim_invite(
+  '99999999-9999-4999-8999-999999999999',
+  interval '1 day',
+  'pm-role-proof',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  null
+) as claim_invite;
+do $$
+begin
+  if not exists (
+    select 1
+    from public.partner_claim_invites
+    where id = (select invite_id from pg_temp.allowed_role_invites where proof_role = 'pm_admin')
+  ) then
+    raise exception 'pm_admin could not see its synthetic invitation through RLS';
+  end if;
+end;
+$$;
+select public.revoke_partner_claim_invite((select invite_id from pg_temp.allowed_role_invites where proof_role = 'pm_admin'));
+reset role;
+do $$
+begin
+  if not exists (
+    select 1
+    from public.partner_claim_invites
+    where id = (select invite_id from pg_temp.allowed_role_invites where proof_role = 'pm_admin')
+      and revoked_at is not null
+      and revoked_by = '99999999-9999-4999-8999-999999999999'::uuid
+  ) then
+    raise exception 'pm_admin did not revoke its synthetic invitation';
+  end if;
+  insert into pg_temp.partner_claim_extended_results
+  values ('allowed role pm_admin', 'pm_admin created, read through RLS and revoked its synthetic invitation');
+end;
+$$;
+
 -- Already-owned profiles cannot receive a new claim invitation.
 select pg_temp.set_auth_context('authenticated', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
 select pg_temp.expect_error(

@@ -42,6 +42,14 @@ test("maps recipient mismatch to calm account-switch guidance", () => {
   );
 });
 
+test("recipient mismatch help action uses the approved privacy-safe support destination", async () => {
+  const screen = await readFile(new URL("../src/components/PartnerClaimScreen.jsx", import.meta.url), "utf8");
+  assert.match(screen, /href="mailto:hello@heha\.online\?subject=HEHA%20Business%20Claim%20Help"/);
+  assert.match(screen, /aria-label="Get help with this business claim by email"/);
+  assert.doesNotMatch(screen, /href="\/">\s*Get help/);
+  assert.doesNotMatch(screen, /mailto:[^"\n]+(?:token|body=|intended_user_id|intended_email)/i);
+});
+
 test("unknown auth and claim errors stay generic", () => {
   assert.equal(friendlyAuthError({ message: "sensitive backend detail" }, "signin").includes("sensitive"), false);
   assert.equal(friendlyClaimError({ message: "sensitive backend detail" }).includes("sensitive"), false);
@@ -165,5 +173,6 @@ test("claim styles cover focus, inactive-tab contrast, and long-name wrapping", 
   assert.match(css, /input:focus-visible/);
   assert.match(css, /\.primary-button:focus-visible/);
   assert.match(css, /\.secondary-button:focus-visible/);
+  assert.match(css, /\.claim-mismatch-actions \.text-button \{[^}]*min-height: 44px/s);
   assert.match(css, /overflow-wrap: anywhere/);
 });

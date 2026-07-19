@@ -177,12 +177,40 @@ insert into auth.users (
     false,
     now(),
     now()
+  ),
+  (
+    'ffffffff-ffff-4fff-8fff-ffffffffffff',
+    'authenticated',
+    'authenticated',
+    'claim-super-admin@example.invalid',
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{}'::jsonb,
+    false,
+    false,
+    now(),
+    now()
+  ),
+  (
+    '99999999-9999-4999-8999-999999999999',
+    'authenticated',
+    'authenticated',
+    'claim-pm-admin@example.invalid',
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{}'::jsonb,
+    false,
+    false,
+    now(),
+    now()
   );
 
 insert into public.user_roles (user_id, role, active)
 values
   ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'developer_admin', true),
-  ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'community_events_admin', true);
+  ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'community_events_admin', true),
+  ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'super_admin', true),
+  ('99999999-9999-4999-8999-999999999999', 'pm_admin', true);
 
 insert into public.partners (
   id,
@@ -298,6 +326,60 @@ insert into public.partners (
     'Synthetic Atomicity Business',
     'Elevate',
     'Atomicity fixture',
+    'approved',
+    false,
+    true,
+    true,
+    false,
+    'reviewed',
+    '[]'::jsonb,
+    0,
+    0,
+    0,
+    true
+  ),
+  (
+    '77777777-7777-4777-8777-777777777777',
+    null,
+    'Synthetic Developer Role Proof Business',
+    'Nourish',
+    'Developer role proof fixture',
+    'approved',
+    false,
+    true,
+    true,
+    false,
+    'reviewed',
+    '[]'::jsonb,
+    0,
+    0,
+    0,
+    true
+  ),
+  (
+    '88888888-8888-4888-8888-888888888888',
+    null,
+    'Synthetic Super Role Proof Business',
+    'Nourish',
+    'Super role proof fixture',
+    'approved',
+    false,
+    true,
+    true,
+    false,
+    'reviewed',
+    '[]'::jsonb,
+    0,
+    0,
+    0,
+    true
+  ),
+  (
+    '99999999-9999-4999-8999-999999999999',
+    null,
+    'Synthetic PM Role Proof Business',
+    'Nourish',
+    'PM role proof fixture',
     'approved',
     false,
     true,

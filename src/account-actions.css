@@ -97,6 +97,7 @@
 
 .claim-mismatch-actions .text-button {
   display: block;
+  min-height: 44px;
   padding: 12px;
   text-decoration: underline;
   text-underline-offset: 3px;

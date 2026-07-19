@@ -274,7 +274,14 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
         {recipientMismatch ? (
           <div className="claim-mismatch-actions">
             <button className="secondary-button" type="button" onClick={onSignOut} disabled={busy}>Use the invited account</button>
-            <a className="text-button" href="/">Get help</a>
+            <a
+              className="text-button"
+              href="mailto:hello@heha.online?subject=HEHA%20Business%20Claim%20Help"
+              aria-label="Get help with this business claim by email"
+              title="Email HEHA support about business claims"
+            >
+              Get help
+            </a>
           </div>
         ) : (
           <button className="secondary-button" type="button" onClick={onSignOut} disabled={busy}>Sign out</button>
