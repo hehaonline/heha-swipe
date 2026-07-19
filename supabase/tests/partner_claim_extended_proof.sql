@@ -591,6 +591,128 @@ begin
 end;
 $$;
 
+-- A matching email is not enough until Supabase Auth has verified it. Create
+-- the email-bound invitation before the synthetic unverified account exists so
+-- the fixture exercises the intended_email_normalized branch explicitly.
+select pg_temp.set_auth_context('authenticated', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+create temporary table extended_unverified_partner_before as
+select to_jsonb(p) as row_data
+from public.partners p
+where p.id = 'abababab-abab-4bab-8bab-abababababab';
+
+create temporary table extended_token_unverified as
+select *
+from public.create_partner_claim_invite(
+  'abababab-abab-4bab-8bab-abababababab',
+  interval '1 day',
+  'unverified-email-proof',
+  null,
+  'unverified.owner+tag@example.invalid'
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.partner_claim_invites
+    where id = (select invite_id from extended_token_unverified)
+      and intended_user_id is null
+      and intended_email_normalized = 'unverified.owner+tag@example.invalid'
+      and recipient_hint = 'u***@example.invalid'
+  ) then
+    raise exception 'unverified-recipient fixture was not created as an email-bound invitation';
+  end if;
+end;
+$$;
+
+insert into auth.users (
+  id, aud, role, email, email_confirmed_at, raw_app_meta_data,
+  raw_user_meta_data, is_sso_user, is_anonymous, created_at, updated_at
+) values (
+  '12121212-1212-4212-8212-121212121212',
+  'authenticated',
+  'authenticated',
+  'unverified.owner+tag@example.invalid',
+  null,
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{}'::jsonb,
+  false,
+  false,
+  now(),
+  now()
+);
+
+select pg_temp.set_auth_context('authenticated', '12121212-1212-4212-8212-121212121212');
+select pg_temp.expect_error(
+  'unverified matching email preview denied',
+  format('select * from public.preview_partner_claim(%L)', (select raw_token from extended_token_unverified)),
+  '42501'
+);
+select pg_temp.expect_error(
+  'unverified matching email claim denied',
+  format('select * from public.claim_partner_profile(%L)', (select raw_token from extended_token_unverified)),
+  '42501'
+);
+
+do $$
+declare
+  before_row jsonb := (select row_data from extended_unverified_partner_before);
+  after_row jsonb := (
+    select to_jsonb(p)
+    from public.partners p
+    where p.id = 'abababab-abab-4bab-8bab-abababababab'
+  );
+  raw_value text := (select raw_token from extended_token_unverified);
+begin
+  if not exists (
+    select 1
+    from public.partner_claim_invites
+    where id = (select invite_id from extended_token_unverified)
+      and consumed_at is null
+      and consumed_by is null
+      and revoked_at is null
+      and revoked_by is null
+  ) then
+    raise exception 'unverified matching email changed terminal invitation state';
+  end if;
+
+  if after_row is null
+     or after_row->>'id' <> 'abababab-abab-4bab-8bab-abababababab'
+     or after_row->>'owner_id' is not null
+     or after_row->>'relationship_status' = 'claimed'
+     or after_row is distinct from before_row then
+    raise exception 'unverified matching email changed ownership, Partner ID or public fields';
+  end if;
+
+  if exists (
+    select 1
+    from public.admin_audit_logs
+    where action_type = 'partner_profile_claimed'
+      and related_id = 'abababab-abab-4bab-8bab-abababababab'
+  ) then
+    raise exception 'unverified matching email created a successful claim audit event';
+  end if;
+
+  if exists (
+    select 1
+    from public.admin_audit_logs
+    where related_id = 'abababab-abab-4bab-8bab-abababababab'
+      and (
+        position('unverified.owner+tag@example.invalid' in coalesce(previous_value::text, '') || coalesce(new_value::text, '')) > 0
+        or position(raw_value in coalesce(previous_value::text, '') || coalesce(new_value::text, '')) > 0
+      )
+  ) then
+    raise exception 'unverified-recipient audit output exposed the full email or raw token';
+  end if;
+
+  insert into pg_temp.partner_claim_extended_results
+  values (
+    'unverified matching email denied',
+    'matching but unverified account cannot preview or claim and leaves invitation and business unchanged'
+  );
+end;
+$$;
+
 -- Simulate account creation after invitation issuance with the exact normalized,
 -- verified email. Provider-specific dot/plus rewriting is intentionally absent.
 insert into auth.users (

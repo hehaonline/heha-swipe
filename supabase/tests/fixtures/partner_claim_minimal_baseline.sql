@@ -391,6 +391,24 @@ insert into public.partners (
     0,
     0,
     true
+  ),
+  (
+    'abababab-abab-4bab-8bab-abababababab',
+    null,
+    'Synthetic Unverified Recipient Business',
+    'Elevate',
+    'Unverified recipient proof fixture',
+    'approved',
+    false,
+    true,
+    true,
+    false,
+    'reviewed',
+    '[{"name":"Unverified Recipient Synthetic Item"}]'::jsonb,
+    7,
+    5,
+    19,
+    true
   );
 
 insert into public.saves (user_id, partner_id)
