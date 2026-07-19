@@ -176,29 +176,42 @@ export default function ProfileTab({
   };
 
   const saveUserProfile = async () => {
+    if (!user?.id) return;
+
     setBusy(true);
     setProfileError(null);
     setProfileMessage(null);
 
     try {
       const cleanInstagram = form.instagram.trim().replace(/^@/, "");
-      const { error } = await supabase.from("profiles").upsert({
-        id: user.id,
-        email: user.email || null,
-        full_name: form.full_name.trim() || null,
-        phone: form.phone.trim() || null,
-        location: form.location.trim() || null,
-        instagram: cleanInstagram || null,
-        updated_at: new Date().toISOString(),
-      });
+
+      // This screen edits an existing authenticated user's profile only.
+      // Using update avoids the INSERT candidate created by upsert, which can
+      // activate protected supporter-subscription defaults and security triggers.
+      const { data: updatedProfile, error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: form.full_name.trim() || null,
+          phone: form.phone.trim() || null,
+          location: form.location.trim() || null,
+          instagram: cleanInstagram || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id)
+        .select("id")
+        .maybeSingle();
 
       if (error) throw error;
+      if (!updatedProfile) {
+        throw new Error("Your profile row is missing or is not editable. Please refresh and try again.");
+      }
+
       setProfileMessage(
         isBusiness
           ? "Business contact details saved."
           : "Profile saved. This information can support future HEHA ordering and delivery."
       );
-      onRefresh?.();
+      await onRefresh?.();
     } catch (error) {
       setProfileError(error.message || "Could not save your profile yet.");
     } finally {
