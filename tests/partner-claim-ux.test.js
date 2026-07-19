@@ -35,6 +35,13 @@ test("maps invalid credentials without rendering the raw Supabase message", () =
   assert.equal(friendly.includes("internal request 784"), false);
 });
 
+test("maps recipient mismatch to calm account-switch guidance", () => {
+  assert.equal(
+    friendlyClaimError({ message: "This one-time claim link belongs to a different account." }),
+    CLAIM_ERRORS.recipientMismatch,
+  );
+});
+
 test("unknown auth and claim errors stay generic", () => {
   assert.equal(friendlyAuthError({ message: "sensitive backend detail" }, "signin").includes("sensitive"), false);
   assert.equal(friendlyClaimError({ message: "sensitive backend detail" }).includes("sensitive"), false);
@@ -136,6 +143,19 @@ test("claim UI includes persistent, review-gated, non-public confirmation copy",
   assert.doesNotMatch(app, /now (an )?Official HEHA Partner|now HEHA Certified|HEHA Local is active/);
   assert.match(screen, /Profile edits, products, and offers stay saved as drafts until HEHA reviews them/);
   assert.match(screen, /At least 8 characters/);
+  assert.match(screen, /Use the invited account/);
+  assert.match(screen, /Get help/);
+});
+
+test("claim admin UI requires a recipient and uses the supported role allowlist", async () => {
+  const [adminApp, routing] = await Promise.all([
+    readFile(new URL("../src/components/admin/AdminApp.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/admin/routing/RoutingDashboard.jsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(adminApp, /claimAdmin: \["super_admin", "developer_admin", "pm_admin"\]\.includes\(role\)/);
+  assert.match(routing, /Verified recipient email/);
+  assert.match(routing, /p_intended_email: intendedEmail/);
+  assert.doesNotMatch(routing, /som_admin/);
 });
 
 test("claim styles cover focus, inactive-tab contrast, and long-name wrapping", async () => {

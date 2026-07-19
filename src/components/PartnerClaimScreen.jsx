@@ -4,6 +4,7 @@ import {
   CLAIM_ERRORS,
   friendlyAuthError,
   friendlyClaimError,
+  isClaimRecipientMismatch,
   saveClaimSuccess,
 } from "../lib/partnerClaimUx";
 
@@ -28,6 +29,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
   const [error, setError] = useState(null);
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [recipientMismatch, setRecipientMismatch] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(SIGNUP_ROLE_KEY, "partner");
@@ -40,6 +42,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
     async function loadPreview() {
       setPreviewLoading(true);
       setError(null);
+      setRecipientMismatch(false);
       const { data, error: previewError } = await supabase.rpc("preview_partner_claim", {
         p_raw_token: token,
       });
@@ -47,6 +50,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
       if (cancelled) return;
       if (previewError) {
         setPreview(null);
+        setRecipientMismatch(isClaimRecipientMismatch(previewError));
         setError(friendlyClaimError(previewError));
       } else {
         setPreview(data?.[0] || null);
@@ -69,6 +73,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
     authPending.current = true;
     setBusy(true);
     setError(null);
+    setRecipientMismatch(false);
     setMessage(null);
 
     try {
@@ -168,6 +173,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
 
       window.location.replace("/?claim=success");
     } catch (claimError) {
+      setRecipientMismatch(isClaimRecipientMismatch(claimError));
       setError(friendlyClaimError(claimError));
     } finally {
       setBusy(false);
@@ -265,7 +271,14 @@ export default function PartnerClaimScreen({ session, authLoading = false, onSig
           !error && <div className="error-banner">{CLAIM_ERRORS.unavailable}</div>
         )}
 
-        <button className="secondary-button" type="button" onClick={onSignOut} disabled={busy}>Sign out</button>
+        {recipientMismatch ? (
+          <div className="claim-mismatch-actions">
+            <button className="secondary-button" type="button" onClick={onSignOut} disabled={busy}>Use the invited account</button>
+            <a className="text-button" href="/">Get help</a>
+          </div>
+        ) : (
+          <button className="secondary-button" type="button" onClick={onSignOut} disabled={busy}>Sign out</button>
+        )}
         <p className="fine-print">The one-time claim link expires. HEHA stores only a cryptographic hash of the claim token.</p>
         {message && <div className="success-banner">{message}</div>}
         {error && <div className="error-banner">{error}</div>}

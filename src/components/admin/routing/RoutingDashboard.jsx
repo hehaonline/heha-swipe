@@ -37,7 +37,7 @@ function relationshipLabel(partner) {
   return partner?.owner_id ? "claimed" : "community listed";
 }
 
-export default function RoutingDashboard({ final = false }) {
+export default function RoutingDashboard({ final = false, canManageClaims = false }) {
   const [partners, setPartners] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(formFrom(null));
@@ -49,6 +49,8 @@ export default function RoutingDashboard({ final = false }) {
   const [claimBusy, setClaimBusy] = useState(false);
   const [claimLink, setClaimLink] = useState("");
   const [claimExpiresAt, setClaimExpiresAt] = useState(null);
+  const [claimRecipientEmail, setClaimRecipientEmail] = useState("");
+  const [claimRecipientHint, setClaimRecipientHint] = useState("");
 
   useEffect(() => { loadPartners(); }, []);
 
@@ -58,6 +60,8 @@ export default function RoutingDashboard({ final = false }) {
     if (selected) setForm(formFrom(selected));
     setClaimLink("");
     setClaimExpiresAt(null);
+    setClaimRecipientEmail("");
+    setClaimRecipientHint("");
   }, [selected?.id]);
 
   const visible = useMemo(() => {
@@ -169,7 +173,8 @@ export default function RoutingDashboard({ final = false }) {
   }
 
   async function createClaimInvite() {
-    if (!selected || selected.owner_id || claimBusy) return;
+    const intendedEmail = claimRecipientEmail.trim();
+    if (!selected || selected.owner_id || claimBusy || !canManageClaims || !intendedEmail) return;
     setClaimBusy(true);
     setClaimLink("");
     setClaimExpiresAt(null);
@@ -179,7 +184,8 @@ export default function RoutingDashboard({ final = false }) {
       p_partner_id: selected.id,
       p_expires_in: "7 days",
       p_outreach_channel: "manual",
-      p_recipient_hint: null,
+      p_intended_user_id: null,
+      p_intended_email: intendedEmail,
     });
 
     if (error) {
@@ -191,6 +197,7 @@ export default function RoutingDashboard({ final = false }) {
       } else {
         setClaimLink(`${PUBLIC_SWIPE_URL}/claim-partner?token=${encodeURIComponent(invite.raw_token)}`);
         setClaimExpiresAt(invite.expires_at || null);
+        setClaimRecipientHint(invite.recipient_hint || "Invited account");
         setNotice("Secure one-time claim link created. Copy it now; the raw token is not stored in the database.");
         await loadPartners();
       }
@@ -256,15 +263,28 @@ export default function RoutingDashboard({ final = false }) {
                 <h3>{selected.owner_id ? "Claimed profile" : "Community Listing — Not Yet Claimed"}</h3>
                 <p>Relationship: {relationshipLabel(selected)} · Source: {selected.listing_source || "legacy/unclassified"}</p>
                 {selected.claimed_at && <p>Claimed: {new Date(selected.claimed_at).toLocaleString()}</p>}
-                {!selected.owner_id && !["opted_out", "removed"].includes(selected.relationship_status) && (
-                  <button disabled={claimBusy} onClick={createClaimInvite}>
-                    {claimBusy ? "Creating one-time claim link…" : "Create 7-day one-time claim link"}
-                  </button>
+                {canManageClaims && !selected.owner_id && !["opted_out", "removed"].includes(selected.relationship_status) && (
+                  <div className="admin-form">
+                    <label className="wide">
+                      <span>Verified recipient email</span>
+                      <input
+                        type="email"
+                        value={claimRecipientEmail}
+                        onChange={(event) => setClaimRecipientEmail(event.target.value)}
+                        placeholder="owner@example.com"
+                        autoComplete="off"
+                      />
+                    </label>
+                    <small>The server binds the invitation to an existing HEHA user when found; otherwise it requires a future account with this verified email.</small>
+                    <button disabled={claimBusy || !claimRecipientEmail.trim()} onClick={createClaimInvite}>
+                      {claimBusy ? "Creating one-time claim link…" : "Create 7-day one-time claim link"}
+                    </button>
+                  </div>
                 )}
                 {claimLink && (
                   <div className="admin-form">
                     <label className="wide">
-                      <span>One-time claim link {claimExpiresAt ? `· expires ${new Date(claimExpiresAt).toLocaleString()}` : ""}</span>
+                      <span>One-time claim link for {claimRecipientHint} {claimExpiresAt ? `· expires ${new Date(claimExpiresAt).toLocaleString()}` : ""}</span>
                       <textarea readOnly value={claimLink} aria-label="One-time business claim link" />
                     </label>
                     <button onClick={copyClaimLink}>Copy one-time claim link</button>

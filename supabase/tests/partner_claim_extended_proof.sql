@@ -85,24 +85,87 @@ $$;
 select pg_temp.set_auth_context('authenticated', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 select pg_temp.expect_error(
   'unauthorized invite creation',
-  $$select * from public.create_partner_claim_invite('22222222-2222-4222-8222-222222222222', interval '1 day', 'proof', null)$$,
+  $$select * from public.create_partner_claim_invite(
+      '22222222-2222-4222-8222-222222222222', interval '1 day', 'proof',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null
+    )$$,
   '42501'
 );
 
--- Production-compatible role constraint currently excludes som_admin.
 select pg_temp.expect_error(
-  'som_admin role constraint mismatch',
-  $$insert into public.user_roles (user_id, role, active)
-    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'som_admin', true)$$,
-  '23514'
+  'ordinary user invite revocation',
+  $$select public.revoke_partner_claim_invite('99999999-9999-4999-8999-999999999999')$$,
+  '42501'
 );
+
+-- An authenticated but unsupported internal role cannot read, create or revoke.
+select pg_temp.set_auth_context('authenticated', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee');
+select pg_temp.expect_error(
+  'unsupported role invite creation',
+  $$select * from public.create_partner_claim_invite(
+      '22222222-2222-4222-8222-222222222222', interval '1 day', 'proof',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null
+    )$$,
+  '42501'
+);
+select pg_temp.expect_error(
+  'unsupported role invite revocation',
+  $$select public.revoke_partner_claim_invite('99999999-9999-4999-8999-999999999999')$$,
+  '42501'
+);
+
+set local role authenticated;
+select pg_temp.set_auth_context('authenticated', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee');
+do $$
+begin
+  if exists (select 1 from public.partner_claim_invites) then
+    raise exception 'unsupported internal role enumerated claim invitations';
+  end if;
+end;
+$$;
+reset role;
+insert into pg_temp.partner_claim_extended_results
+values ('unsupported role boundary', 'unsupported internal role cannot read, create or revoke invitations');
+
+do $$
+begin
+  if has_table_privilege('anon', 'public.partner_claim_invites', 'SELECT')
+     or has_function_privilege('anon', 'public.create_partner_claim_invite(uuid,interval,text,uuid,text)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.revoke_partner_claim_invite(uuid)', 'EXECUTE') then
+    raise exception 'anonymous claim-invite access is broader than intended';
+  end if;
+  insert into pg_temp.partner_claim_extended_results
+  values ('anonymous claim boundary', 'anonymous users cannot read, create or revoke invitations');
+end;
+$$;
 
 -- Already-owned profiles cannot receive a new claim invitation.
 select pg_temp.set_auth_context('authenticated', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
 select pg_temp.expect_error(
   'already-owned invitation rejected',
-  $$select * from public.create_partner_claim_invite('33333333-3333-4333-8333-333333333333', interval '1 day', 'proof', null)$$,
+  $$select * from public.create_partner_claim_invite(
+      '33333333-3333-4333-8333-333333333333', interval '1 day', 'proof',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null
+    )$$,
   '23505'
+);
+
+select pg_temp.expect_error(
+  'missing intended recipient rejected',
+  $$select * from public.create_partner_claim_invite(
+      '22222222-2222-4222-8222-222222222222', interval '1 day', 'proof',
+      null, null
+    )$$,
+  '22023'
+);
+
+select pg_temp.expect_error(
+  'ambiguous intended recipient rejected',
+  $$select * from public.create_partner_claim_invite(
+      '22222222-2222-4222-8222-222222222222', interval '1 day', 'proof',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'claim-owner-a@example.invalid'
+    )$$,
+  '22023'
 );
 
 -- Opted-out profiles remain unclaimable.
@@ -115,7 +178,10 @@ where id = '44444444-4444-4444-8444-444444444444';
 select pg_temp.set_auth_context('authenticated', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
 select pg_temp.expect_error(
   'opted-out invitation rejected',
-  $$select * from public.create_partner_claim_invite('44444444-4444-4444-8444-444444444444', interval '1 day', 'proof', null)$$,
+  $$select * from public.create_partner_claim_invite(
+      '44444444-4444-4444-8444-444444444444', interval '1 day', 'proof',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null
+    )$$,
   '42501'
 );
 
@@ -126,7 +192,8 @@ from public.create_partner_claim_invite(
   '11111111-1111-4111-8111-111111111111',
   interval '1 day',
   'proof',
-  'synthetic-owner-a'
+  null,
+  ' CLAIM-OWNER-A@EXAMPLE.INVALID '
 );
 
 create temporary table extended_partner_a_before as
@@ -147,7 +214,11 @@ declare
     from public.partner_claim_invites
     where id = (select invite_id from extended_token_a)
   );
+  stored_invite public.partner_claim_invites%rowtype;
 begin
+  select * into stored_invite
+  from public.partner_claim_invites
+  where id = (select invite_id from extended_token_a);
   if stored_hash is null then
     raise exception 'claim token hash was not stored';
   end if;
@@ -157,8 +228,46 @@ begin
   if encode(stored_hash, 'hex') = raw_value then
     raise exception 'raw token appears to be stored instead of its hash';
   end if;
+  if stored_invite.intended_user_id <> 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid
+     or stored_invite.intended_email_normalized is not null
+     or stored_invite.recipient_hint like '%claim-owner-a@example.invalid%' then
+    raise exception 'existing-account invitation was not safely user-bound';
+  end if;
   insert into pg_temp.partner_claim_extended_results
-  values ('token storage', 'only the SHA-256 token hash is stored');
+  values ('token and recipient storage', 'token is hashed; existing recipient is bound by user ID with a masked hint');
+end;
+$$;
+
+-- A forwarded valid link fails closed for the wrong authenticated account.
+select pg_temp.set_auth_context('authenticated', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+select pg_temp.expect_error(
+  'wrong intended user preview',
+  format('select * from public.preview_partner_claim(%L)', (select raw_token from extended_token_a)),
+  '42501'
+);
+select pg_temp.expect_error(
+  'forwarded link wrong account claim',
+  format('select * from public.claim_partner_profile(%L)', (select raw_token from extended_token_a)),
+  '42501'
+);
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.partner_claim_invites
+    where id = (select invite_id from extended_token_a)
+      and (consumed_at is not null or revoked_at is not null)
+  ) or exists (
+    select 1 from public.partners
+    where id = '11111111-1111-4111-8111-111111111111'
+      and owner_id is not null
+  ) then
+    raise exception 'recipient mismatch changed ownership or terminal invitation state';
+  end if;
+
+  insert into pg_temp.partner_claim_extended_results
+  values ('intended user mismatch', 'forwarded link failed without consuming, revoking or assigning ownership');
 end;
 $$;
 
@@ -279,7 +388,8 @@ from public.create_partner_claim_invite(
   '22222222-2222-4222-8222-222222222222',
   interval '1 day',
   'proof',
-  null
+  null,
+  ' Future.Owner+tag@Example.Invalid '
 );
 
 create temporary table extended_token_b_second as
@@ -288,7 +398,8 @@ from public.create_partner_claim_invite(
   '22222222-2222-4222-8222-222222222222',
   interval '1 day',
   'proof',
-  null
+  null,
+  ' Future.Owner+tag@Example.Invalid '
 );
 
 do $$
@@ -312,8 +423,86 @@ begin
     raise exception 'partner does not have exactly one active invitation';
   end if;
 
+  if not exists (
+    select 1
+    from public.partner_claim_invites
+    where id = (select invite_id from extended_token_b_second)
+      and intended_user_id is null
+      and intended_email_normalized = 'future.owner+tag@example.invalid'
+      and recipient_hint = 'f***@example.invalid'
+  ) then
+    raise exception 'new-account invitation did not preserve lower(trim(email)) binding and masked hint';
+  end if;
+
   insert into pg_temp.partner_claim_extended_results
-  values ('one active invite', 'creating a replacement revoked the previous active invitation');
+  values ('one active invite and email normalization', 'replacement revoked the old invite; email binding used only lower(trim(email))');
+end;
+$$;
+
+-- The wrong account cannot use the email-bound link, and the mismatch is non-terminal.
+select pg_temp.set_auth_context('authenticated', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+select pg_temp.expect_error(
+  'mismatched verified email claim',
+  format('select * from public.claim_partner_profile(%L)', (select raw_token from extended_token_b_second)),
+  '42501'
+);
+
+do $$
+begin
+  if exists (
+    select 1 from public.partner_claim_invites
+    where id = (select invite_id from extended_token_b_second)
+      and (consumed_at is not null or revoked_at is not null)
+  ) then
+    raise exception 'verified-email mismatch consumed or revoked the invitation';
+  end if;
+end;
+$$;
+
+-- Simulate account creation after invitation issuance with the exact normalized,
+-- verified email. Provider-specific dot/plus rewriting is intentionally absent.
+insert into auth.users (
+  id, aud, role, email, email_confirmed_at, raw_app_meta_data,
+  raw_user_meta_data, is_sso_user, is_anonymous, created_at, updated_at
+) values (
+  'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  'authenticated',
+  'authenticated',
+  'future.owner+tag@example.invalid',
+  now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{}'::jsonb,
+  false,
+  false,
+  now(),
+  now()
+);
+
+select pg_temp.set_auth_context('authenticated', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd');
+select *
+from public.claim_partner_profile((select raw_token from extended_token_b_second));
+
+do $$
+begin
+  if not exists (
+    select 1 from public.partners
+    where id = '22222222-2222-4222-8222-222222222222'
+      and owner_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+  ) then
+    raise exception 'matching newly verified account did not claim the intended partner';
+  end if;
+
+  if exists (
+    select 1 from public.admin_audit_logs
+    where action_type like 'partner_claim_%'
+      and (coalesce(previous_value::text, '') like '%@%'
+        or coalesce(new_value::text, '') like '%@%')
+  ) then
+    raise exception 'claim audit output contains a full recipient email';
+  end if;
+
+  insert into pg_temp.partner_claim_extended_results
+  values ('verified email recipient', 'matching newly verified email claimed; mismatch was non-terminal; audit contained no email');
 end;
 $$;
 
@@ -330,6 +519,7 @@ from public.create_partner_claim_invite(
   '55555555-5555-4555-8555-555555555555',
   interval '1 day',
   'proof',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   null
 );
 
@@ -366,6 +556,7 @@ from public.create_partner_claim_invite(
   '66666666-6666-4666-8666-666666666666',
   interval '1 day',
   'proof',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   null
 );
 
@@ -421,22 +612,18 @@ begin
 end;
 $$;
 
--- The current design is explicitly a bearer-token model, not an account-bound invitation.
+-- Every invitation must carry exactly one recipient binding.
 do $$
 begin
   if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'partner_claim_invites'
-      and column_name in ('intended_user_id', 'intended_email')
+    select 1 from public.partner_claim_invites
+    where num_nonnulls(intended_user_id, intended_email_normalized) <> 1
   ) then
-    insert into pg_temp.partner_claim_extended_results
-    values ('claim identity model', 'invitation contains an account-binding field');
-  else
-    insert into pg_temp.partner_claim_extended_results
-    values ('claim identity model', 'bearer token plus authenticated account; no intended-user binding exists');
+    raise exception 'claim invitation missing an exclusive intended recipient binding';
   end if;
+
+  insert into pg_temp.partner_claim_extended_results
+  values ('claim identity model', 'token possession plus intended user or verified normalized email is required');
 end;
 $$;
 

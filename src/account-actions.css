@@ -88,6 +88,20 @@
   margin-top: 12px;
 }
 
+.claim-mismatch-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  text-align: center;
+}
+
+.claim-mismatch-actions .text-button {
+  display: block;
+  padding: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .claim-success-actions .primary-button {
   min-height: 48px;
 }
@@ -101,6 +115,11 @@
   outline: 3px solid var(--heha-green-dark);
   outline-offset: 3px;
   box-shadow: 0 0 0 2px #fff;
+}
+
+.claim-mismatch-actions a:focus-visible {
+  outline: 3px solid var(--heha-green-dark);
+  outline-offset: 3px;
 }
 
 @media (max-width: 420px) {

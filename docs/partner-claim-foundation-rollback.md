@@ -4,6 +4,17 @@ Migration: `20260716090000_partner_claim_foundation.sql`
 
 This migration remains review-only. Do not apply it until migration lineage is reconciled and the rollback-only proof passes in a non-production Supabase environment.
 
+## Claim-administration and recipient boundary
+
+Claim invitation administration is limited to `super_admin`, `developer_admin`, and `pm_admin`. `som_admin` is intentionally unsupported by this claim flow; any future SOM permissions require a separate role-model review.
+
+Every invitation is bound to exactly one intended recipient in addition to its hashed one-time token:
+
+- an existing Auth account is stored as `intended_user_id`; or
+- a not-yet-created account is stored as `intended_email_normalized` using only `lower(trim(email))`.
+
+The separate `recipient_hint` is server-generated and masked. Claim and preview RPCs compare the binding with `auth.uid()` or the confirmed Auth email before ownership or invitation state can change. Recipient mismatch fails closed and does not consume or revoke the invitation.
+
 ## Required proof run
 
 Choose two disposable, unclaimed partner rows, two ordinary Auth users, and one Auth user with an allowed active internal role. Run:

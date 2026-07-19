@@ -164,10 +164,25 @@ insert into auth.users (
     false,
     now(),
     now()
+  ),
+  (
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    'authenticated',
+    'authenticated',
+    'claim-unsupported@example.invalid',
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{}'::jsonb,
+    false,
+    false,
+    now(),
+    now()
   );
 
 insert into public.user_roles (user_id, role, active)
-values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'developer_admin', true);
+values
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'developer_admin', true),
+  ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'community_events_admin', true);
 
 insert into public.partners (
   id,

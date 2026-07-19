@@ -100,8 +100,21 @@ create table if not exists public.partner_claim_invites (
   revoked_at timestamptz,
   revoked_by uuid references auth.users(id) on delete set null,
   outreach_channel text,
-  recipient_hint text,
+  intended_user_id uuid references auth.users(id) on delete restrict,
+  intended_email_normalized text,
+  recipient_hint text not null,
   constraint partner_claim_invites_expiry_check check (expires_at > created_at),
+  constraint partner_claim_invites_recipient_check check (
+    num_nonnulls(intended_user_id, intended_email_normalized) = 1
+  ),
+  constraint partner_claim_invites_email_normalized_check check (
+    intended_email_normalized is null
+    or (
+      intended_email_normalized = lower(btrim(intended_email_normalized))
+      and length(intended_email_normalized) between 3 and 320
+      and position('@' in intended_email_normalized) > 1
+    )
+  ),
   constraint partner_claim_invites_terminal_state_check check (
     not (consumed_at is not null and revoked_at is not null)
   )
@@ -127,7 +140,7 @@ for select
 to authenticated
 using (
   app_private.has_internal_role(
-    array['super_admin', 'developer_admin', 'pm_admin', 'som_admin']::text[]
+    array['super_admin', 'developer_admin', 'pm_admin']::text[]
   )
 );
 
@@ -135,13 +148,15 @@ create or replace function public.create_partner_claim_invite(
   p_partner_id uuid,
   p_expires_in interval default interval '7 days',
   p_outreach_channel text default null,
-  p_recipient_hint text default null
+  p_intended_user_id uuid default null,
+  p_intended_email text default null
 )
 returns table (
   invite_id uuid,
   partner_id uuid,
   raw_token text,
-  expires_at timestamptz
+  expires_at timestamptz,
+  recipient_hint text
 )
 language plpgsql
 security definer
@@ -154,13 +169,18 @@ declare
   generated_hash bytea;
   generated_invite_id uuid;
   generated_expires_at timestamptz;
+  normalized_email text := nullif(lower(btrim(p_intended_email)), '');
+  bound_user_id uuid;
+  bound_email text;
+  bound_hint text;
+  account_email text;
 begin
   if actor_id is null then
     raise exception using errcode = '28000', message = 'Authentication required.';
   end if;
 
   if not app_private.has_internal_role(
-    array['super_admin', 'developer_admin', 'pm_admin', 'som_admin']::text[]
+    array['super_admin', 'developer_admin', 'pm_admin']::text[]
   ) then
     raise exception using errcode = '42501', message = 'HEHA internal claim-invite access required.';
   end if;
@@ -169,6 +189,50 @@ begin
      or p_expires_in < interval '15 minutes'
      or p_expires_in > interval '30 days' then
     raise exception using errcode = '22023', message = 'Claim invite expiry must be between 15 minutes and 30 days.';
+  end if;
+
+  if (p_intended_user_id is null and normalized_email is null)
+     or (p_intended_user_id is not null and normalized_email is not null) then
+    raise exception using
+      errcode = '22023',
+      message = 'Provide exactly one intended recipient user or email.';
+  end if;
+
+  if normalized_email is not null
+     and (length(normalized_email) > 320 or position('@' in normalized_email) <= 1) then
+    raise exception using errcode = '22023', message = 'A valid intended recipient email is required.';
+  end if;
+
+  if p_intended_user_id is not null then
+    select u.email into account_email
+    from auth.users u
+    where u.id = p_intended_user_id;
+
+    if not found then
+      raise exception using errcode = 'P0002', message = 'Intended recipient account not found.';
+    end if;
+
+    bound_user_id := p_intended_user_id;
+    bound_hint := case
+      when nullif(btrim(account_email), '') is not null then
+        left(split_part(lower(btrim(account_email)), '@', 1), 1)
+        || '***@' || split_part(lower(btrim(account_email)), '@', 2)
+      else 'Account …' || right(p_intended_user_id::text, 8)
+    end;
+  else
+    select u.id, u.email into bound_user_id, account_email
+    from auth.users u
+    where lower(btrim(u.email)) = normalized_email
+    order by u.created_at asc
+    limit 1;
+
+    if bound_user_id is null then
+      bound_email := normalized_email;
+      account_email := normalized_email;
+    end if;
+
+    bound_hint := left(split_part(account_email, '@', 1), 1)
+      || '***@' || split_part(account_email, '@', 2);
   end if;
 
   select *
@@ -208,6 +272,8 @@ begin
     created_by,
     expires_at,
     outreach_channel,
+    intended_user_id,
+    intended_email_normalized,
     recipient_hint
   ) values (
     generated_invite_id,
@@ -216,7 +282,9 @@ begin
     actor_id,
     generated_expires_at,
     nullif(btrim(p_outreach_channel), ''),
-    nullif(btrim(p_recipient_hint), '')
+    bound_user_id,
+    bound_email,
+    bound_hint
   );
 
   insert into public.admin_audit_logs (
@@ -236,12 +304,14 @@ begin
       'relationship_status', partner_row.relationship_status,
       'invite_id', generated_invite_id,
       'expires_at', generated_expires_at,
-      'outreach_channel', nullif(btrim(p_outreach_channel), '')
+      'outreach_channel', nullif(btrim(p_outreach_channel), ''),
+      'recipient_binding', case when bound_user_id is null then 'verified_email' else 'user_id' end,
+      'intended_user_id', bound_user_id
     )
   );
 
   return query
-  select generated_invite_id, p_partner_id, generated_token, generated_expires_at;
+  select generated_invite_id, p_partner_id, generated_token, generated_expires_at, bound_hint;
 end;
 $$;
 
@@ -260,6 +330,7 @@ as $$
 declare
   invite_row public.partner_claim_invites%rowtype;
   partner_row public.partners%rowtype;
+  actor_email_normalized text;
 begin
   if auth.uid() is null then
     raise exception using errcode = '28000', message = 'Authentication required.';
@@ -285,6 +356,22 @@ begin
   end if;
   if invite_row.expires_at <= now() then
     raise exception using errcode = 'P0002', message = 'This claim link has expired.';
+  end if;
+
+  if invite_row.intended_user_id is not null then
+    if invite_row.intended_user_id <> auth.uid() then
+      raise exception using errcode = '42501', message = 'This one-time claim link belongs to a different account.';
+    end if;
+  else
+    select lower(btrim(u.email)) into actor_email_normalized
+    from auth.users u
+    where u.id = auth.uid()
+      and u.email_confirmed_at is not null;
+
+    if actor_email_normalized is null
+       or actor_email_normalized <> invite_row.intended_email_normalized then
+      raise exception using errcode = '42501', message = 'This one-time claim link belongs to a different account.';
+    end if;
   end if;
 
   select * into partner_row
@@ -321,6 +408,7 @@ declare
   invite_row public.partner_claim_invites%rowtype;
   partner_row public.partners%rowtype;
   claim_time timestamptz := now();
+  actor_email_normalized text;
 begin
   if actor_id is null then
     raise exception using errcode = '28000', message = 'Authentication required.';
@@ -347,6 +435,22 @@ begin
   end if;
   if invite_row.expires_at <= claim_time then
     raise exception using errcode = 'P0002', message = 'This claim link has expired.';
+  end if;
+
+  if invite_row.intended_user_id is not null then
+    if invite_row.intended_user_id <> actor_id then
+      raise exception using errcode = '42501', message = 'This one-time claim link belongs to a different account.';
+    end if;
+  else
+    select lower(btrim(u.email)) into actor_email_normalized
+    from auth.users u
+    where u.id = actor_id
+      and u.email_confirmed_at is not null;
+
+    if actor_email_normalized is null
+       or actor_email_normalized <> invite_row.intended_email_normalized then
+      raise exception using errcode = '42501', message = 'This one-time claim link belongs to a different account.';
+    end if;
   end if;
 
   select *
@@ -438,7 +542,7 @@ begin
   end if;
 
   if not app_private.has_internal_role(
-    array['super_admin', 'developer_admin', 'pm_admin', 'som_admin']::text[]
+    array['super_admin', 'developer_admin', 'pm_admin']::text[]
   ) then
     raise exception using errcode = '42501', message = 'HEHA internal claim-invite access required.';
   end if;
@@ -475,12 +579,12 @@ begin
 end;
 $$;
 
-revoke all on function public.create_partner_claim_invite(uuid, interval, text, text) from public, anon;
+revoke all on function public.create_partner_claim_invite(uuid, interval, text, uuid, text) from public, anon;
 revoke all on function public.preview_partner_claim(text) from public, anon;
 revoke all on function public.claim_partner_profile(text) from public, anon;
 revoke all on function public.revoke_partner_claim_invite(uuid) from public, anon;
 
-grant execute on function public.create_partner_claim_invite(uuid, interval, text, text) to authenticated;
+grant execute on function public.create_partner_claim_invite(uuid, interval, text, uuid, text) to authenticated;
 grant execute on function public.preview_partner_claim(text) to authenticated;
 grant execute on function public.claim_partner_profile(text) to authenticated;
 grant execute on function public.revoke_partner_claim_invite(uuid) to authenticated;
@@ -491,8 +595,8 @@ comment on column public.partners.listing_source is
   'How the canonical partner profile originated. Claiming never changes the canonical partners.id.';
 comment on table public.partner_claim_invites is
   'One-time hashed invitations used to attach an authenticated business owner to an existing canonical HEHA Swipe partner profile.';
-comment on function public.create_partner_claim_invite(uuid, interval, text, text) is
-  'Internal-only RPC. Returns the raw one-time token once; only its SHA-256 hash is stored.';
+comment on function public.create_partner_claim_invite(uuid, interval, text, uuid, text) is
+  'Internal-only RPC. Binds an invitation to an existing user or normalized intended email and returns the raw one-time token once; only its SHA-256 hash is stored.';
 comment on function public.claim_partner_profile(text) is
   'Authenticated one-time claim RPC that assigns auth.uid() to an existing unclaimed partners.id without changing publication or certification.';
 
@@ -500,7 +604,7 @@ comment on function public.claim_partner_profile(text) is
 -- drop function if exists public.revoke_partner_claim_invite(uuid);
 -- drop function if exists public.claim_partner_profile(text);
 -- drop function if exists public.preview_partner_claim(text);
--- drop function if exists public.create_partner_claim_invite(uuid, interval, text, text);
+-- drop function if exists public.create_partner_claim_invite(uuid, interval, text, uuid, text);
 -- drop table if exists public.partner_claim_invites;
 -- drop trigger if exists aa_partner_listing_origin on public.partners;
 -- drop function if exists app_private.set_partner_listing_origin();

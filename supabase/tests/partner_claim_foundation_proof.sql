@@ -64,7 +64,7 @@ declare
   fn regprocedure;
 begin
   foreach fn in array array[
-    'public.create_partner_claim_invite(uuid,interval,text,text)'::regprocedure,
+    'public.create_partner_claim_invite(uuid,interval,text,uuid,text)'::regprocedure,
     'public.preview_partner_claim(text)'::regprocedure,
     'public.claim_partner_profile(text)'::regprocedure,
     'public.revoke_partner_claim_invite(uuid)'::regprocedure
@@ -107,16 +107,20 @@ select pg_temp.expect_error(
 select pg_temp.set_auth_context('authenticated', :'internal_admin_user_id'::uuid);
 select pg_temp.expect_error(
   'null expiry rejected',
-  format('select * from public.create_partner_claim_invite(%L, null, null, null)', :'partner_a_id'::uuid),
+  format(
+    'select * from public.create_partner_claim_invite(%L, null, null, %L, null)',
+    :'partner_a_id'::uuid,
+    :'user_a_id'::uuid
+  ),
   '22023'
 );
 
 create temporary table claim_tokens as
 select 'a'::text as fixture, *
-from public.create_partner_claim_invite(:'partner_a_id'::uuid, interval '1 day', 'proof', null)
+from public.create_partner_claim_invite(:'partner_a_id'::uuid, interval '1 day', 'proof', :'user_a_id'::uuid, null)
 union all
 select 'b'::text as fixture, *
-from public.create_partner_claim_invite(:'partner_b_id'::uuid, interval '1 day', 'proof', null);
+from public.create_partner_claim_invite(:'partner_b_id'::uuid, interval '1 day', 'proof', :'user_b_id'::uuid, null);
 
 do $$
 begin

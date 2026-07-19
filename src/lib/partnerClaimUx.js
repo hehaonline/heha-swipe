@@ -10,7 +10,12 @@ export const CLAIM_ERRORS = {
   used: "This claim link has already been used. If you completed a claim before, sign in to your HEHA account instead of using this link again.",
   claimed: "This business profile has already been claimed by another account. If that seems wrong, contact HEHA support so we can look into it.",
   unavailable: "This profile currently isn't available to claim. Contact HEHA support for help.",
+  recipientMismatch: "This one-time claim link was sent to a different HEHA account. Use the invited account, or get help from HEHA.",
 };
+
+export function isClaimRecipientMismatch(error) {
+  return /belongs to a different account/i.test(String(error?.message || ""));
+}
 
 export function friendlyClaimError(error) {
   const message = String(error?.message || "").toLowerCase();
@@ -20,6 +25,7 @@ export function friendlyClaimError(error) {
   if (/already used|has (already )?been used/.test(message)) return CLAIM_ERRORS.used;
   if (/claimed by another|already been claimed/.test(message)) return CLAIM_ERRORS.claimed;
   if (/no longer claimable|isn't available to claim/.test(message)) return CLAIM_ERRORS.unavailable;
+  if (/belongs to a different account/.test(message)) return CLAIM_ERRORS.recipientMismatch;
   if (/authentication required/.test(message)) return "Please sign in before claiming this business profile.";
   return "HEHA could not verify this one-time claim link. Ask HEHA for a new secure claim link.";
 }

@@ -21,6 +21,7 @@ declare
   invite_row public.partner_claim_invites%rowtype;
   partner_row public.partners%rowtype;
   claim_time timestamptz := now();
+  actor_email_normalized text;
 begin
   if actor_id is null then
     raise exception using errcode = '28000', message = 'Authentication required.';
@@ -47,6 +48,22 @@ begin
   end if;
   if invite_row.expires_at <= claim_time then
     raise exception using errcode = 'P0002', message = 'This claim link has expired.';
+  end if;
+
+  if invite_row.intended_user_id is not null then
+    if invite_row.intended_user_id <> actor_id then
+      raise exception using errcode = '42501', message = 'This one-time claim link belongs to a different account.';
+    end if;
+  else
+    select lower(btrim(u.email)) into actor_email_normalized
+    from auth.users u
+    where u.id = actor_id
+      and u.email_confirmed_at is not null;
+
+    if actor_email_normalized is null
+       or actor_email_normalized <> invite_row.intended_email_normalized then
+      raise exception using errcode = '42501', message = 'This one-time claim link belongs to a different account.';
+    end if;
   end if;
 
   select *
