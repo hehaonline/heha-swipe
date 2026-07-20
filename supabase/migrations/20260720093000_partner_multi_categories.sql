@@ -303,6 +303,8 @@ $$;
 revoke all on function app_private.guard_partner_profile_change_request()
   from public, anon, authenticated;
 
+-- Existing view columns must retain their current order. The new categories column
+-- is appended at the end so CREATE OR REPLACE VIEW remains backward-compatible.
 create or replace view public.public_swipe_partners as
 select
   id,
@@ -311,7 +313,6 @@ select
   owner_id,
   name,
   category,
-  categories,
   location,
   contact,
   instagram,
@@ -359,7 +360,8 @@ select
   routing_notes,
   routing_updated_by,
   routing_updated_at,
-  is_test_record
+  is_test_record,
+  categories
 from public.partners
 where status = any (array['approved'::text, 'live'::text])
   and coalesce(swipe_eligible, false) = true
