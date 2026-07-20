@@ -24,8 +24,27 @@ export function AdminCard({ eyebrow, title, children, wide = false }) {
   return <section className={wide ? "admin-card wide" : "admin-card"}>{eyebrow && <p className="eyebrow">{eyebrow}</p>}{title && <h2>{title}</h2>}{children}</section>;
 }
 
-export function Metric({ name, value, help }) {
-  return <section className="ha-admin-metric"><span>{name}</span><strong>{value ?? 0}</strong>{help && <p>{help}</p>}</section>;
+function keyboardActivate(event, onClick) {
+  if (!onClick) return;
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    onClick();
+  }
+}
+
+export function Metric({ name, value, help, onClick }) {
+  return (
+    <section
+      className={onClick ? "ha-admin-metric click" : "ha-admin-metric"}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={(event) => keyboardActivate(event, onClick)}
+      aria-label={onClick ? `Open ${name}` : undefined}
+    >
+      <span>{name}</span><strong>{value ?? 0}</strong>{help && <p>{help}</p>}{onClick && <small>Open →</small>}
+    </section>
+  );
 }
 
 export function Guard({ final = false, lane = "admin" }) {
@@ -36,8 +55,21 @@ export function Tabs({ tabs, activeTab, onChange }) {
   return <nav className="admin-tabs" aria-label="Admin dashboard tabs">{tabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? "active" : ""} onClick={() => onChange(tab.id)}>{tab.label}</button>)}</nav>;
 }
 
-export function RecordList({ title, rows, primary, secondary, status, emptyText = "No records yet." }) {
-  return <section className="admin-list">{title && <h3>{title}</h3>}{!rows?.length ? <p className="ha-admin-empty">{emptyText}</p> : rows.map((row) => <article key={row.id}><div><strong>{row[primary] || "Untitled"}</strong><p>{row[secondary] || "No details yet"}</p></div>{status && <span>{label(row[status] || "draft")}</span>}</article>)}</section>;
+export function RecordList({ title, rows, primary, secondary, status, emptyText = "No records yet.", onOpen }) {
+  return (
+    <section
+      className={onOpen ? "admin-list click" : "admin-list"}
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={(event) => keyboardActivate(event, onOpen)}
+      aria-label={onOpen && title ? `Open ${title}` : undefined}
+    >
+      {title && <h3>{title}</h3>}
+      {!rows?.length ? <p className="ha-admin-empty">{emptyText}</p> : rows.map((row) => <article key={row.id}><div><strong>{row[primary] || "Untitled"}</strong><p>{row[secondary] || "No details yet"}</p></div>{status && <span>{label(row[status] || "draft")}</span>}</article>)}
+      {onOpen && <small>View all →</small>}
+    </section>
+  );
 }
 
 export function Field({ field, value, onChange }) {

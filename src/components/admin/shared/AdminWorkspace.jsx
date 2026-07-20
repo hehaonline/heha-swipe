@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { AdminCard, Guard, Metric, RecordForm, RecordList, Tabs, useFormState } from "./AdminPrimitives";
 
@@ -41,19 +41,24 @@ export default function AdminWorkspace({ lane, title, subtitle, final, tabs, ove
   const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const loadingRef = useRef(false);
+  const refreshTimerRef = useRef(null);
 
   const activeConfig = useMemo(() => tabs.find((tab) => tab.id === activeTab), [tabs, activeTab]);
   const navTabs = useMemo(() => [{ id: "overview", label: "Overview" }, ...tabs.map((tab) => ({ id: tab.id, label: tab.label }))], [tabs]);
-
-  useEffect(() => { loadData(); }, []);
+  const tableNames = useMemo(() => [...new Set(tabs.map((tab) => tab.table).filter(Boolean))], [tabs]);
 
   function flash(message) {
     setNotice(message);
     window.setTimeout(() => setNotice(null), 3600);
   }
 
-  async function loadData() {
-    setLoading(true);
+  const loadData = useCallback(async ({ quiet = false } = {}) => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    if (!quiet) setLoading(true);
+
     try {
       const results = await Promise.all(tabs.map(async (tab) => {
         let query = supabase.from(tab.table).select("*").order(tab.orderBy || "created_at", { ascending: false }).limit(tab.limit || 25);
@@ -68,12 +73,56 @@ export default function AdminWorkspace({ lane, title, subtitle, final, tabs, ove
       }));
       setRows(Object.fromEntries(results.map(([id, data]) => [id, data])));
       setCounts(Object.fromEntries(results.map(([id, _data, count]) => [id, count])));
+      setLastUpdated(new Date());
     } catch (error) {
       flash(error.message || "Dashboard data could not load.");
     } finally {
-      setLoading(false);
+      loadingRef.current = false;
+      if (!quiet) setLoading(false);
     }
-  }
+  }, [tabs]);
+
+  const scheduleQuietRefresh = useCallback(() => {
+    window.clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = window.setTimeout(() => loadData({ quiet: true }), 350);
+  }, [loadData]);
+
+  useEffect(() => {
+    loadData();
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") loadData({ quiet: true });
+    }, 30000);
+
+    const handleFocus = () => loadData({ quiet: true });
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") loadData({ quiet: true });
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(refreshTimerRef.current);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!tableNames.length) return undefined;
+
+    let channel = supabase.channel(`admin-workspace-${lane.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`);
+    tableNames.forEach((table) => {
+      channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleQuietRefresh);
+    });
+    channel.subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [lane, tableNames, scheduleQuietRefresh]);
 
   async function saveRecord(tab, payload, reset) {
     const nextPayload = cleanPayload({ ...tab.defaults, ...payload });
@@ -102,11 +151,12 @@ export default function AdminWorkspace({ lane, title, subtitle, final, tabs, ove
       {notice && <div className="admin-toast">{notice}</div>}
       <AdminCard eyebrow={lane} title={title} wide>
         <p>{subtitle}</p>
-        <button onClick={loadData} disabled={loading}>{loading ? "Refreshing..." : "Refresh dashboard"}</button>
+        <button onClick={() => loadData()} disabled={loading}>{loading ? "Refreshing..." : "Refresh dashboard"}</button>
+        <small>{lastUpdated ? `Auto-updated ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Connecting live data..."}</small>
       </AdminCard>
       <Tabs tabs={navTabs} activeTab={activeTab} onChange={setActiveTab} />
       {activeTab === "overview" ? (
-        <OverviewPanel counts={counts} rows={rows} tabs={tabs} final={final} overview={overview} lane={lane} />
+        <OverviewPanel counts={counts} rows={rows} tabs={tabs} final={final} overview={overview} lane={lane} onOpenTab={setActiveTab} />
       ) : (
         <TabPanel config={activeConfig} rows={rows[activeConfig?.id] || []} onSave={saveRecord} />
       )}
@@ -114,13 +164,13 @@ export default function AdminWorkspace({ lane, title, subtitle, final, tabs, ove
   );
 }
 
-function OverviewPanel({ counts, rows, tabs, final, overview, lane }) {
+function OverviewPanel({ counts, rows, tabs, final, overview, lane, onOpenTab }) {
   return (
     <section className="admin-grid">
       <Guard final={final} lane={lane} />
       {overview?.map((item) => <AdminCard key={item.title} eyebrow={item.eyebrow} title={item.title}>{item.body && <p>{item.body}</p>}</AdminCard>)}
-      {tabs.map((tab) => <Metric key={tab.id} name={tab.label} value={counts[tab.id] || 0} help={tab.help} />)}
-      {tabs.slice(0, 2).map((tab) => <RecordList key={tab.id} title={`Recent ${tab.label}`} rows={rows[tab.id] || []} primary={tab.primary} secondary={tab.secondary} status={tab.status} />)}
+      {tabs.map((tab) => <Metric key={tab.id} name={tab.label} value={counts[tab.id] || 0} help={tab.help} onClick={() => onOpenTab(tab.id)} />)}
+      {tabs.slice(0, 2).map((tab) => <RecordList key={tab.id} title={`Recent ${tab.label}`} rows={rows[tab.id] || []} primary={tab.primary} secondary={tab.secondary} status={tab.status} onOpen={() => onOpenTab(tab.id)} />)}
     </section>
   );
 }
