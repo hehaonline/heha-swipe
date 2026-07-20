@@ -14,6 +14,7 @@ import "./location-modal.css";
 import "./community-pass.css";
 import "./partner-media.css";
 import "./partner-offers.css";
+import "./one-heha-connected.css";
 import "./embed.css";
 import App from "./App.jsx";
 import AdminApp from "./components/admin/AdminApp.jsx";
