@@ -6,7 +6,7 @@ import PmDashboard from "./pm/PmDashboard";
 import RoutingDashboard from "./routing/RoutingDashboard";
 import ScoutDashboard from "./scout/ScoutDashboard";
 import { AdminCard, roleLabel } from "./shared/AdminPrimitives";
-import { visibleDomains } from "./shared/oneHehaDomains";
+import { ONE_HEHA_DOMAINS, visibleDomains } from "./shared/oneHehaDomains";
 
 const ROLE_ORDER = ["super_admin", "developer_admin", "pm_admin", "community_events_admin", "som_admin"];
 
@@ -22,6 +22,13 @@ function areaFromPath() {
 
 function pathFor(area) {
   return area === "home" ? "/admin" : `/admin/${area}`;
+}
+
+function domainForArea(area) {
+  if (area === "som") return "ops";
+  if (area === "pm" || area === "scout") return "grow";
+  if (area === "community") return "comm";
+  return "ctrl";
 }
 
 export default function AdminApp({ session, loading, onSignOut }) {
@@ -70,6 +77,21 @@ export default function AdminApp({ session, loading, onSignOut }) {
     window.history.pushState({}, "", pathFor(nextArea));
   }
 
+  function openDomain(domain) {
+    if (domain.id === "ctrl") return openArea("home");
+    if (domain.id === "ops") return window.location.assign("https://hehalocal.app/admin");
+    if (domain.id === "tech") {
+      if (role === "super_admin" || role === "developer_admin") return openArea("home");
+      return window.location.assign("https://hehalocal.app/request-help?domain=TECH&type=support");
+    }
+    if (domain.id === "grow") return openArea(access.scout ? "scout" : "home");
+    if (domain.id === "comm") {
+      if (access.community) return openArea("community");
+      return window.location.assign("https://hehalocal.app/request-help?domain=COMM&type=support");
+    }
+    return openArea("home");
+  }
+
   if (loading || checkingRole) return <AdminShell title="Checking access" />;
   if (!session) return <AuthScreen />;
   if (!access.internal) return <AdminShell title="No admin role" message="This area requires an approved HEHA internal role." action={onSignOut} />;
@@ -84,11 +106,14 @@ export default function AdminApp({ session, loading, onSignOut }) {
           <button onClick={onSignOut}>Sign out</button>
         </div>
       </header>
+
+      <AdminDomainStrip activeDomain={domainForArea(area)} onOpen={openDomain} />
+
       {area === "home" && <AdminHome access={access} openArea={openArea} />}
-      {area === "pm" && (access.pm ? <PmDashboard final={access.final} /> : <BlockedArea openArea={openArea} />)}
-      {area === "routing" && (access.routing ? <RoutingDashboard final={access.final} /> : <BlockedArea openArea={openArea} />)}
-      {area === "community" && (access.community ? <CommunityDashboard final={access.final} /> : <BlockedArea openArea={openArea} />)}
-      {area === "som" && (access.som ? <ScoutDashboard role={role} final={access.final} mode="som" /> : <BlockedArea openArea={openArea} />)}
+      {area === "pm" && (access.pm ? <PmDashboard final={access.final} /> : <BlockedArea openArea={openArea} domain="GROW" />)}
+      {area === "routing" && (access.routing ? <RoutingDashboard final={access.final} /> : <BlockedArea openArea={openArea} domain="CTRL" />)}
+      {area === "community" && (access.community ? <CommunityDashboard final={access.final} /> : <BlockedArea openArea={openArea} domain="COMM" />)}
+      {area === "som" && (access.som ? <ScoutDashboard role={role} final={access.final} mode="som" /> : <BlockedArea openArea={openArea} domain="OPS" />)}
       {area === "scout" && <ScoutDashboard role={role} final={access.final} />}
     </div>
   );
@@ -98,13 +123,32 @@ function AdminShell({ title, message = "Protected HEHA admin area.", action }) {
   return <div className="admin-loading"><section><p className="eyebrow">HEHA internal</p><h1>{title}</h1><p>{message}</p>{action && <button onClick={action}>Sign out</button>}</section></div>;
 }
 
+function AdminDomainStrip({ activeDomain, onOpen }) {
+  return (
+    <nav className="one-heha-admin-strip" aria-label="ONE HEHA domains">
+      {ONE_HEHA_DOMAINS.map((domain) => (
+        <button
+          key={domain.id}
+          type="button"
+          className={activeDomain === domain.id ? "active" : ""}
+          style={{ "--domain-color": domain.color }}
+          onClick={() => onOpen(domain)}
+        >
+          <span>{domain.number} {domain.code}</span>
+          <strong>{domain.label}</strong>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 function AdminHome({ access, openArea }) {
   const domains = visibleDomains(access);
 
   return (
     <main className="admin-panel">
       <AdminCard eyebrow="ONE HEHA operating system" title="Five domains. One source of truth." wide>
-        <p>Every HEHA function has one primary home. Your role determines which modules you can open; cross-app links lead to the canonical workspace instead of duplicating records.</p>
+        <p>Every domain stays visible. Your role determines what you can operate; restricted work becomes one structured request instead of a hidden or duplicated process.</p>
       </AdminCard>
       <section className="admin-grid">
         {domains.map((domain) => (
@@ -125,12 +169,15 @@ function AdminHome({ access, openArea }) {
 }
 
 function ModuleCard({ module, color, openArea }) {
+  const available = module.available !== false;
   const open = () => {
+    if (!available) return window.location.assign(module.requestHref);
     if (module.area) return openArea(module.area);
     if (module.href) return window.location.assign(module.href);
+    if (module.requestHref && module.status === "gated") return window.location.assign(module.requestHref);
     return undefined;
   };
-  const interactive = Boolean(module.area || module.href);
+  const interactive = Boolean(module.area || module.href || (!available && module.requestHref) || (module.status === "gated" && module.requestHref));
 
   if (!interactive) {
     return (
@@ -143,14 +190,23 @@ function ModuleCard({ module, color, openArea }) {
   }
 
   return (
-    <button className="admin-card click" onClick={open} style={{ borderTop: `3px solid ${color}` }}>
+    <button className={`admin-card click ${available ? "" : "restricted"}`} onClick={open} style={{ borderTop: `3px solid ${color}` }}>
       <strong>{module.label}</strong>
       <p>{module.description}</p>
-      <small>{module.href ? "Open workspace ↗" : "Open module →"}</small>
+      <small>{!available ? "Send request →" : module.href ? "Open workspace ↗" : "Open module →"}</small>
     </button>
   );
 }
 
-function BlockedArea({ openArea }) {
-  return <main className="admin-panel"><button className="ha-admin-back-button" onClick={() => openArea("home")}>Back to five domains</button><AdminCard eyebrow="role boundary" title="Dashboard lane blocked" wide><p>Your role does not include this lane.</p></AdminCard></main>;
+function BlockedArea({ openArea, domain }) {
+  const requestHref = `https://hehalocal.app/request-help?domain=${domain}&type=approval`;
+  return (
+    <main className="admin-panel">
+      <button className="ha-admin-back-button" onClick={() => openArea("home")}>Back to five domains</button>
+      <AdminCard eyebrow="role boundary" title="This lane is read-only for your role" wide>
+        <p>You can still see where the function belongs and send one structured request to the responsible administrator.</p>
+        <button className="ha-admin-back-button" onClick={() => window.location.assign(requestHref)}>Send request</button>
+      </AdminCard>
+    </main>
+  );
 }
