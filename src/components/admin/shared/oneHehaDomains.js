@@ -8,9 +8,9 @@ export const ONE_HEHA_DOMAINS = [
     purpose: "Governance, approvals, finance, issues, settings, audit, and source-of-truth controls.",
     modules: [
       { id: "routing", label: "Partner Routing", description: "Approve where partners appear and how customers reach them.", accessKey: "routing", area: "routing" },
-      { id: "approvals", label: "Approvals", description: "Future unified approval inbox for protected HEHA decisions.", status: "planned" },
-      { id: "finance", label: "Finance Governance", description: "HEHA Local / ops.heha.online remains the operational finance source.", href: "https://hehalocal.app/admin" },
-      { id: "issues", label: "Issues & Risks", description: "HEHA Local command-center issues and launch blockers.", href: "https://hehalocal.app/admin" },
+      { id: "approvals", label: "Requests & Approvals", description: "Send or review a protected request through the shared HEHA control flow.", href: "https://hehalocal.app/admin/requests", requestHref: "https://hehalocal.app/request-help?domain=CTRL&type=approval" },
+      { id: "finance", label: "Finance Governance", description: "HEHA Local remains the operational finance and payout workspace.", href: "https://hehalocal.app/admin" },
+      { id: "issues", label: "Issues & Risks", description: "HEHA Local command-center issues, escalations, and launch blockers.", href: "https://hehalocal.app/admin" },
     ],
   },
   {
@@ -35,7 +35,7 @@ export const ONE_HEHA_DOMAINS = [
     modules: [
       { id: "swipe-system", label: "HEHA Swipe System", description: "Current application, roles, routing, realtime dashboards, and release work.", status: "active" },
       { id: "local-system", label: "HEHA Local / Order Hub", description: "Operational product and canonical-backend candidate.", href: "https://hehalocal.app/admin" },
-      { id: "architecture", label: "Architecture Decisions", description: "ADR-001 and canonical-backend consolidation remain approval-gated.", status: "gated" },
+      { id: "architecture", label: "Architecture Decisions", description: "ADR-001 and canonical-backend consolidation remain approval-gated.", status: "gated", requestHref: "https://hehalocal.app/request-help?domain=TECH&type=approval" },
     ],
   },
   {
@@ -59,7 +59,7 @@ export const ONE_HEHA_DOMAINS = [
     purpose: "Brand, content, HEHA Journal, events, community activation, media, offers, and launch assets.",
     modules: [
       { id: "community", label: "Community / Events", description: "Events, venues, outreach, applications, and recaps.", accessKey: "community", area: "community" },
-      { id: "media-review", label: "Media & Item Review", description: "Photo, meal, ingredient, and HEHA Reviewed workflows are the next protected build package.", status: "planned" },
+      { id: "media-review", label: "Items, Ingredients & Media Review", description: "Meals, structured ingredients, estimated macros, photos, and HEHA Reviewed decisions live in HEHA Local.", href: "https://hehalocal.app/admin" },
     ],
   },
 ];
@@ -67,6 +67,12 @@ export const ONE_HEHA_DOMAINS = [
 export function visibleDomains(access) {
   return ONE_HEHA_DOMAINS.map((domain) => ({
     ...domain,
-    modules: domain.modules.filter((module) => !module.accessKey || access[module.accessKey]),
-  })).filter((domain) => domain.modules.length > 0);
+    modules: domain.modules.map((module) => ({
+      ...module,
+      available: !module.accessKey || Boolean(access[module.accessKey]),
+      requestHref:
+        module.requestHref ||
+        `https://hehalocal.app/request-help?domain=${domain.code}&type=${module.accessKey ? "approval" : "support"}&subject=${encodeURIComponent(module.label)}`,
+    })),
+  }));
 }
