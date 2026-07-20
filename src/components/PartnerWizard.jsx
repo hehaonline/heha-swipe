@@ -31,6 +31,7 @@ const PUBLIC_STATUSES = ["approved", "live"];
 const emptyForm = {
   name: "",
   category: "",
+  categories: [],
   neighborhood: "",
   tagline: "",
   bio: "",
@@ -69,6 +70,10 @@ function completionLabel(value) {
   return `${Math.round(numeric)}%`;
 }
 
+function categorySummary(categories = []) {
+  return categories.map((category) => CATEGORY_LABELS[category] || category).join(", ");
+}
+
 export default function PartnerWizard({ user, onComplete, onCancel }) {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -87,11 +92,29 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
     setErrors((current) => ({ ...current, [field]: null }));
   };
 
+  const toggleCategory = (value) => {
+    setForm((current) => {
+      const selected = current.categories.includes(value)
+        ? current.categories.filter((category) => category !== value)
+        : [...current.categories, value];
+
+      return {
+        ...current,
+        categories: selected,
+        category: selected[0] || "",
+        photo_emoji: current.categories.length === 0 && selected.length === 1
+          ? CATEGORY_EMOJIS[selected[0]] || current.photo_emoji
+          : current.photo_emoji,
+      };
+    });
+    setErrors((current) => ({ ...current, category: null }));
+  };
+
   const validate = () => {
     const nextErrors = {};
     if (step === 0) {
       if (!form.name.trim()) nextErrors.name = "Business name is required.";
-      if (!form.category) nextErrors.category = "Choose the closest category.";
+      if (!form.categories.length) nextErrors.category = "Choose at least one category.";
       if (!form.neighborhood.trim()) nextErrors.neighborhood = "Neighborhood is required.";
       if (!form.tagline.trim()) nextErrors.tagline = "Add a short card headline.";
     }
@@ -127,7 +150,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
     try {
       const completePct = [
         form.name,
-        form.category,
+        form.categories.length > 0,
         form.neighborhood,
         form.tagline,
         form.bio,
@@ -141,7 +164,8 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
       const { data, error } = await supabase.from("partners").insert({
         owner_id: user.id,
         name: form.name.trim(),
-        category: form.category,
+        category: form.categories[0],
+        categories: form.categories,
         neighborhood: form.neighborhood.trim(),
         tagline: form.tagline.trim(),
         bio: form.bio.trim(),
@@ -173,6 +197,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
               partner_id: data.id,
               partner_name: data.name,
               category: data.category,
+              categories: data.categories || form.categories,
               neighborhood: data.neighborhood,
               owner_email: user.email || user.phone,
               status: "pending_review",
@@ -198,7 +223,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
     try {
       const { data, error } = await supabase
         .from("partners")
-        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner")
+        .select("id, name, category, categories, status, created_at, updated_at, complete_pct, heha_partner")
         .eq("id", submittedListing.id)
         .eq("owner_id", user.id)
         .maybeSingle();
@@ -243,14 +268,16 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
             </Field>
 
             <div className="wizard-field-block">
-              <Label required>Category</Label>
+              <Label required>Categories</Label>
+              <p className="wizard-helper-copy">Choose every category that applies. The first one selected is your primary card category.</p>
               <div className="wizard-chip-grid">
                 {CATEGORIES.map((category) => (
                   <button
                     type="button"
                     key={category.value}
-                    className={form.category === category.value ? "selected" : ""}
-                    onClick={() => set("category", category.value)}
+                    className={form.categories.includes(category.value) ? "selected" : ""}
+                    onClick={() => toggleCategory(category.value)}
+                    aria-pressed={form.categories.includes(category.value)}
                   >
                     <span>{category.emoji}</span>
                     {category.label}
@@ -380,7 +407,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
                 <span>{form.photo_emoji}</span>
               </div>
               <div className="wizard-preview-body">
-                <p>{CATEGORY_LABELS[form.category] || "Category"} · {form.neighborhood || "Tampa Bay"}</p>
+                <p>{categorySummary(form.categories) || "Categories"} · {form.neighborhood || "Tampa Bay"}</p>
                 <h2>{form.name || "Your Business"}</h2>
                 <span>{form.tagline || "Your clean HEHA Swipe headline"}</span>
               </div>
@@ -415,7 +442,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
               <div className="wizard-review-top" style={{ "--preview-color": form.color }}>
                 <span>{form.photo_emoji}</span>
                 <div>
-                  <p>{CATEGORY_LABELS[form.category] || form.category} · {form.neighborhood}</p>
+                  <p>{categorySummary(form.categories) || "Categories"} · {form.neighborhood}</p>
                   <h2>{form.name}</h2>
                 </div>
               </div>
@@ -427,6 +454,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
 
             <div className="wizard-review-list">
               {[
+                ["Categories", categorySummary(form.categories) || "None selected"],
                 ["Phone", form.phone || "Not provided"],
                 ["Website", form.website || "Not provided"],
                 ["Instagram", form.instagram ? `@${normalizeInstagram(form.instagram)}` : "Not provided"],
@@ -455,6 +483,11 @@ function PartnerSubmissionStatus({ listing, loading, error, onRefresh, onContinu
   const status = String(listing?.status || "pending").toLowerCase();
   const visible = PUBLIC_STATUSES.includes(status);
   const certified = listing?.heha_partner === true;
+  const listingCategories = Array.isArray(listing?.categories) && listing.categories.length
+    ? listing.categories
+    : listing?.category
+    ? [listing.category]
+    : [];
 
   return (
     <main className="partner-wizard-screen">
@@ -485,7 +518,7 @@ function PartnerSubmissionStatus({ listing, loading, error, onRefresh, onContinu
             <div className="wizard-review-top" style={{ "--preview-color": "#114f35" }}>
               <span>✓</span>
               <div>
-                <p>{listing.category || "Business"}</p>
+                <p>{categorySummary(listingCategories) || "Business"}</p>
                 <h2>{listing.name || "Your business"}</h2>
               </div>
             </div>

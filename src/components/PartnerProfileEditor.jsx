@@ -3,20 +3,19 @@ import { supabase } from "../lib/supabase";
 
 const DIRECT_EDIT_STATUSES = ["draft", "submitted", "pending", "missing_info"];
 const CATEGORIES = [
-  "Restaurant",
-  "Vendor",
-  "Catering",
-  "PrivateChef",
-  "Wellness",
-  "Coach",
-  "Service",
-  "Events",
+  { value: "Restaurant", label: "Restaurants", emoji: "🥗" },
+  { value: "Vendor", label: "Markets", emoji: "🛒" },
+  { value: "Catering", label: "Catering", emoji: "🍱" },
+  { value: "PrivateChef", label: "Private Chefs", emoji: "👨‍🍳" },
+  { value: "Wellness", label: "Wellness", emoji: "🧘" },
+  { value: "Coach", label: "Coaches", emoji: "🏆" },
+  { value: "Service", label: "Services", emoji: "💆" },
+  { value: "Events", label: "Events", emoji: "🎉" },
 ];
 
-const ARRAY_FIELDS = new Set(["tags", "offerings", "delivery_days"]);
+const ARRAY_FIELDS = new Set(["categories", "tags", "offerings", "delivery_days"]);
 const EDITABLE_FIELDS = [
   "name",
-  "category",
   "location",
   "contact",
   "instagram",
@@ -39,6 +38,10 @@ function toCommaList(value) {
 }
 
 function parseCommaList(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((item) => String(item || "").trim()).filter(Boolean))];
+  }
+
   return [...new Set(
     String(value || "")
       .split(",")
@@ -47,10 +50,15 @@ function parseCommaList(value) {
   )];
 }
 
+function listingCategories(listing) {
+  if (Array.isArray(listing?.categories) && listing.categories.length) return listing.categories;
+  return listing?.category ? [listing.category] : [];
+}
+
 function initialForm(listing) {
   return {
     name: listing?.name || "",
-    category: listing?.category || "",
+    categories: listingCategories(listing),
     location: listing?.location || "",
     contact: listing?.contact || "",
     instagram: listing?.instagram || "",
@@ -76,20 +84,35 @@ function normalizedValue(field, value) {
 }
 
 function currentValue(field, listing) {
+  if (field === "categories") return listingCategories(listing);
   if (ARRAY_FIELDS.has(field)) return Array.isArray(listing?.[field]) ? listing[field] : [];
   if (field === "instagram") return String(listing?.instagram || "").trim().replace(/^@/, "") || null;
   return String(listing?.[field] || "").trim() || null;
 }
 
 function buildChanges(form, listing) {
-  return EDITABLE_FIELDS.reduce((changes, field) => {
+  const changes = EDITABLE_FIELDS.reduce((nextChanges, field) => {
     const nextValue = normalizedValue(field, form[field]);
     const existingValue = currentValue(field, listing);
     if (JSON.stringify(nextValue) !== JSON.stringify(existingValue)) {
-      changes[field] = nextValue;
+      nextChanges[field] = nextValue;
     }
-    return changes;
+    return nextChanges;
   }, {});
+
+  const categories = normalizedValue("categories", form.categories);
+  const existingCategories = currentValue("categories", listing);
+  if (JSON.stringify(categories) !== JSON.stringify(existingCategories)) {
+    changes.categories = categories;
+  }
+
+  const primaryCategory = categories[0] || null;
+  const existingPrimaryCategory = String(listing?.category || "").trim() || null;
+  if (primaryCategory !== existingPrimaryCategory) {
+    changes.category = primaryCategory;
+  }
+
+  return changes;
 }
 
 function formatStatus(value) {
@@ -143,12 +166,28 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
     setMessage(null);
   };
 
+  const toggleCategory = (value) => {
+    setForm((current) => ({
+      ...current,
+      categories: current.categories.includes(value)
+        ? current.categories.filter((category) => category !== value)
+        : [...current.categories, value],
+    }));
+    setError(null);
+    setMessage(null);
+  };
+
   const save = async () => {
     setBusy(true);
     setError(null);
     setMessage(null);
 
     try {
+      if (!form.categories.length) {
+        setError("Choose at least one business category.");
+        return;
+      }
+
       if (!changeCount) {
         setMessage("No profile changes to save yet.");
         return;
@@ -160,7 +199,7 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
           .update(changes)
           .eq("id", listing.id)
           .eq("owner_id", user.id)
-          .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours, contact, business_type, phone, delivery_days, pricing_notes")
+          .select("id, name, category, categories, status, created_at, updated_at, complete_pct, heha_partner, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours, contact, business_type, phone, delivery_days, pricing_notes")
           .single();
 
         if (updateError) throw updateError;
@@ -225,11 +264,21 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
               <input value={form.name} onChange={(event) => set("name", event.target.value)} />
             </Field>
 
-            <Field label="Category">
-              <select value={form.category} onChange={(event) => set("category", event.target.value)}>
-                <option value="">Choose a category</option>
-                {CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
-              </select>
+            <Field label="Categories" hint="choose one or more; first selected is primary">
+              <div className="wizard-chip-grid">
+                {CATEGORIES.map((category) => (
+                  <button
+                    type="button"
+                    key={category.value}
+                    className={form.categories.includes(category.value) ? "selected" : ""}
+                    onClick={() => toggleCategory(category.value)}
+                    aria-pressed={form.categories.includes(category.value)}
+                  >
+                    <span>{category.emoji}</span>
+                    {category.label}
+                  </button>
+                ))}
+              </div>
             </Field>
 
             <Field label="Neighborhood">
