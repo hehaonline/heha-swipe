@@ -21,6 +21,7 @@ const CATEGORY_LABELS = {
   Vendor: "Markets",
   Catering: "Catering",
   "Private Chef": "Private Chefs",
+  PrivateChef: "Private Chefs",
   Wellness: "Wellness",
   Coach: "Coaches",
   Service: "Services",
@@ -48,8 +49,31 @@ const shuffle = (items) => {
   return copy;
 };
 
+function canonicalCategory(value) {
+  if (value === "Vendor") return "Markets";
+  if (value === "PrivateChef") return "Private Chef";
+  return value;
+}
+
+function partnerCategories(partner) {
+  const selected = Array.isArray(partner?.categories) ? partner.categories : [];
+  return new Set(
+    [...selected, partner?.category]
+      .filter(Boolean)
+      .map(canonicalCategory)
+  );
+}
+
 function partnerTerms(partner) {
-  return [partner.category, partner.subcategory, partner.tagline, partner.bio, ...(partner.tags || []), ...(partner.offerings || [])]
+  return [
+    partner.category,
+    ...(Array.isArray(partner.categories) ? partner.categories : []),
+    partner.subcategory,
+    partner.tagline,
+    partner.bio,
+    ...(partner.tags || []),
+    ...(partner.offerings || []),
+  ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -57,26 +81,33 @@ function partnerTerms(partner) {
 
 function isPrivateChef(partner) {
   const terms = partnerTerms(partner);
-  return partner.category === "Private Chef" || terms.includes("private chef") || terms.includes("retreat chef");
+  return partnerCategories(partner).has("Private Chef") || terms.includes("private chef") || terms.includes("retreat chef");
 }
 
 function isCatering(partner) {
   const terms = partnerTerms(partner);
-  return partner.category === "Catering" || terms.includes("catering") || terms.includes("staff meals") || terms.includes("food truck") || terms.includes("group orders");
+  return partnerCategories(partner).has("Catering") || terms.includes("catering") || terms.includes("staff meals") || terms.includes("food truck") || terms.includes("group orders");
 }
 
 function isMarket(partner) {
   const terms = partnerTerms(partner);
-  return partner.category === "Markets" || partner.category === "Vendor" || terms.includes("market") || terms.includes("farmers market") || terms.includes("grocery");
+  return partnerCategories(partner).has("Markets") || terms.includes("market") || terms.includes("farmers market") || terms.includes("grocery");
 }
 
 function partnerMatchesCategory(partner, activeCategory) {
   if (activeCategory === "All") return true;
+
+  const selectedCategories = partnerCategories(partner);
+  if (selectedCategories.has(activeCategory)) return true;
+
   if (activeCategory === "Private Chef") return isPrivateChef(partner);
   if (activeCategory === "Catering") return isCatering(partner);
   if (activeCategory === "Markets") return isMarket(partner);
-  if (activeCategory === "Restaurant") return partner.category === "Restaurant" && !isPrivateChef(partner) && !isCatering(partner);
-  return partner.category === activeCategory;
+  if (activeCategory === "Restaurant") {
+    return canonicalCategory(partner.category) === "Restaurant" && !isPrivateChef(partner) && !isCatering(partner);
+  }
+
+  return false;
 }
 
 function withHehaLocalItemLinks(partner) {
