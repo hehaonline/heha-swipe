@@ -6,6 +6,7 @@ import PmDashboard from "./pm/PmDashboard";
 import RoutingDashboard from "./routing/RoutingDashboard";
 import ScoutDashboard from "./scout/ScoutDashboard";
 import { AdminCard, roleLabel } from "./shared/AdminPrimitives";
+import { visibleDomains } from "./shared/oneHehaDomains";
 
 const ROLE_ORDER = ["super_admin", "developer_admin", "pm_admin", "community_events_admin", "som_admin"];
 
@@ -76,12 +77,10 @@ export default function AdminApp({ session, loading, onSignOut }) {
   return (
     <div className="admin-shell">
       <header className="admin-topbar">
-        <div><p className="eyebrow">admin.hehaswipe.app</p><h1>HEHA Internal Dashboard</h1></div>
+        <div><p className="eyebrow">ONE HEHA · ZERO BUREAUCRACY</p><h1>HEHA Internal Dashboard</h1></div>
         <div className="admin-actions">
           <span>{roleLabel(role)}</span>
-          {area !== "routing" && access.routing && <button onClick={() => openArea("routing")}>Partner Routing</button>}
-          {area !== "scout" && <button onClick={() => openArea("scout")}>Scout Pipeline</button>}
-          {area !== "home" && <button onClick={() => openArea("home")}>Home</button>}
+          {area !== "home" && <button onClick={() => openArea("home")}>Five Domains</button>}
           <button onClick={onSignOut}>Sign out</button>
         </div>
       </header>
@@ -100,13 +99,58 @@ function AdminShell({ title, message = "Protected HEHA admin area.", action }) {
 }
 
 function AdminHome({ access, openArea }) {
-  return <main className="admin-home"><AdminCard eyebrow="command center" title="Choose dashboard" wide><p>One internal system with role-specific lanes.</p></AdminCard>{access.pm && <Dash title="PM Dashboard" text="Partner readiness and project management." onClick={() => openArea("pm")} />}{access.routing && <Dash title="Partner Routing" text="Decide Website, HEHA Local, HEHA Swipe, and primary CTA placement." onClick={() => openArea("routing")} />}{access.community && <Dash title="Community / Events" text="Events, venues, outreach, and recaps." onClick={() => openArea("community")} />}{access.som && <Dash title="Sales Operations" text="Scout and route potential partners." onClick={() => openArea("som")} />}{access.scout && <Dash title="Scout & Partner Pipeline" text="Shared field visit and lead intake." onClick={() => openArea("scout")} />}</main>;
+  const domains = visibleDomains(access);
+
+  return (
+    <main className="admin-panel">
+      <AdminCard eyebrow="ONE HEHA operating system" title="Five domains. One source of truth." wide>
+        <p>Every HEHA function has one primary home. Your role determines which modules you can open; cross-app links lead to the canonical workspace instead of duplicating records.</p>
+      </AdminCard>
+      <section className="admin-grid">
+        {domains.map((domain) => (
+          <section key={domain.id} className="admin-card wide" style={{ borderLeft: `5px solid ${domain.color}` }}>
+            <p className="eyebrow" style={{ color: domain.color }}>{domain.number} ({domain.code})</p>
+            <h2>{domain.label}</h2>
+            <p>{domain.purpose}</p>
+            <div className="admin-home">
+              {domain.modules.map((module) => (
+                <ModuleCard key={module.id} module={module} color={domain.color} openArea={openArea} />
+              ))}
+            </div>
+          </section>
+        ))}
+      </section>
+    </main>
+  );
 }
 
-function Dash({ title, text, onClick }) {
-  return <button className="admin-card click" onClick={onClick}><strong>{title}</strong><p>{text}</p></button>;
+function ModuleCard({ module, color, openArea }) {
+  const open = () => {
+    if (module.area) return openArea(module.area);
+    if (module.href) return window.location.assign(module.href);
+    return undefined;
+  };
+  const interactive = Boolean(module.area || module.href);
+
+  if (!interactive) {
+    return (
+      <section className="admin-card" style={{ borderTop: `3px solid ${color}` }}>
+        <strong>{module.label}</strong>
+        <p>{module.description}</p>
+        {module.status && <span>{module.status}</span>}
+      </section>
+    );
+  }
+
+  return (
+    <button className="admin-card click" onClick={open} style={{ borderTop: `3px solid ${color}` }}>
+      <strong>{module.label}</strong>
+      <p>{module.description}</p>
+      <small>{module.href ? "Open workspace ↗" : "Open module →"}</small>
+    </button>
+  );
 }
 
 function BlockedArea({ openArea }) {
-  return <main className="admin-panel"><button className="ha-admin-back-button" onClick={() => openArea("home")}>Back</button><AdminCard eyebrow="role boundary" title="Dashboard lane blocked" wide><p>Your role does not include this lane.</p></AdminCard></main>;
+  return <main className="admin-panel"><button className="ha-admin-back-button" onClick={() => openArea("home")}>Back to five domains</button><AdminCard eyebrow="role boundary" title="Dashboard lane blocked" wide><p>Your role does not include this lane.</p></AdminCard></main>;
 }
