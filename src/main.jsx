@@ -15,10 +15,12 @@ import "./community-pass.css";
 import "./partner-media.css";
 import "./partner-offers.css";
 import "./one-heha-connected.css";
+import "./one-heha-command-palette.css";
 import "./embed.css";
 import App from "./App.jsx";
 import AdminApp from "./components/admin/AdminApp.jsx";
 import InternalDashboardShortcut from "./components/InternalDashboardShortcut.jsx";
+import OneHehaCommandPalette from "./components/OneHehaCommandPalette.jsx";
 import BecomePartnerEmbed from "./components/embed/BecomePartnerEmbed.jsx";
 import PartnerDirectoryEmbed from "./components/embed/PartnerDirectoryEmbed.jsx";
 import { supabase } from "./lib/supabase";
@@ -54,6 +56,7 @@ function Root() {
     <>
       <App />
       <InternalDashboardShortcut />
+      <OneHehaCommandPalette />
     </>
   );
 }
@@ -84,7 +87,12 @@ function AdminSessionGate() {
     setSession(null);
   };
 
-  return <AdminApp session={session} loading={loading} onSignOut={handleSignOut} />;
+  return (
+    <>
+      <AdminApp session={session} loading={loading} onSignOut={handleSignOut} />
+      <OneHehaCommandPalette />
+    </>
+  );
 }
 
 createRoot(document.getElementById("root")).render(
