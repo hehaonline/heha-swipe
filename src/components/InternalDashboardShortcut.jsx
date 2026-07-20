@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "../lib/supabase";
 
 const INTERNAL_ROLES = new Set([
@@ -11,6 +12,7 @@ const INTERNAL_ROLES = new Set([
 
 export default function InternalDashboardShortcut() {
   const [visible, setVisible] = useState(false);
+  const [profileHost, setProfileHost] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,30 +53,34 @@ export default function InternalDashboardShortcut() {
     };
   }, []);
 
-  if (!visible) return null;
+  useEffect(() => {
+    const locateProfile = () => {
+      setProfileHost(document.querySelector(".profile-screen"));
+    };
 
-  return (
-    <button
-      type="button"
-      onClick={() => window.location.assign("/admin")}
-      aria-label="Open HEHA internal dashboard"
-      style={{
-        position: "fixed",
-        right: "18px",
-        bottom: "92px",
-        zIndex: 9999,
-        border: "1px solid rgba(255, 126, 26, 0.35)",
-        borderRadius: "999px",
-        padding: "12px 17px",
-        background: "#154d3b",
-        color: "#fff",
-        fontWeight: 700,
-        fontSize: "14px",
-        boxShadow: "0 10px 30px rgba(0, 0, 0, 0.18)",
-        cursor: "pointer",
-      }}
-    >
-      Open HEHA Dashboard
-    </button>
+    locateProfile();
+    const observer = new MutationObserver(locateProfile);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => observer.disconnect();
+  }, []);
+
+  if (!visible || !profileHost) return null;
+
+  return createPortal(
+    <div className="profile-card card-like" aria-label="HEHA internal dashboard access">
+      <p className="eyebrow">HEHA team access</p>
+      <h3>Internal dashboard</h3>
+      <p>Open the dashboard assigned to your active HEHA role.</p>
+      <button
+        type="button"
+        className="primary-button"
+        onClick={() => window.location.assign("/admin")}
+        aria-label="Open HEHA internal dashboard"
+      >
+        Open HEHA Dashboard
+      </button>
+    </div>,
+    profileHost
   );
 }
