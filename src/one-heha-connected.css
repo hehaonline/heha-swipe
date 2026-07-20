@@ -1,0 +1,251 @@
+.one-heha-launcher {
+  position: fixed;
+  right: 14px;
+  bottom: 86px;
+  z-index: 9000;
+  display: grid;
+  gap: 0;
+  min-width: 94px;
+  padding: 9px 12px;
+  border: 1px solid rgba(21, 77, 59, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.97);
+  color: #154d3b;
+  box-shadow: 0 8px 24px rgba(22, 48, 39, 0.12);
+  text-align: left;
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+}
+
+.one-heha-launcher span {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.one-heha-launcher small {
+  color: #697a72;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.one-heha-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  align-items: end;
+  padding: 12px;
+  background: rgba(12, 25, 20, 0.42);
+  backdrop-filter: blur(4px);
+}
+
+.one-heha-workspace-panel {
+  width: min(760px, 100%);
+  max-height: min(88vh, 760px);
+  margin: 0 auto;
+  overflow: auto;
+  border: 1px solid #dce5e0;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 22px 70px rgba(10, 28, 21, 0.24);
+}
+
+.one-heha-workspace-panel > header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #e3e9e6;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(12px);
+}
+
+.one-heha-workspace-panel > header p {
+  margin: 0 0 3px;
+  color: #f47c35;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.one-heha-workspace-panel > header h2 {
+  margin: 0;
+  color: #183c30;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.one-heha-workspace-panel > header span {
+  display: inline-block;
+  margin-top: 5px;
+  color: #718078;
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.one-heha-workspace-panel > header > button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #dce5e0;
+  border-radius: 9px;
+  background: #fff;
+  color: #4f635a;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.one-heha-workspace-intro {
+  margin: 0;
+  padding: 13px 18px 0;
+  color: #65776e;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.one-heha-workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  padding: 14px 18px 18px;
+}
+
+.one-heha-workspace-grid > button {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #dfe7e3;
+  border-top: 3px solid var(--domain-color);
+  border-radius: 13px;
+  background: #fff;
+  color: #1e332b;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.one-heha-workspace-grid > button:hover,
+.one-heha-workspace-grid > button:focus-visible {
+  border-color: var(--domain-color);
+  box-shadow: 0 8px 18px rgba(27, 62, 49, 0.08);
+  transform: translateY(-1px);
+}
+
+.one-heha-code {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--domain-color);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.one-heha-workspace-grid strong {
+  display: block;
+  font-size: 12px;
+}
+
+.one-heha-workspace-grid p {
+  min-height: 62px;
+  margin: 7px 0;
+  color: #687970;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.one-heha-workspace-grid small {
+  color: var(--domain-color);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.one-heha-workspace-panel > footer {
+  padding: 11px 18px 14px;
+  border-top: 1px solid #e3e9e6;
+  color: #74827b;
+  font-size: 10px;
+}
+
+.one-heha-admin-strip {
+  position: sticky;
+  top: 68px;
+  z-index: 25;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  gap: 6px;
+  padding: 8px max(14px, calc((100vw - 1180px) / 2));
+  overflow-x: auto;
+  border-bottom: 1px solid #dfe7e3;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.one-heha-admin-strip > button {
+  min-width: 130px;
+  padding: 8px 10px;
+  border: 1px solid #dfe7e3;
+  border-radius: 11px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.one-heha-admin-strip > button.active {
+  border-color: var(--domain-color);
+  box-shadow: inset 0 3px 0 var(--domain-color);
+  background: #f8faf9;
+}
+
+.one-heha-admin-strip span {
+  display: block;
+  color: var(--domain-color);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.one-heha-admin-strip strong {
+  display: block;
+  margin-top: 2px;
+  color: #263c33;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.admin-card.click.restricted {
+  background: #fbfcfb;
+  border-style: dashed;
+}
+
+@media (max-width: 720px) {
+  .one-heha-overlay {
+    padding: 0;
+  }
+
+  .one-heha-workspace-panel {
+    width: 100%;
+    max-height: 90vh;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .one-heha-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .one-heha-workspace-grid p {
+    min-height: 0;
+  }
+
+  .one-heha-admin-strip {
+    top: 62px;
+    display: flex;
+    padding: 7px 10px;
+  }
+}
