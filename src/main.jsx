@@ -17,6 +17,7 @@ import "./partner-offers.css";
 import "./embed.css";
 import App from "./App.jsx";
 import AdminApp from "./components/admin/AdminApp.jsx";
+import InternalDashboardShortcut from "./components/InternalDashboardShortcut.jsx";
 import BecomePartnerEmbed from "./components/embed/BecomePartnerEmbed.jsx";
 import PartnerDirectoryEmbed from "./components/embed/PartnerDirectoryEmbed.jsx";
 import { supabase } from "./lib/supabase";
@@ -48,7 +49,12 @@ function Root() {
   if (isAdminRoute) return <AdminSessionGate />;
   if (embed === "partners") return <PartnerDirectoryEmbed />;
   if (embed === "become-partner") return <BecomePartnerEmbed />;
-  return <App />;
+  return (
+    <>
+      <App />
+      <InternalDashboardShortcut />
+    </>
+  );
 }
 
 function AdminSessionGate() {
