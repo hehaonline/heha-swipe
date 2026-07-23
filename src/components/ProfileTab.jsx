@@ -292,6 +292,8 @@ export default function ProfileTab({
         </div>
       </div>
 
+      <div data-internal-dashboard-slot />
+
       <div className={isBusiness ? "metric-grid business-metrics" : "metric-grid"}>
         {isBusiness ? (
           <>
