@@ -309,10 +309,7 @@ function PartnerPreviewSheet({ partner, categoryGroup, images, tags, items, onCl
   return (
     <div className="preview-backdrop" role="dialog" aria-modal="true" aria-label={`${partner.name} preview`} onClick={onClose}>
       <section className="partner-preview-sheet swipe-preview-sheet" onClick={(event) => event.stopPropagation()}>
-        <button className="preview-back-button" type="button" onClick={onClose} aria-label="Back to swipe cards">
-          <span aria-hidden="true">←</span>
-          Back
-        </button>
+        <button className="preview-close" type="button" onClick={onClose} aria-label="Close preview">×</button>
         <div
           className={`preview-hero category-${categoryGroup.className}`}
           role="region"
