@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import ShareSheet from "./ShareSheet";
 import { filterPublicTags } from "../lib/partnerTags";
 import { publicDescription, TWO_LINE_CLAMP } from "../lib/cardCopy";
@@ -56,7 +56,7 @@ function fallbackImage(partner) {
 
 function galleryImages(partner) {
   const gallery = Array.isArray(partner.gallery_urls) ? partner.gallery_urls.filter(Boolean) : [];
-  if (gallery.length) return gallery.slice(0, 3);
+  if (gallery.length) return gallery.slice(0, 6);
   if (partner.image_url) return [partner.image_url];
   return stockGallery(partner).slice(0, 3);
 }
@@ -263,7 +263,9 @@ export default function SwipeCard({ partner, onSwipe }) {
 
 function PartnerPreviewSheet({ partner, categoryGroup, images, tags, items, onClose, onSave, onPass, onShare }) {
   const [imageIndex, setImageIndex] = useState(0);
+  const photoTouchStart = useRef(null);
   const currentImage = images[imageIndex] || fallbackImage(partner);
+  const hasMultipleImages = images.length > 1;
   const ig = instagramUrl(partner.instagram);
   const website = hasRealWebsite(partner.website) ? partner.website : null;
   const localDestination = isHehaLocalPartner(partner);
@@ -273,26 +275,97 @@ function PartnerPreviewSheet({ partner, categoryGroup, images, tags, items, onCl
   const orderLabel = localDestination ? partnerOrderLabel(partner) : "Order / view on HEHA";
   const showingStockImage = isStockPlaceholder(partner, currentImage);
 
+  const showPreviousImage = () => {
+    if (!hasMultipleImages) return;
+    setImageIndex((current) => (current - 1 + images.length) % images.length);
+  };
+
+  const showNextImage = () => {
+    if (!hasMultipleImages) return;
+    setImageIndex((current) => (current + 1) % images.length);
+  };
+
+  const startPhotoSwipe = (event) => {
+    if (!hasMultipleImages) return;
+    const touch = event.touches[0];
+    photoTouchStart.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const finishPhotoSwipe = (event) => {
+    const start = photoTouchStart.current;
+    photoTouchStart.current = null;
+    if (!start || !hasMultipleImages) return;
+
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    const isHorizontalSwipe = Math.abs(deltaX) >= 42 && Math.abs(deltaX) > Math.abs(deltaY) * 1.15;
+    if (!isHorizontalSwipe) return;
+
+    if (deltaX < 0) showNextImage();
+    else showPreviousImage();
+  };
+
   return (
     <div className="preview-backdrop" role="dialog" aria-modal="true" aria-label={`${partner.name} preview`} onClick={onClose}>
-      <section className="partner-preview-sheet" onClick={(event) => event.stopPropagation()}>
-        <button className="preview-close" type="button" onClick={onClose} aria-label="Close preview">×</button>
-        <div className={`preview-hero category-${categoryGroup.className}`}>
-          <img src={currentImage} alt={`${partner.name} preview`} />
+      <section className="partner-preview-sheet swipe-preview-sheet" onClick={(event) => event.stopPropagation()}>
+        <button className="preview-back-button" type="button" onClick={onClose} aria-label="Back to swipe cards">
+          <span aria-hidden="true">←</span>
+          Back
+        </button>
+        <div
+          className={`preview-hero category-${categoryGroup.className}`}
+          role="region"
+          aria-roledescription="carousel"
+          aria-label={`${partner.name} photo gallery`}
+          onTouchStart={startPhotoSwipe}
+          onTouchEnd={finishPhotoSwipe}
+          onTouchCancel={() => { photoTouchStart.current = null; }}
+        >
+          <img
+            key={currentImage}
+            className="preview-hero-image"
+            src={currentImage}
+            alt={`${partner.name} photo ${imageIndex + 1} of ${images.length}`}
+            draggable="false"
+          />
           <span className="preview-category-pill">{categoryGroup.emoji} {categoryGroup.label}</span>
           <span className="preview-status-pill">{statusBadge(partner)}</span>
           {showingStockImage && <span className="preview-stock-pill">Photo coming soon</span>}
-          {images.length > 1 && (
-            <div className="gallery-dots preview-dots">
-              {images.map((image, index) => (
-                <button
-                  key={`${image}-${index}`}
-                  className={imageIndex === index ? "active" : ""}
-                  onClick={() => setImageIndex(index)}
-                  aria-label={`Show photo ${index + 1}`}
-                />
-              ))}
-            </div>
+          {hasMultipleImages && (
+            <>
+              <button
+                className="preview-gallery-nav previous"
+                type="button"
+                onClick={showPreviousImage}
+                aria-label="Show previous photo"
+              >
+                ‹
+              </button>
+              <button
+                className="preview-gallery-nav next"
+                type="button"
+                onClick={showNextImage}
+                aria-label="Show next photo"
+              >
+                ›
+              </button>
+              <div className="preview-gallery-progress" aria-live="polite">
+                {imageIndex + 1} / {images.length} · Swipe
+              </div>
+              <div className="gallery-dots preview-dots" aria-label="Choose a partner photo">
+                {images.map((image, index) => (
+                  <button
+                    key={`${image}-${index}`}
+                    className={imageIndex === index ? "active" : ""}
+                    type="button"
+                    onClick={() => setImageIndex(index)}
+                    aria-label={`Show photo ${index + 1}`}
+                    aria-current={imageIndex === index ? "true" : undefined}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </div>
 
