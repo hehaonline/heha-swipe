@@ -1,0 +1,36 @@
+version,name,creates_changes_and_prerequisites,replay_risk_notes,evidence
+20260618000100,nina_community_events_tables,"Creates five events tables; alters two admin tables; needs Auth, `user_roles`, `app_private.has_internal_role`",**Critical:** first migration cannot rebuild from zero,RP
+20260618000200,admin_review_fixes_summary,Seven-line narrative referencing separately applied trigger/RLS SQL,**Critical:** not an executable reconstruction,RP
+20260626120000,harden_approve_partner_admin_only,Replaces `approve_partner`; needs `partners` and internal-role function,**Critical:** shared version,RP
+20260626120000,harden_approve_partner_admin_only.rollback,Weakens the approval gate,**Critical:** executable rollback in migration directory and shared version,RP
+20260705000100,create_scout_leads,"Creates `scout_leads`; references partners, event applications, PM tasks and Auth",High: prerequisite tables missing,RP
+20260705000200,create_scout_contacts,Creates contacts referencing `scout_leads`,Medium,RP
+20260705000300,scout_lead_policies,Adds RLS; changes `user_roles` policy,High: external role model required,RP
+20260705000310,scout_contact_policies,Adds role-based RLS,High: external role function required,RP
+20260705000320,scout_task_permissions,Replaces PM task category constraint and policies,High: pre-existing table/roles required,RP
+20260705000400,scout_event_artifacts,Creates event-artifact function,High: writes to pre-existing event structures,RP
+20260705000500,scout_partner_artifacts,"Creates trigger/function writing partners, readiness and HubSpot tables",High: nontrivial DML dependencies,RP
+20260705000600,scout_pm_tasks,Secured task function and trigger,**Critical:** shared version,RP
+20260705000600,scout_task_routing,Earlier/insecure variant of the same function and trigger,**Critical:** materially different shared version,RP
+20260705000700,scout_swipe_card_sync,Trigger updates partner card fields,High: partner schema required,RP
+20260705000800,scout_indexes,Adds Scout indexes,Low after tables exist,RP
+20260705000900,admin_hubspot_sync_queue_view,Creates queue view,**Critical:** shared version,RP
+20260705000900,hubspot_sync_queue_worker,"Alters queue table; functions, triggers and indexes",**Critical:** unrelated shared version,RP
+20260705001000,harden_hubspot_sync_release_gate,Adds release metadata; replaces queue functions/view,High,RP
+20260705001100,canonical_partner_routing,"Alters partners; functions, triggers, views and backfill",High: large corrective migration,RP
+20260705001200,partner_routing_review_rpc,Replaces partner policy; creates review RPCs,High,RP
+20260705001300,public_routing_views_select_only,Rewrites grants on three views,High if views are absent,RP
+20260705001400,platform_visibility_actual_surface_state,Replaces visibility function and backfills rows,**Critical:** shared version,RP
+20260705001400,primary_ecosystem_cta_only,Replaces constraint/routing trigger,**Critical:** unrelated shared version,RP
+20260705001500,partner_test_record_boundary,Adds flag and replaces public views,Medium,RP
+20260705001600,partner_pillar_suggestions,Functions plus partner backfill,High: data-changing replay,RP
+20260705001700,sync_scout_pillar_to_partner,Replaces synchronization function/trigger,High,RP
+20260706093000,partner_owner_self_service_security,"Guard functions, triggers and RLS on partners",High,RP
+20260706122000,partner_profile_change_requests,"Creates review table, guard, trigger and RLS",High,RP
+20260706143000,partner_media_manager,"Alters partners; table, private bucket and storage policies",High: includes storage DML,RP
+20260706160000,partner_community_offers,Alters `admin_deal_requests`; guards and RLS,High,RP
+20260707045848,partner_security_foundation,Replaces approval RPC and disables legacy swipe RPC,High,RP
+20260707062836,supporter_entitlement_security,"Entitlement functions, trigger, grants and uniqueness constraint",High: existing supporter/payment schema required,RP
+20260710013500,fix_profile_entitlement_guard_current_user,Replaces profile guard,High: corrective-only,RP
+20260716090000,partner_claim_foundation,Alters partners; claim table/RPCs/RLS/audit backfill,Review-only; absent from live ledger,RP
+20260718194500,fix_partner_claim_profile_ambiguity,Replaces claim RPC,Review-only; depends on prior claim migration,RP
