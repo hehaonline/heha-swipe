@@ -131,22 +131,30 @@ function ModuleCard({ module, color, openArea }) {
     return undefined;
   };
   const interactive = Boolean(module.area || module.href);
+  const cta = module.href ? "Open workspace ↗" : "Open module →";
+
+  const body = (
+    <>
+      <strong>{module.label}</strong>
+      <p>{module.description}</p>
+      <div className="module-foot">
+        {module.status && <span className={`module-status is-${module.status}`}>{module.status}</span>}
+        {interactive && <small>{cta}</small>}
+      </div>
+    </>
+  );
 
   if (!interactive) {
     return (
-      <section className="admin-card" style={{ borderTop: `3px solid ${color}` }}>
-        <strong>{module.label}</strong>
-        <p>{module.description}</p>
-        {module.status && <span>{module.status}</span>}
+      <section className="admin-card module" style={{ borderTop: `3px solid ${color}` }}>
+        {body}
       </section>
     );
   }
 
   return (
-    <button className="admin-card click" onClick={open} style={{ borderTop: `3px solid ${color}` }}>
-      <strong>{module.label}</strong>
-      <p>{module.description}</p>
-      <small>{module.href ? "Open workspace ↗" : "Open module →"}</small>
+    <button className="admin-card module click" onClick={open} style={{ borderTop: `3px solid ${color}` }}>
+      {body}
     </button>
   );
 }
