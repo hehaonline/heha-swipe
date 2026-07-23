@@ -35,12 +35,12 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
-.preview-close {
+.preview-close,
+.preview-back-button {
   position: absolute !important;
   z-index: 230 !important;
   top: 12px !important;
   left: 12px !important;
-  width: 42px !important;
   height: 42px !important;
   border: 0 !important;
   border-radius: 999px !important;
@@ -49,6 +49,31 @@
   box-shadow: 0 8px 18px rgba(47, 36, 22, .12) !important;
   font-size: 24px !important;
   font-weight: 500 !important;
+}
+
+.preview-close {
+  width: 42px !important;
+}
+
+.preview-back-button {
+  position: sticky !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  width: auto !important;
+  min-width: 88px !important;
+  margin: 12px 0 -54px 12px !important;
+  padding: 0 16px 0 12px !important;
+  color: var(--heha-green-dark) !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  letter-spacing: -.01em !important;
+  touch-action: manipulation !important;
+}
+
+.preview-back-button span {
+  font-size: 20px !important;
+  line-height: 1 !important;
 }
 
 .preview-card-button {
@@ -63,6 +88,65 @@
   width: 100% !important;
   min-height: 260px !important;
   overflow: hidden !important;
+}
+
+.swipe-preview-sheet .preview-hero {
+  touch-action: pan-y !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.swipe-preview-sheet .preview-category-pill {
+  top: 68px !important;
+}
+
+.preview-hero-image {
+  animation: previewPhotoIn 180ms ease-out both;
+  -webkit-user-drag: none;
+}
+
+@keyframes previewPhotoIn {
+  from { opacity: .7; transform: scale(1.015); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.preview-gallery-nav {
+  position: absolute !important;
+  top: 50% !important;
+  z-index: 226 !important;
+  display: grid !important;
+  place-items: center !important;
+  width: 44px !important;
+  height: 44px !important;
+  padding: 0 0 4px !important;
+  border: 1px solid rgba(255,255,255,.5) !important;
+  border-radius: 999px !important;
+  background: rgba(20,34,27,.58) !important;
+  color: #fff !important;
+  box-shadow: 0 8px 22px rgba(0,0,0,.2) !important;
+  transform: translateY(-50%) !important;
+  font-size: 34px !important;
+  line-height: 1 !important;
+  touch-action: manipulation !important;
+}
+
+.preview-gallery-nav.previous { left: 10px !important; }
+.preview-gallery-nav.next { right: 10px !important; }
+
+.preview-gallery-progress {
+  position: absolute !important;
+  left: 50% !important;
+  bottom: 42px !important;
+  z-index: 225 !important;
+  padding: 5px 9px !important;
+  border-radius: 999px !important;
+  background: rgba(20,34,27,.62) !important;
+  color: #fff !important;
+  font-size: 11px !important;
+  font-weight: 750 !important;
+  letter-spacing: .01em !important;
+  transform: translateX(-50%) !important;
+  pointer-events: none !important;
 }
 
 .preview-category-pill,
@@ -83,24 +167,41 @@
   position: absolute !important;
   left: 0 !important;
   right: 0 !important;
-  bottom: 12px !important;
+  bottom: 1px !important;
   z-index: 224 !important;
   display: flex !important;
   justify-content: center !important;
-  gap: 7px !important;
+  gap: 0 !important;
 }
 
 .preview-dots button {
-  width: 7px !important;
-  height: 7px !important;
+  display: grid !important;
+  place-items: center !important;
+  width: 32px !important;
+  height: 32px !important;
   padding: 0 !important;
   border: 0 !important;
   border-radius: 999px !important;
-  background: rgba(255,255,255,.6) !important;
+  background: transparent !important;
+  touch-action: manipulation !important;
+}
+
+.preview-dots button::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.7);
+  box-shadow: 0 1px 5px rgba(0,0,0,.18);
 }
 
 .preview-dots button.active {
+  background: transparent !important;
+}
+
+.preview-dots button.active::after {
   background: var(--heha-orange) !important;
+  transform: scale(1.2);
 }
 
 .preview-actions {
