@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import ShareSheet from "./ShareSheet";
 import { filterPublicTags } from "../lib/partnerTags";
 import { publicDescription, TWO_LINE_CLAMP } from "../lib/cardCopy";
+import { isHehaLocalPartner, partnerOrderLabel, partnerOrderUrl } from "../lib/hehaLocalRouting";
 
 const dragThreshold = 72;
 
@@ -265,7 +266,11 @@ function PartnerPreviewSheet({ partner, categoryGroup, images, tags, items, onCl
   const currentImage = images[imageIndex] || fallbackImage(partner);
   const ig = instagramUrl(partner.instagram);
   const website = hasRealWebsite(partner.website) ? partner.website : null;
-  const firstOrderUrl = items.map(itemUrl).find(Boolean);
+  const localDestination = isHehaLocalPartner(partner);
+  const firstOrderUrl = localDestination
+    ? partnerOrderUrl(partner)
+    : items.map(itemUrl).find(Boolean);
+  const orderLabel = localDestination ? partnerOrderLabel(partner) : "Order / view on HEHA";
   const showingStockImage = isStockPlaceholder(partner, currentImage);
 
   return (
@@ -314,7 +319,7 @@ function PartnerPreviewSheet({ partner, categoryGroup, images, tags, items, onCl
           )}
 
           <div className="preview-actions">
-            {firstOrderUrl && <a className="primary-button" href={firstOrderUrl} target="_blank" rel="noreferrer">Order / view on HEHA</a>}
+            {firstOrderUrl && <a className="primary-button" href={firstOrderUrl} target="_blank" rel="noreferrer">{orderLabel}</a>}
             {ig && <a className="secondary-button" href={ig} target="_blank" rel="noreferrer">Open Instagram</a>}
             {website && <a className="secondary-button" href={website} target="_blank" rel="noreferrer">Open website</a>}
             <button className="primary-button" type="button" onClick={onSave}>Save to HEHA list</button>
