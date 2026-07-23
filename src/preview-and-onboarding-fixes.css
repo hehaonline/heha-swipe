@@ -35,8 +35,7 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
-.preview-close,
-.preview-back-button {
+.preview-close {
   position: absolute !important;
   z-index: 230 !important;
   top: 12px !important;
@@ -49,31 +48,7 @@
   box-shadow: 0 8px 18px rgba(47, 36, 22, .12) !important;
   font-size: 24px !important;
   font-weight: 500 !important;
-}
-
-.preview-close {
   width: 42px !important;
-}
-
-.preview-back-button {
-  position: sticky !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 7px !important;
-  width: auto !important;
-  min-width: 88px !important;
-  margin: 12px 0 -54px 12px !important;
-  padding: 0 16px 0 12px !important;
-  color: var(--heha-green-dark) !important;
-  font-size: 14px !important;
-  font-weight: 800 !important;
-  letter-spacing: -.01em !important;
-  touch-action: manipulation !important;
-}
-
-.preview-back-button span {
-  font-size: 20px !important;
-  line-height: 1 !important;
 }
 
 .preview-card-button {
@@ -94,10 +69,6 @@
   touch-action: pan-y !important;
   user-select: none !important;
   -webkit-user-select: none !important;
-}
-
-.swipe-preview-sheet .preview-category-pill {
-  top: 68px !important;
 }
 
 .preview-hero-image {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SwipeCard from "./SwipeCard";
 import { hehaLocalItemUrl, isHehaLocalPartner } from "../lib/hehaLocalRouting";
 
@@ -130,12 +130,17 @@ export default function SwipeTab({
   onSave,
   onPass,
   onSuperSwipe,
+  onUndoSwipe,
   dataLoading = false,
 }) {
   const [category, setCategory] = useState("All");
   const [deck, setDeck] = useState([]);
   const [seenIds, setSeenIds] = useState(new Set());
   const [reshuffled, setReshuffled] = useState(false);
+  const [lastSwipe, setLastSwipe] = useState(null);
+  const [restoredPartner, setRestoredPartner] = useState(null);
+  const [undoing, setUndoing] = useState(false);
+  const undoingRef = useRef(false);
   const featuredPartnerId = useMemo(() => new URLSearchParams(window.location.search).get("partner"), []);
 
   const savedIds = useMemo(() => new Set(saves.map((save) => save.partner_id)), [saves]);
@@ -161,29 +166,75 @@ export default function SwipeTab({
   );
 
   useEffect(() => {
+    const putRestoredPartnerFirst = (items = []) => {
+      if (!restoredPartner || !partnerMatchesCategory(restoredPartner, category)) return items;
+      return [restoredPartner, ...items.filter((partner) => partner.id !== restoredPartner.id)];
+    };
+
     const result = buildDeck(category, seenIds);
     if (result === null && swipePartners.length) {
-      setDeck(buildDeck(category, new Set(), true) || []);
+      setDeck(putRestoredPartnerFirst(buildDeck(category, new Set(), true) || []));
       setSeenIds(new Set());
       setReshuffled(true);
       window.setTimeout(() => setReshuffled(false), 1800);
     } else {
-      setDeck(result || []);
+      setDeck(putRestoredPartnerFirst(result || []));
     }
-  }, [swipePartners, saves, category, buildDeck]);
+  }, [swipePartners, saves, category, buildDeck, restoredPartner]);
 
   const current = deck[0];
   const routedCurrent = useMemo(() => withHehaLocalItemLinks(current), [current]);
 
-  const handleSwipe = async (direction) => {
-    if (!current) return;
+  const handleSwipe = (direction) => {
+    if (!current || undoingRef.current) return;
     const partner = current;
+    const wasSaved = savedIds.has(partner.id);
+
+    setRestoredPartner(null);
     setDeck((items) => items.slice(1));
     setSeenIds((ids) => new Set([...ids, partner.id]));
 
-    if (direction === "right") await onSave?.(partner);
-    if (direction === "left") await onPass?.(partner);
-    if (direction === "super") await onSuperSwipe?.(partner);
+    const operation = (async () => {
+      try {
+        if (direction === "right") return await onSave?.(partner);
+        if (direction === "left") return await onPass?.(partner);
+        if (direction === "super") return await onSuperSwipe?.(partner);
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+
+    setLastSwipe({ partner, direction, wasSaved, operation });
+  };
+
+  const handleUndo = async () => {
+    if (!lastSwipe || undoingRef.current) return;
+
+    const swipeToUndo = lastSwipe;
+    undoingRef.current = true;
+    setUndoing(true);
+
+    try {
+      await swipeToUndo.operation;
+      const didUndo = await onUndoSwipe?.(
+        swipeToUndo.partner,
+        swipeToUndo.direction,
+        { wasSaved: swipeToUndo.wasSaved }
+      );
+      if (didUndo === false) return;
+
+      setSeenIds((ids) => {
+        const nextIds = new Set(ids);
+        nextIds.delete(swipeToUndo.partner.id);
+        return nextIds;
+      });
+      setRestoredPartner(swipeToUndo.partner);
+      setLastSwipe(null);
+    } finally {
+      undoingRef.current = false;
+      setUndoing(false);
+    }
   };
 
   const activeCategoryCount = useMemo(() => {
@@ -211,6 +262,8 @@ export default function SwipeTab({
             onClick={() => {
               setCategory(cat);
               setSeenIds(new Set());
+              setLastSwipe(null);
+              setRestoredPartner(null);
             }}
           >
             <span>{CATEGORY_ICONS[cat]}</span>
@@ -232,11 +285,28 @@ export default function SwipeTab({
         )}
       </div>
 
-      {current && (
+      {(current || lastSwipe) && (
         <div className="action-dock luxe-action-dock" aria-label="Swipe actions">
-          <button className="action-circle pass" onClick={() => handleSwipe("left")} aria-label="Pass for now">×</button>
-          <button className="action-circle super" onClick={() => handleSwipe("super")} aria-label="Preview or highlight this business">i</button>
-          <button className="action-circle save" onClick={() => handleSwipe("right")} aria-label="Save this business">♥</button>
+          {lastSwipe && (
+            <button
+              className="action-circle undo"
+              type="button"
+              onClick={handleUndo}
+              disabled={undoing}
+              aria-label="Undo last swipe"
+              title="Undo last swipe"
+            >
+              <span className="undo-icon" aria-hidden="true">↶</span>
+              <span className="undo-label">{undoing ? "Wait" : "Undo"}</span>
+            </button>
+          )}
+          {current && (
+            <>
+              <button className="action-circle pass" type="button" onClick={() => handleSwipe("left")} disabled={undoing} aria-label="Pass for now">×</button>
+              <button className="action-circle super" type="button" onClick={() => handleSwipe("super")} disabled={undoing} aria-label="Preview or highlight this business">i</button>
+              <button className="action-circle save" type="button" onClick={() => handleSwipe("right")} disabled={undoing} aria-label="Save this business">♥</button>
+            </>
+          )}
         </div>
       )}
     </section>

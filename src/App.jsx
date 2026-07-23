@@ -290,6 +290,29 @@ export default function App() {
     flashNotice("SuperSwoop is coming soon. For now, save this spot and help us see what the community wants next.");
   };
 
+  const handleUndoSwipe = async (partner, direction, { wasSaved = false } = {}) => {
+    const uid = session?.user?.id;
+    if (!uid || !partner?.id) return false;
+
+    try {
+      if (direction === "right" && !wasSaved) {
+        const { error } = await supabase
+          .from("saves")
+          .delete()
+          .eq("user_id", uid)
+          .eq("partner_id", partner.id);
+        if (error) throw error;
+        setSaves((current) => current.filter((save) => save.partner_id !== partner.id));
+      }
+
+      flashNotice(`${partner.name} is back in your swipe deck.`);
+      return true;
+    } catch (error) {
+      flashNotice(error.message || "Could not undo that swipe yet.");
+      return false;
+    }
+  };
+
   const handleDiscountCheck = async (partner, request = {}) => {
     const uid = session?.user?.id;
     if (!uid || !partner?.id) return;
@@ -452,6 +475,7 @@ export default function App() {
             onSave={handleSave}
             onPass={handlePass}
             onSuperSwipe={handleSuperSwipe}
+            onUndoSwipe={handleUndoSwipe}
             dataLoading={dataLoading}
           />
         )}
