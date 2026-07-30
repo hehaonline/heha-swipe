@@ -38,7 +38,8 @@ public.partners
 public.admin_audit_logs
 public.user_roles
 app_private.has_internal_role(text[])
-extensions.pgcrypto
+the pgcrypto extension installed in the extensions schema
+  (providing extensions.digest and extensions.gen_random_bytes)
 auth.users / auth.uid()
 ```
 
