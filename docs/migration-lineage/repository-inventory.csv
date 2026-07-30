@@ -32,5 +32,3 @@ version,name,creates_changes_and_prerequisites,replay_risk_notes,evidence
 20260707045848,partner_security_foundation,Replaces approval RPC and disables legacy swipe RPC,High,RP
 20260707062836,supporter_entitlement_security,"Entitlement functions, trigger, grants and uniqueness constraint",High: existing supporter/payment schema required,RP
 20260710013500,fix_profile_entitlement_guard_current_user,Replaces profile guard,High: corrective-only,RP
-20260716090000,partner_claim_foundation,Alters partners; claim table/RPCs/RLS/audit backfill,Review-only; absent from live ledger,RP
-20260718194500,fix_partner_claim_profile_ambiguity,Replaces claim RPC,Review-only; depends on prior claim migration,RP
