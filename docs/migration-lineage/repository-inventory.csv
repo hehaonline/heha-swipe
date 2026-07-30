@@ -32,3 +32,5 @@ version,name,creates_changes_and_prerequisites,replay_risk_notes,evidence
 20260707045848,partner_security_foundation,Replaces approval RPC and disables legacy swipe RPC,High,RP
 20260707062836,supporter_entitlement_security,"Entitlement functions, trigger, grants and uniqueness constraint",High: existing supporter/payment schema required,RP
 20260710013500,fix_profile_entitlement_guard_current_user,Replaces profile guard,High: corrective-only,RP
+20260720093000,partner_multi_categories,"Alters `partners`; adds and backfills `categories`; creates a GIN index; replaces owner/change-request guards and the public swipe view","High: data-changing replay and security-sensitive function/view replacement; pre-existing partner schema required",RP
+20260720093100,partner_multi_categories_view_security_invoker,"Replaces `public_swipe_partners` as `security_invoker`; revokes and restores `anon`/`authenticated` SELECT","High: security/grant behavior; depends on the preceding category migration and existing partner schema",RP
