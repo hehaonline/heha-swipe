@@ -1,15 +1,16 @@
 # SWP-016 Migration Lineage Evidence
 
-Status: **Architecture approved for PR A only**  
+Status: **Corrective documentation review required; architecture approval remains PR A only**  
 Task: `SWP-016`  
 Issue: https://github.com/hehaonline/heha-swipe/issues/85  
-Source branch: `docs/swp-016-migration-lineage-evidence`
+Corrective branch: `agent/swp-016-inventory-correction`  
+Reviewed tree anchor: merge commit `7b32ae605840e50ff1085372e988c980ab538498`
 
 ## Scope
 
 This directory contains sanitized evidence and architecture decisions for repairing HEHA Swipe migration lineage.
 
-PR A is documentation-only. It must not:
+PR A and this corrective package are documentation-only. They must not:
 
 - modify `supabase/migrations`;
 - add executable migration SQL;
@@ -28,7 +29,7 @@ PR A is documentation-only. It must not:
 
 ## Evidence boundary
 
-Repository facts can be verified at the reviewed PR head. The committed `live-ledger-2026-07-19.csv` is a sanitized 92-row snapshot, but this PR does not include independently reproducible live-ledger provenance. Its row-level live-verification labels therefore remain `U` until an authorized independent reviewer reproduces the export. The committed snapshot may be inspected as repository evidence; it must not be treated as proof of current live state.
+`repository-inventory.csv` is anchored to the exact repository tree at merge commit `7b32ae605840e50ff1085372e988c980ab538498`. The committed `live-ledger-2026-07-19.csv` is a sanitized 92-row snapshot, but this package does not include independently reproducible live-ledger provenance. Its row-level live-verification labels therefore remain `U` until an authorized independent reviewer reproduces the export. The committed snapshot may be inspected as repository evidence; it must not be treated as proof of current live state.
 
 ## Accepted architecture decision
 
@@ -45,9 +46,9 @@ This approval applies only to PR A. Canonical implementation remains blocked unt
 
 ## Files
 
-- `repository-inventory.csv` — current-tree migration inventory
+- `repository-inventory.csv` — 35-file current-tree migration inventory anchored to merge commit `7b32ae605840e50ff1085372e988c980ab538498`
 - `live-ledger-2026-07-19.csv` — sanitized ledger snapshot; live provenance remains `U`
-- `object-dependency-map.md` — missing baseline/object families
+- `object-dependency-map.md` — missing baseline/object families, rechecked against all 35 current-tree migrations
 - `duplicate-compatibility-map.md` — duplicate identifier decisions
 - `canonical-baseline-decision.md` — approved strategy and PR separation
 - `production-preflight.md` — no-go conditions and future proof plan
@@ -55,9 +56,10 @@ This approval applies only to PR A. Canonical implementation remains blocked unt
 
 ## Current conclusion
 
-- The unchanged `supabase/migrations` tree inherited from reviewed head `d87dfde049c8d9187b531ec34132b04364fb9ca4` contains 33 migration files using 29 unique timestamps. **[RP]**
+- The `supabase/migrations` tree at merge commit `7b32ae605840e50ff1085372e988c980ab538498` contains 35 migration files using 31 unique timestamps. **[RP]**
+- The inventory includes `20260720093000_partner_multi_categories.sql` and `20260720093100_partner_multi_categories_view_security_invoker.sql`. **[RP]**
 - The committed ledger snapshot contains 92 ordered entries; equality with the live Supabase ledger remains **[U]**.
 - None of the 92 snapshot versions has an exact-version file in the reviewed current tree. **[RP]**
 - The current migration tree is corrective, not a complete rebuild history. **[RP]**
 - The two draft PR #82 migration files are excluded from the current-tree inventory and absent from the committed ledger snapshot; their live application status remains **[U]**.
-- PR A contains no production change. **[RP]**
+- PR A and this correction contain no production change. **[RP]**
