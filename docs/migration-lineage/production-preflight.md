@@ -1,9 +1,11 @@
 # Production Preflight and Future Proof Plan
 
+> **Future procedure only — not authorized by PR A.** No command or step below may be run until its stated architecture, security, cost and environment gates close.
+
 No branch or environment was created.
 
 1. **[I]** Obtain explicit cost confirmation and Geronimo authorization.
-2. **[I]** Pin the approved Supabase CLI and PostgreSQL 17-compatible runtime.
+2. **[I]** Verify the target PostgreSQL major version, then pin the approved Supabase CLI and compatible runtime.
 3. **[I]** Start from an empty local/disposable Supabase project.
 4. **[I]** Place only the canonical migration chain in the proof project.
 5. Run:
@@ -56,7 +58,7 @@ partner_claim_extended_proof.sql
 
 No-go until all are satisfied:
 
-- **[LP]** Nova/ChatGPT architecture approval for PR A is recorded; executable implementation remains separately gated.
+- **[DR]** The documentation-only PR A architecture decision is recorded in issue #85; it does not authorize implementation, migration, branching, deployment or production work.
 - **[U]** ADR-001 confirms the canonical project and identity boundary.
 - **[U]** SQL bodies for ledger-only migrations are recovered or explicitly superseded.
 - **[U]** Live functions, triggers, policies, grants, views and constraints are captured and reviewed.
@@ -86,10 +88,11 @@ Authorized now:
 
 Still prohibited:
 
-- PR B implementation;
+- creating PR B or beginning PR B implementation before every gate closes;
 - changes to `supabase/migrations`;
-- paid Supabase branching;
-- migration-ledger edits;
-- production migration or deployment;
-- PR #82 merge/apply;
-- SWP-017 cloud QA before lineage and ADR gates.
+- paid Supabase branching without Geronimo's explicit cost approval;
+- migration-ledger edits or rewrites;
+- production DDL, migration, configuration change or deployment;
+- PR #82 merge or migration apply;
+- beginning SWP-017, including cloud QA, before lineage and ADR gates;
+- real customer, partner, payment, operational or Auth-user data in fixtures or proofs.
