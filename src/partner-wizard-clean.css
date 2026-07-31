@@ -374,6 +374,67 @@
   line-height: 1.45;
 }
 
+.wizard-day-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wizard-day-picker button {
+  min-width: 0;
+  min-height: 46px;
+  border: 1.5px solid rgba(77, 65, 51, .14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .78);
+  color: rgba(36, 34, 31, .62);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 780;
+  cursor: pointer;
+}
+
+.wizard-day-picker button.selected {
+  border-color: #ff8a24;
+  background: #ff8a24;
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(255, 138, 36, .18);
+}
+
+.wizard-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.wizard-time-field {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.wizard-time-field > span {
+  color: rgba(36, 34, 31, .55);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.wizard-time-field input {
+  min-width: 0;
+  padding-inline: 14px;
+}
+
+.wizard-schedule-summary {
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 138, 36, .18);
+  border-radius: 14px;
+  background: #fff5e8;
+  color: #9a5420;
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
 .wizard-card-preview,
 .wizard-review-card {
   overflow: hidden;
@@ -565,6 +626,12 @@
   color: #d8582e;
   font-size: 12px;
   font-weight: 680;
+}
+
+@media (min-width: 480px) {
+  .wizard-day-picker {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
 }
 
 @media (min-width: 760px) {
