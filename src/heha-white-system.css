@@ -40,6 +40,7 @@ select {
 h1, h2, h3,
 .brand-name,
 .swipe-logo {
+  font-family: 'Syne', 'DM Sans', sans-serif;
   text-wrap: balance;
 }
 
