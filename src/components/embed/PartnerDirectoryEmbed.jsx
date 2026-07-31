@@ -48,6 +48,13 @@ function summary(partner) {
   return partner.tagline || partner.bio || "Discover this local HEHA partner.";
 }
 
+function publicTags(partner) {
+  const internalTags = new Set(["crm-seed", "listed"]);
+  return [...(partner.tags || []), ...(partner.offerings || [])]
+    .filter((tag) => tag && !internalTags.has(String(tag).toLowerCase()))
+    .slice(0, 4);
+}
+
 export default function PartnerDirectoryEmbed() {
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -162,9 +169,9 @@ export default function PartnerDirectoryEmbed() {
             <article className="directory-card" key={partner.id}>
               <div className="directory-card-media">
                 {partner.image_url ? (
-                  <img src={partner.image_url} alt="" loading="lazy" />
+                  <img src={partner.image_url} alt={partner.name} loading="lazy" />
                 ) : (
-                  <span>{partner.photo_emoji || "✦"}</span>
+                  <span aria-hidden="true">{partner.name?.trim()?.charAt(0)?.toUpperCase() || "H"}</span>
                 )}
                 {partner.heha_pillar && <strong>{partner.heha_pillar}</strong>}
               </div>
@@ -175,9 +182,9 @@ export default function PartnerDirectoryEmbed() {
                 <p className="directory-location">⌖ {locationLabel(partner)}</p>
                 <p className="directory-summary">{summary(partner)}</p>
 
-                {!!(partner.tags?.length || partner.offerings?.length) && (
+                {publicTags(partner).length > 0 && (
                   <div className="directory-tags">
-                    {[...(partner.tags || []), ...(partner.offerings || [])].slice(0, 4).map((tag) => <span key={`${partner.id}-${tag}`}>{tag}</span>)}
+                    {publicTags(partner).map((tag) => <span key={`${partner.id}-${tag}`}>{tag}</span>)}
                   </div>
                 )}
 
