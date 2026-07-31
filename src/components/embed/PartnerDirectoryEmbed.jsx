@@ -45,7 +45,11 @@ function locationLabel(partner) {
 }
 
 function summary(partner) {
-  return partner.tagline || partner.bio || "Discover this local HEHA partner.";
+  const description = partner.tagline || partner.bio;
+  if (!description || /^listed on heha swipe[.!]?$/i.test(description.trim())) {
+    return "Explore this HEHA partner and see what they offer.";
+  }
+  return description;
 }
 
 function publicTags(partner) {
