@@ -171,7 +171,7 @@ export default function AuthScreen() {
       <main className="auth-screen">
         <section className="auth-card">
           <div className="auth-hero">
-            <div className="brand-mark large" aria-label="HEHA Swipe">H</div>
+            <div className="brand-mark large" role="img" aria-label="HEHA Swipe">H</div>
             <p className="eyebrow">HEHA Swipe early access</p>
             <h1>Swipe local. Save healthy spots. Support what you love.</h1>
             <p>HEHA Swipe helps you discover local healthy restaurants, wellness spaces, markets, vendors, and community businesses — starting as an early-access web app.</p>
@@ -211,7 +211,7 @@ export default function AuthScreen() {
         </button>
 
         <div className="auth-hero">
-          <div className="brand-mark large" aria-label="HEHA Swipe">H</div>
+          <div className="brand-mark large" role="img" aria-label="HEHA Swipe">H</div>
           <p className="eyebrow">{accessLabel}</p>
           <h1>{headline}</h1>
           <p>{helperCopy}</p>
