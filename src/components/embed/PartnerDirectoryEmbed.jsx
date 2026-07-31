@@ -11,6 +11,24 @@ const PILLARS = [
 
 const PAGE_SIZE = 12;
 
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="11" cy="11" r="6" />
+      <path d="m16 16 4 4" />
+    </svg>
+  );
+}
+
+function LocationIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>
+  );
+}
+
 function textIndex(partner) {
   return [
     partner.name,
@@ -124,7 +142,7 @@ export default function PartnerDirectoryEmbed() {
 
       <section className="directory-controls" aria-label="Partner directory filters">
         <label className="directory-search">
-          <span aria-hidden="true">⌕</span>
+          <span className="directory-search-icon" aria-hidden="true"><SearchIcon /></span>
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -133,12 +151,13 @@ export default function PartnerDirectoryEmbed() {
           />
         </label>
 
-        <div className="pillar-tabs" role="tablist" aria-label="HEHA pillars">
+        <div className="pillar-tabs" role="group" aria-label="Filter by HEHA pillar">
           {PILLARS.map(([value, label]) => (
             <button
               key={value}
               type="button"
               className={pillar === value ? "active" : ""}
+              aria-pressed={pillar === value}
               onClick={() => setPillar(value)}
             >
               {label}
@@ -147,7 +166,7 @@ export default function PartnerDirectoryEmbed() {
         </div>
 
         <div className="directory-sort-row">
-          <strong>Showing {Math.min(visibleCount, filtered.length)} of {filtered.length} local option{filtered.length === 1 ? "" : "s"}</strong>
+          <strong aria-live="polite" aria-atomic="true">Showing {Math.min(visibleCount, filtered.length)} of {filtered.length} local option{filtered.length === 1 ? "" : "s"}</strong>
           <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort or filter partners">
             <option value="recommended">Recommended</option>
             <option value="az">A–Z</option>
@@ -183,7 +202,7 @@ export default function PartnerDirectoryEmbed() {
               <div className="directory-card-body">
                 <p className="directory-meta">{[partner.category, partner.business_type].filter(Boolean).join(" · ")}</p>
                 <h2>{partner.name}</h2>
-                <p className="directory-location">⌖ {locationLabel(partner)}</p>
+                <p className="directory-location"><LocationIcon /><span>{locationLabel(partner)}</span></p>
                 <p className="directory-summary">{summary(partner)}</p>
 
                 {publicTags(partner).length > 0 && (
