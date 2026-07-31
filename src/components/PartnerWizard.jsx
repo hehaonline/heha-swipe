@@ -28,6 +28,42 @@ const STEPS = [
 const ICONS = ["🥗", "🍜", "☕", "🥤", "🧃", "🍱", "👨‍🍳", "🏋️", "🧘", "💆", "🌿", "🏪", "🛍️", "🏆", "💪", "🌱", "🥦", "🫙", "🧴", "🎉"];
 const PUBLIC_STATUSES = ["approved", "live"];
 
+const DAY_OPTIONS = [
+  { value: "Mon", label: "Mon" },
+  { value: "Tue", label: "Tue" },
+  { value: "Wed", label: "Wed" },
+  { value: "Thu", label: "Thu" },
+  { value: "Fri", label: "Fri" },
+  { value: "Sat", label: "Sat" },
+  { value: "Sun", label: "Sun" },
+];
+const WEEKDAYS = DAY_OPTIONS.slice(0, 5).map((day) => day.value);
+
+function orderedScheduleDays(days = []) {
+  return DAY_OPTIONS.map((day) => day.value).filter((day) => days.includes(day));
+}
+
+function formatClock(value) {
+  const [hourText, minute = "00"] = String(value || "").split(":");
+  const hour = Number(hourText);
+  if (!Number.isFinite(hour)) return "";
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minute} ${suffix}`;
+}
+
+function operatingHoursSummary(form) {
+  const days = orderedScheduleDays(form.scheduleDays);
+  if (!days.length || !form.opensAt || !form.closesAt) return "";
+
+  let daySummary = days.join(", ");
+  if (days.length === 7) daySummary = "Daily";
+  if (days.join(",") === WEEKDAYS.join(",")) daySummary = "Mon–Fri";
+  if (days.join(",") === "Sat,Sun") daySummary = "Sat–Sun";
+
+  return `${daySummary} · ${formatClock(form.opensAt)}–${formatClock(form.closesAt)}`;
+}
+
 const emptyForm = {
   name: "",
   category: "",
@@ -35,7 +71,9 @@ const emptyForm = {
   neighborhood: "",
   tagline: "",
   bio: "",
-  hours: "",
+  scheduleDays: [...WEEKDAYS],
+  opensAt: "09:00",
+  closesAt: "17:00",
   business_type: "",
   phone: "",
   contact: "",
@@ -118,7 +156,12 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
       if (!form.neighborhood.trim()) nextErrors.neighborhood = "Neighborhood is required.";
       if (!form.tagline.trim()) nextErrors.tagline = "Add a short card headline.";
     }
-    if (step === 1 && !form.bio.trim()) nextErrors.bio = "Tell people what makes your business special.";
+    if (step === 1) {
+      if (!form.bio.trim()) nextErrors.bio = "Tell people what makes your business special.";
+      if (form.scheduleDays.length > 0 && form.opensAt >= form.closesAt) {
+        nextErrors.schedule = "Closing time must be after opening time.";
+      }
+    }
     if (step === 2 && !form.phone.trim() && !form.contact.trim()) nextErrors.phone = "Add at least a phone number or email.";
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -169,7 +212,8 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
         neighborhood: form.neighborhood.trim(),
         tagline: form.tagline.trim(),
         bio: form.bio.trim(),
-        hours: form.hours.trim() || null,
+        hours: operatingHoursSummary(form) || null,
+        delivery_days: orderedScheduleDays(form.scheduleDays),
         business_type: form.business_type.trim() || null,
         phone: form.phone.trim() || null,
         contact: form.contact.trim() || null,
@@ -310,9 +354,47 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
               <input value={form.business_type} onChange={(event) => set("business_type", event.target.value)} placeholder="Brick & mortar, mobile, pop-up, online…" />
             </Field>
 
-            <Field label="Hours" hint="optional">
-              <input value={form.hours} onChange={(event) => set("hours", event.target.value)} placeholder="Mon–Fri 8am–6pm, Sat 9am–3pm" />
-            </Field>
+            <div className="wizard-field-block">
+              <Label>Operating days <em>(optional)</em></Label>
+              <p className="wizard-helper-copy">Tap the days your business is normally available.</p>
+              <div className="wizard-day-picker" aria-label="Operating days">
+                {DAY_OPTIONS.map((day) => {
+                  const selected = form.scheduleDays.includes(day.value);
+                  return (
+                    <button
+                      key={day.value}
+                      type="button"
+                      className={selected ? "selected" : ""}
+                      aria-pressed={selected}
+                      onClick={() => set(
+                        "scheduleDays",
+                        selected
+                          ? form.scheduleDays.filter((value) => value !== day.value)
+                          : orderedScheduleDays([...form.scheduleDays, day.value])
+                      )}
+                    >
+                      {day.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="wizard-time-grid">
+                <label className="wizard-time-field">
+                  <span>Opens</span>
+                  <input type="time" value={form.opensAt} onChange={(event) => set("opensAt", event.target.value)} />
+                </label>
+                <label className="wizard-time-field">
+                  <span>Closes</span>
+                  <input type="time" value={form.closesAt} onChange={(event) => set("closesAt", event.target.value)} />
+                </label>
+              </div>
+
+              {operatingHoursSummary(form) && (
+                <p className="wizard-schedule-summary">{operatingHoursSummary(form)}</p>
+              )}
+              {errors.schedule && <Error>{errors.schedule}</Error>}
+            </div>
 
             <NavButtons onBack={back} onNext={next} />
           </WizardPanel>
@@ -456,6 +538,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
               {[
                 ["Categories", categorySummary(form.categories) || "None selected"],
                 ["Phone", form.phone || "Not provided"],
+                ["Hours", operatingHoursSummary(form) || "Not provided"],
                 ["Website", form.website || "Not provided"],
                 ["Instagram", form.instagram ? `@${normalizeInstagram(form.instagram)}` : "Not provided"],
                 ["Offerings", form.offerings.length ? form.offerings.join(", ") : "None added"],
