@@ -88,7 +88,7 @@ function AdminSessionGate() {
   return <AdminApp session={session} loading={loading} onSignOut={handleSignOut} />;
 }
 
-createRoot(document.getElementById("root")!).render(
+createRoot(document.getElementById("root")).render(
   <StrictMode>
     <Root />
   </StrictMode>
