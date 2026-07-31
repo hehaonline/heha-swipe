@@ -183,7 +183,7 @@ textarea { min-height: 44px; }
 
 .auth-card button:focus-visible,
 .auth-form input:focus-visible {
-  outline: 3px solid rgba(255, 152, 61, .55) !important;
+  outline: 3px solid var(--heha-orange-text) !important;
   outline-offset: 3px;
   box-shadow: 0 0 0 5px rgba(255, 255, 255, .96);
 }
@@ -201,6 +201,7 @@ textarea { min-height: 44px; }
 
   .auth-screen { padding: 12px !important; }
   .auth-card { border-radius: 24px !important; }
+  .auth-card { align-self: flex-start; }
 
   .role-auth-card .role-switch-pill {
     position: static !important;
