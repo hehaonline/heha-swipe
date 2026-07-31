@@ -107,6 +107,47 @@ textarea { min-height: 44px; }
   border-color: var(--heha-green-dark) !important;
 }
 
+.brand-mark.large {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px !important;
+  color: var(--heha-green-dark) !important;
+  font-family: 'Syne', 'DM Sans', sans-serif;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -.05em;
+}
+
+.choice-icon {
+  width: 52px;
+  height: 52px;
+  display: grid !important;
+  place-items: center;
+  border: 1px solid rgba(40, 119, 78, .12);
+  border-radius: 16px;
+  background: var(--heha-green-soft);
+  color: var(--heha-green);
+}
+
+.choice-icon svg {
+  width: 27px;
+  height: 27px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.choice-card.featured .choice-icon {
+  border-color: rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .10);
+  color: var(--heha-orange-bright);
+}
+
 /* Phone-first behavior remains intact. */
 @media (max-width: 759px) {
   .app-shell,
@@ -162,8 +203,8 @@ textarea { min-height: 44px; }
   .auth-hero { text-align: left; }
   .auth-hero h1 {
     max-width: 720px;
-    font-size: clamp(52px, 5vw, 76px) !important;
-    line-height: .98 !important;
+    font-size: clamp(48px, 4.3vw, 64px) !important;
+    line-height: 1.01 !important;
   }
   .auth-hero p { max-width: 640px; font-size: 17px !important; }
 
