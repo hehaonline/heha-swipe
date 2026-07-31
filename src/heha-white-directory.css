@@ -38,6 +38,10 @@
 }
 
 .directory-sort-row select { min-height: 44px; }
+.directory-search input::placeholder {
+  color: var(--heha-muted);
+  opacity: 1;
+}
 
 .directory-search:focus-within,
 .pillar-tabs button:focus-visible,
