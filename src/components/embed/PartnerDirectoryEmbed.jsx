@@ -147,7 +147,7 @@ export default function PartnerDirectoryEmbed() {
         </div>
 
         <div className="directory-sort-row">
-          <strong>{filtered.length} local option{filtered.length === 1 ? "" : "s"}</strong>
+          <strong>Showing {Math.min(visibleCount, filtered.length)} of {filtered.length} local option{filtered.length === 1 ? "" : "s"}</strong>
           <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort or filter partners">
             <option value="recommended">Recommended</option>
             <option value="az">A–Z</option>
