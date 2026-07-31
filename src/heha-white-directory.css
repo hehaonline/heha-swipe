@@ -43,13 +43,38 @@
   opacity: 1;
 }
 
+.directory-search-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--heha-orange-text, #a94e00);
+}
+
+.directory-search-icon svg,
+.directory-location svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.directory-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .directory-search:focus-within,
 .pillar-tabs button:focus-visible,
 .directory-sort-row select:focus-visible,
 .directory-primary:focus-visible,
 .directory-secondary:focus-visible,
 .load-more:focus-visible {
-  outline: 3px solid rgba(255, 152, 61, .38);
+  outline: 3px solid var(--heha-orange-text, #a94e00);
   outline-offset: 3px;
 }
 
