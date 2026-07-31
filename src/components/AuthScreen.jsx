@@ -200,8 +200,12 @@ export default function AuthScreen() {
   const switchLabel = isBusiness ? "Customer access" : "Business access";
   const headline = "Swipe local. Save healthy spots. Support what you love.";
   const helperCopy = isBusiness
-    ? "HEHA Swipe helps you discover local healthy restaurants, wellness spaces, markets, vendors, and community businesses — starting as an early-access web app. Create a free account to request your business listing."
-    : "HEHA Swipe helps you discover local healthy restaurants, wellness spaces, markets, vendors, and community businesses — starting as an early-access web app. Create a free account to explore HEHA Swipe.";
+    ? mode === "create"
+      ? "Create an account to request your business listing and join the HEHA Swipe discovery feed."
+      : "Sign in to continue managing your HEHA Swipe business access."
+    : mode === "create"
+      ? "Create an account to discover, save, and support healthy local places."
+      : "Sign in to continue discovering and saving healthy local places.";
 
   return (
     <main className="auth-screen">
@@ -215,27 +219,32 @@ export default function AuthScreen() {
           <p className="eyebrow">{accessLabel}</p>
           <h1>{headline}</h1>
           <p>{helperCopy}</p>
-          <p>Swipe local spots. Save favorites. Set your vibe. Businesses can request to get listed.</p>
         </div>
 
         <div className="auth-tabs">
-          <button type="button" className={mode === "create" ? "active" : ""} onClick={() => setMode("create")}>Create account</button>
-          <button type="button" className={mode === "signin" ? "active" : ""} onClick={() => setMode("signin")}>Sign in</button>
+          <button type="button" aria-pressed={mode === "create"} className={mode === "create" ? "active" : ""} onClick={() => setMode("create")}>Create account</button>
+          <button type="button" aria-pressed={mode === "signin"} className={mode === "signin" ? "active" : ""} onClick={() => setMode("signin")}>Sign in</button>
         </div>
 
         <form onSubmit={submitPasswordAuth} className="auth-form">
-          <label>Email address</label>
+          <label htmlFor="auth-email">Email address</label>
           <input
+            id="auth-email"
+            name="email"
             type="email"
+            autoComplete="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="you@example.com"
             required
           />
 
-          <label>Password</label>
+          <label htmlFor="auth-password">Password</label>
           <input
+            id="auth-password"
+            name="password"
             type="password"
+            autoComplete={mode === "create" ? "new-password" : "current-password"}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="Minimum 8 characters"
@@ -243,7 +252,7 @@ export default function AuthScreen() {
             required
           />
 
-          <button className="primary-button" disabled={loading}>
+          <button type="submit" className="primary-button" disabled={loading}>
             {loading ? "Working…" : mode === "create" ? "Create secure account" : "Sign in with password"}
           </button>
         </form>
@@ -258,19 +267,28 @@ export default function AuthScreen() {
           Send secure sign-in email instead
         </button>
 
-        <div className="divider"><span>or continue with</span></div>
+        <div className="divider"><span>or</span></div>
 
         <div className="provider-row">
-          <button type="button" onClick={() => signInWithProvider("google")} disabled={loading}>Google</button>
-          <button type="button" onClick={() => signInWithProvider("apple")} disabled={loading}>Apple</button>
-          <button type="button" onClick={() => signInWithProvider("facebook")} disabled={loading}>Facebook</button>
+          <button type="button" onClick={() => signInWithProvider("google")} disabled={loading}>
+            <span className="provider-mark" aria-hidden="true">G</span>
+            <span>Continue with Google</span>
+          </button>
+          <button type="button" onClick={() => signInWithProvider("apple")} disabled={loading}>
+            <span className="provider-mark" aria-hidden="true">A</span>
+            <span>Continue with Apple</span>
+          </button>
+          <button type="button" onClick={() => signInWithProvider("facebook")} disabled={loading}>
+            <span className="provider-mark" aria-hidden="true">f</span>
+            <span>Continue with Facebook</span>
+          </button>
         </div>
 
-        {message && <div className="success-banner">{message}</div>}
-        {error && <div className="error-banner">{error}</div>}
+        {message && <div className="success-banner" role="status" aria-live="polite">{message}</div>}
+        {error && <div className="error-banner" role="alert">{error}</div>}
 
         <p className="fine-print">
-          Passwords are handled securely by Supabase Auth. HEHA does not store your password inside your public profile.
+          Your sign-in is protected. HEHA never displays your password or shares it with local partners.
         </p>
       </section>
     </main>
