@@ -15,6 +15,7 @@ import "./community-pass.css";
 import "./partner-media.css";
 import "./partner-offers.css";
 import "./embed.css";
+import "./heha-white-system.css";
 import App from "./App.jsx";
 import AdminApp from "./components/admin/AdminApp.jsx";
 import InternalDashboardShortcut from "./components/InternalDashboardShortcut.jsx";
