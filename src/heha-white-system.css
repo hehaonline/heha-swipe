@@ -9,6 +9,7 @@
   --heha-muted: #586f62;
   --heha-line: #e7ece8;
   --heha-orange: #ff983d;
+  --heha-orange-text: #a94e00;
   --heha-orange-bright: #ffad5f;
   --heha-orange-soft: #fff2e6;
   --heha-green: #28774e;
@@ -95,7 +96,7 @@ textarea { min-height: 44px; }
   border-radius: 999px !important;
 }
 
-.eyebrow { color: var(--heha-orange) !important; }
+.eyebrow { color: var(--heha-orange-text) !important; }
 .brand-mark,
 .swipe-logo-square,
 .splash-square {
@@ -148,6 +149,41 @@ textarea { min-height: 44px; }
   color: var(--heha-orange-bright);
 }
 
+.auth-card .text-button { color: var(--heha-orange-text) !important; }
+
+.provider-row { grid-template-columns: 1fr !important; }
+
+.provider-row button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding-inline: 16px;
+  color: var(--heha-ink);
+}
+
+.provider-mark {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  border: 1px solid var(--heha-line);
+  border-radius: 999px;
+  background: var(--heha-surface-soft);
+  color: var(--heha-green-dark);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.auth-card button:focus-visible,
+.auth-form input:focus-visible {
+  outline: 3px solid rgba(255, 152, 61, .55) !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, .96);
+}
+
 /* Phone-first behavior remains intact. */
 @media (max-width: 759px) {
   .app-shell,
@@ -161,6 +197,14 @@ textarea { min-height: 44px; }
 
   .auth-screen { padding: 12px !important; }
   .auth-card { border-radius: 24px !important; }
+
+  .role-auth-card .role-switch-pill {
+    position: static !important;
+    display: block;
+    margin: 0 0 18px auto;
+  }
+
+  .role-auth-card .auth-hero { padding-right: 0 !important; }
 }
 
 /* Real desktop composition instead of a phone card floating in empty space. */
