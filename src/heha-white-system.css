@@ -44,6 +44,9 @@ h1, h2, h3,
   text-wrap: balance;
 }
 
+/* The legacy theme pins auth headlines to DM Sans with !important. */
+.auth-hero h1 { font-family: 'Syne', 'DM Sans', sans-serif !important; }
+
 button,
 a,
 input,
