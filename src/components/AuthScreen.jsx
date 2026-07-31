@@ -175,7 +175,6 @@ export default function AuthScreen() {
             <p className="eyebrow">HEHA Swipe early access</p>
             <h1>Swipe local. Save healthy spots. Support what you love.</h1>
             <p>HEHA Swipe helps you discover local healthy restaurants, wellness spaces, markets, vendors, and community businesses — starting as an early-access web app.</p>
-            <p>Swipe local spots. Save favorites. Set your vibe. Businesses can request to get listed.</p>
           </div>
 
           <div className="choice-grid auth-choice-grid">
