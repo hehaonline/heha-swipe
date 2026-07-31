@@ -1,0 +1,93 @@
+/* White-first HEHA public directory refinements. */
+
+.directory-embed {
+  width: min(100%, 1280px);
+  margin-inline: auto;
+  background: #fff !important;
+}
+
+.embed-hero {
+  padding: clamp(24px, 3.2vw, 42px) !important;
+  background:
+    radial-gradient(circle at 92% 6%, rgba(255, 152, 61, .16), transparent 29%),
+    #fff !important;
+  border-color: var(--heha-line) !important;
+  box-shadow: var(--heha-shadow-soft) !important;
+}
+
+.embed-hero h1 {
+  max-width: 760px;
+  font-size: clamp(2.6rem, 6vw, 4.75rem) !important;
+}
+
+.directory-controls,
+.directory-card,
+.embed-state {
+  border-color: var(--heha-line) !important;
+  background: #fff !important;
+  box-shadow: var(--heha-shadow-soft) !important;
+}
+
+.directory-card {
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.directory-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--heha-shadow) !important;
+}
+
+.directory-search:focus-within,
+.pillar-tabs button:focus-visible,
+.directory-sort-row select:focus-visible,
+.directory-primary:focus-visible,
+.directory-secondary:focus-visible,
+.load-more:focus-visible {
+  outline: 3px solid rgba(255, 152, 61, .38);
+  outline-offset: 3px;
+}
+
+.directory-card-media {
+  aspect-ratio: 4 / 3;
+  min-height: 0 !important;
+}
+
+.directory-card-media img {
+  min-height: 0 !important;
+  aspect-ratio: 4 / 3;
+}
+
+.directory-card-media > span {
+  display: grid;
+  width: 76px;
+  height: 76px;
+  place-items: center;
+  border: 1px solid rgba(19,32,25,.08);
+  border-radius: 24px;
+  background: rgba(255,255,255,.82);
+  box-shadow: var(--heha-shadow-soft);
+  font-size: 2.4rem;
+}
+
+@media (max-width: 620px) {
+  .embed-hero { padding: 22px 18px !important; }
+  .embed-hero h1 { font-size: clamp(2.25rem, 11vw, 3rem) !important; }
+
+  .pillar-tabs {
+    padding-right: 28px;
+    mask-image: linear-gradient(90deg, #000 0%, #000 calc(100% - 28px), transparent 100%);
+  }
+
+  .directory-card-media,
+  .directory-card-media img {
+    aspect-ratio: 4 / 2.7;
+  }
+
+  .directory-card-body { padding: 17px !important; }
+  .directory-summary { -webkit-line-clamp: 3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .directory-card { transition: none; }
+  .directory-card:hover { transform: none; }
+}
