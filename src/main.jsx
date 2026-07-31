@@ -16,6 +16,7 @@ import "./partner-media.css";
 import "./partner-offers.css";
 import "./embed.css";
 import "./heha-white-system.css";
+import "./heha-white-directory.css";
 import App from "./App.jsx";
 import AdminApp from "./components/admin/AdminApp.jsx";
 import InternalDashboardShortcut from "./components/InternalDashboardShortcut.jsx";
@@ -87,7 +88,7 @@ function AdminSessionGate() {
   return <AdminApp session={session} loading={loading} onSignOut={handleSignOut} />;
 }
 
-createRoot(document.getElementById("root")).render(
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <Root />
   </StrictMode>
