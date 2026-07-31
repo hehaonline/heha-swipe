@@ -1,0 +1,207 @@
+/* HEHA × G-OOD white-first visual system
+   Additive override layer: no application, auth, data, or routing logic changes. */
+
+:root {
+  --heha-canvas: #ffffff;
+  --heha-surface: #ffffff;
+  --heha-surface-soft: #fcf9f3;
+  --heha-ink: #132019;
+  --heha-muted: #586f62;
+  --heha-line: #e7ece8;
+  --heha-orange: #ff983d;
+  --heha-orange-bright: #ffad5f;
+  --heha-orange-soft: #fff2e6;
+  --heha-green: #28774e;
+  --heha-green-dark: #132019;
+  --heha-green-soft: #edf6f0;
+  --heha-peach: #ffe1c4;
+  --heha-shadow: 0 18px 50px rgba(19, 32, 25, .09);
+  --heha-shadow-soft: 0 10px 30px rgba(19, 32, 25, .06);
+  --radius-xl: 32px;
+  --radius-lg: 24px;
+  --radius-md: 16px;
+}
+
+html { background: var(--heha-canvas); }
+body {
+  background: var(--heha-canvas) !important;
+  color: var(--heha-ink);
+}
+
+body,
+button,
+input,
+textarea,
+select {
+  font-family: 'DM Sans', Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+h1, h2, h3,
+.brand-name,
+.swipe-logo {
+  text-wrap: balance;
+}
+
+button,
+a,
+input,
+select,
+textarea { min-height: 44px; }
+
+.app-shell,
+.auth-screen,
+.onboarding-screen,
+.wizard-screen,
+.splash-screen {
+  background: var(--heha-canvas) !important;
+}
+
+.auth-card,
+.splash-card,
+.card-like,
+.discover-hero,
+.section-hero,
+.profile-hero,
+.choice-card,
+.saved-card,
+.partner-detail-card {
+  background: var(--heha-surface) !important;
+  border-color: var(--heha-line) !important;
+  box-shadow: var(--heha-shadow-soft) !important;
+}
+
+.app-header,
+.luxe-header,
+.bottom-nav,
+.luxe-nav {
+  background: rgba(255, 255, 255, .96) !important;
+  border-color: var(--heha-line) !important;
+}
+
+.primary-button {
+  min-height: 48px;
+  border-radius: 999px !important;
+  background: var(--heha-green-dark) !important;
+  color: #fff !important;
+}
+
+.primary-button:hover { background: var(--heha-green) !important; }
+
+.ghost-pill,
+.role-switch-pill,
+.secondary-button,
+.provider-row button {
+  min-height: 44px;
+  border-radius: 999px !important;
+}
+
+.eyebrow { color: var(--heha-orange) !important; }
+.brand-mark,
+.swipe-logo-square,
+.splash-square {
+  background: var(--heha-orange) !important;
+}
+
+.choice-card.featured {
+  background: var(--heha-green-dark) !important;
+  border-color: var(--heha-green-dark) !important;
+}
+
+/* Phone-first behavior remains intact. */
+@media (max-width: 759px) {
+  .app-shell,
+  .auth-screen,
+  .onboarding-screen,
+  .wizard-screen,
+  .splash-screen {
+    width: 100%;
+    max-width: 480px;
+  }
+
+  .auth-screen { padding: 12px !important; }
+  .auth-card { border-radius: 24px !important; }
+}
+
+/* Real desktop composition instead of a phone card floating in empty space. */
+@media (min-width: 760px) {
+  #root { display: block; }
+
+  .app-shell,
+  .auth-screen,
+  .onboarding-screen,
+  .wizard-screen,
+  .splash-screen {
+    width: 100%;
+    max-width: none;
+    min-height: 100vh;
+    margin: 0;
+  }
+
+  .auth-screen {
+    padding: clamp(32px, 5vw, 72px) !important;
+    background:
+      radial-gradient(circle at 88% 12%, rgba(255, 152, 61, .14), transparent 28%),
+      radial-gradient(circle at 8% 88%, rgba(40, 119, 78, .10), transparent 30%),
+      #fff !important;
+  }
+
+  .auth-card {
+    width: min(1160px, 100%);
+    min-height: min(720px, calc(100vh - 96px));
+    margin: auto;
+    padding: clamp(38px, 5vw, 72px) !important;
+    border-radius: 32px !important;
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr);
+    column-gap: clamp(44px, 7vw, 96px);
+    align-items: center;
+    background: rgba(255,255,255,.98) !important;
+    box-shadow: var(--heha-shadow) !important;
+  }
+
+  .auth-hero { text-align: left; }
+  .auth-hero h1 {
+    max-width: 720px;
+    font-size: clamp(52px, 5vw, 76px) !important;
+    line-height: .98 !important;
+  }
+  .auth-hero p { max-width: 640px; font-size: 17px !important; }
+
+  .auth-choice-grid {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    gap: 16px;
+  }
+
+  .choice-card {
+    min-height: 190px;
+    padding: 28px !important;
+    border-radius: 24px !important;
+    transition: transform .2s ease, box-shadow .2s ease;
+  }
+  .choice-card:hover { transform: translateY(-3px); box-shadow: var(--heha-shadow) !important; }
+
+  .role-auth-card .role-switch-pill { position: absolute; top: 28px; right: 28px; }
+  .role-auth-card .auth-tabs,
+  .role-auth-card .auth-form,
+  .role-auth-card > .text-button,
+  .role-auth-card > .divider,
+  .role-auth-card > .provider-row,
+  .role-auth-card > .success-banner,
+  .role-auth-card > .error-banner,
+  .role-auth-card > .fine-print {
+    grid-column: 2;
+  }
+  .role-auth-card .auth-hero { grid-row: 1 / span 8; align-self: center; }
+
+  .app-shell { max-width: 1180px; margin: 0 auto; border-inline: 1px solid var(--heha-line); }
+  .app-header { padding-inline: 28px !important; }
+  .discover-screen,
+  .saved-screen,
+  .profile-screen { padding-inline: clamp(24px, 4vw, 48px) !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
