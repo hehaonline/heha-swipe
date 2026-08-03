@@ -25,9 +25,15 @@ function BusinessIcon() {
   );
 }
 
-export default function AuthScreen() {
-  const [role, setRole] = useState(() => localStorage.getItem(SIGNUP_ROLE_KEY) || "");
-  const [mode, setMode] = useState("create");
+export default function AuthScreen({ initialMode = null, onBack } = {}) {
+  // When arriving from the landing entry gate we already know the intent
+  // (sign in vs create) and can skip straight to the consumer form, while the
+  // role pill still lets business users switch. Direct visitors keep the
+  // original role-first experience.
+  const [role, setRole] = useState(
+    () => localStorage.getItem(SIGNUP_ROLE_KEY) || (initialMode ? "customer" : "")
+  );
+  const [mode, setMode] = useState(initialMode === "signin" ? "signin" : "create");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -170,6 +176,11 @@ export default function AuthScreen() {
     return (
       <main className="auth-screen">
         <section className="auth-card">
+          {onBack && (
+            <button type="button" className="auth-back-link" onClick={onBack}>
+              ← Explore as guest
+            </button>
+          )}
           <div className="auth-hero">
             <div className="brand-mark large" role="img" aria-label="HEHA Swipe">H</div>
             <p className="eyebrow">HEHA Swipe early access</p>
@@ -209,6 +220,11 @@ export default function AuthScreen() {
   return (
     <main className="auth-screen">
       <section className="auth-card role-auth-card">
+        {onBack && (
+          <button type="button" className="auth-back-link" onClick={onBack}>
+            ← Explore as guest
+          </button>
+        )}
         <button type="button" className="role-switch-pill" onClick={changeRole}>
           {switchLabel}
         </button>
