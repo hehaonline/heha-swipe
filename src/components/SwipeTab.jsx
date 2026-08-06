@@ -140,8 +140,14 @@ export default function SwipeTab({
   const [lastSwipe, setLastSwipe] = useState(null);
   const [restoredPartner, setRestoredPartner] = useState(null);
   const [undoing, setUndoing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState("idle");
   const undoingRef = useRef(false);
+  const refreshTimerRef = useRef(null);
   const featuredPartnerId = useMemo(() => new URLSearchParams(window.location.search).get("partner"), []);
+
+  useEffect(() => () => {
+    if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current);
+  }, []);
 
   const savedIds = useMemo(() => new Set(saves.map((save) => save.partner_id)), [saves]);
   const swipePartners = useMemo(() => partners.filter((partner) => partner.swipe_eligible !== false), [partners]);
@@ -237,14 +243,75 @@ export default function SwipeTab({
     }
   };
 
+  const handleRefreshBusinesses = () => {
+    if (dataLoading || refreshStatus === "refreshing") return;
+
+    setRefreshStatus("refreshing");
+    if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current);
+
+    refreshTimerRef.current = window.setTimeout(() => {
+      try {
+        const refreshedDeck = buildDeck(category, new Set(), true) || [];
+        const currentPartnerId = deck[0]?.id;
+
+        if (refreshedDeck.length > 1 && refreshedDeck[0]?.id === currentPartnerId) {
+          refreshedDeck.push(refreshedDeck.shift());
+        }
+
+        setSeenIds(new Set());
+        setRestoredPartner(null);
+        setLastSwipe(null);
+        setDeck(refreshedDeck);
+
+        const hasDifferentFirstPartner = Boolean(
+          refreshedDeck[0]?.id && refreshedDeck[0].id !== currentPartnerId
+        );
+        setRefreshStatus(hasDifferentFirstPartner ? "refreshed" : "no-new");
+      } catch {
+        setRefreshStatus("error");
+      }
+
+      refreshTimerRef.current = window.setTimeout(() => {
+        setRefreshStatus("idle");
+        refreshTimerRef.current = null;
+      }, 1800);
+    }, 180);
+  };
+
   const activeCategoryCount = useMemo(() => {
     if (category === "All") return swipePartners.length;
     return swipePartners.filter((partner) => partnerMatchesCategory(partner, category)).length;
   }, [swipePartners, category]);
 
+  const refreshButtonLabel =
+    dataLoading || refreshStatus === "refreshing"
+      ? "Refreshing…"
+      : refreshStatus === "refreshed"
+      ? "Refreshed"
+      : refreshStatus === "no-new"
+      ? "No new businesses"
+      : refreshStatus === "error"
+      ? "Try again"
+      : "Refresh businesses";
+
+  const refreshStatusMessage =
+    refreshStatus === "refreshing"
+      ? "Refreshing businesses…"
+      : refreshStatus === "refreshed"
+      ? "Fresh businesses loaded"
+      : refreshStatus === "no-new"
+      ? "You are already seeing the latest businesses in this category."
+      : refreshStatus === "error"
+      ? "Businesses could not refresh. Please try again."
+      : "";
+
   return (
     <section className="discover-screen compact-discover luxe-discover">
-      {reshuffled && <div className="floating-status">Fresh businesses loaded</div>}
+      {(refreshStatusMessage || reshuffled) && (
+        <div className="floating-status" role="status" aria-live="polite">
+          {refreshStatusMessage || "Fresh businesses loaded"}
+        </div>
+      )}
 
       <div className="discover-topline">
         <div>
@@ -271,6 +338,16 @@ export default function SwipeTab({
           </button>
         ))}
       </div>
+
+      <button
+        className="secondary-button"
+        type="button"
+        onClick={handleRefreshBusinesses}
+        disabled={dataLoading || refreshStatus === "refreshing"}
+        aria-label="Refresh businesses"
+      >
+        {refreshButtonLabel}
+      </button>
 
       {dataLoading && <div className="inline-loader">Refreshing businesses…</div>}
 
