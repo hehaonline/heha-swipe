@@ -32,7 +32,7 @@ Alternatives:
 - Both RCs reference their manifests and Apple touch icons from `index.html`.
 - The Swipe RC corrected the old zoom-blocking viewport and now uses `width=device-width, initial-scale=1.0`.
 - Live HTTPS installability, icon safe zones, installed launch behavior, cache/update behavior, and device-specific home-screen results were **not run** in this connector-only audit.
-- No service worker was found. Do not promise offline support or resilient cached operation.
+- Swipe includes `public/sw.js`, but the RC does not register it; Local has no worker or registration. Do not promise offline support or resilient cached operation.
 - Both manifests use the same short name, `HEHA`, so installing both can be confusing.
 - Local presents itself as “HEHA Order Hub” and describes real-time orders, drivers, and payouts, while the public product is HEHA Local. Approve truthful public naming before promoting installation.
 - Each icon is declared as both `any maskable` using one asset. Maskable safe-zone appearance still needs visual validation.
