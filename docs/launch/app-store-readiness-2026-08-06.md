@@ -66,6 +66,39 @@ Google's current documentation requires release signing and uses Android App Bun
 - https://developer.chrome.com/docs/android/trusted-web-activity/quick-start
 - https://developer.chrome.com/docs/android/trusted-web-activity/android-for-web-devs
 
+### Account-deletion store blocker — revalidated 2026-08-07
+
+Swipe's audited RC does expose **Request account deletion** in `ProfileTab.jsx`, but the current behavior is only a partial request flow:
+
+- it inserts an `account_deletion_requests` row;
+- it immediately attempts to delete `saves`, `customer_profiles`, and `profiles`;
+- its confirmation explicitly says the Supabase Auth login may remain active until an administrator removes it;
+- it does not sign the requester out, revoke sessions, prove Auth-user removal, provide a completion receipt, or prove deletion from every app table and downstream processor.
+
+A table insert is therefore not evidence that deletion was fulfilled. Supabase also documents that deleting an Auth user does not itself invalidate already-issued JWT access tokens until they expire, so the final server-owned workflow must revoke sessions and account for token lifetime rather than treating row deletion as immediate logout.
+
+No dedicated public HEHA account-deletion resource was found during the repository/public-site inspection. The current HEHA privacy page only says users may request deletion “where legally allowed” and provides general contact information; it is not an app-specific, prominent request path with scope, identity verification, timing, retention exceptions, and completion expectations.
+
+This blocks both store packages:
+
+- Apple requires apps that support account creation to let users initiate deletion within the app and offer deletion of the full account plus associated non-retained data.
+- Google Play requires an intuitive in-app deletion path **and** a functional public web resource where users can request deletion without reinstalling the app.
+
+Required before internal-store release:
+
+1. Define one service-owned deletion contract for Swipe and Local: request, recent reauthentication, pending state, session revocation, Auth-user removal, app-data deletion/anonymization, approved retention exceptions, downstream-provider requests, completion/failure receipt, and retry-safe audit evidence.
+2. Keep any retained order, fraud, tax, or security evidence minimal and disclose the exact reason and retention period in approved policy text.
+3. Publish a stable, prominent web request page only after legal/operational approval; link it from both apps and the Google Play Data safety form.
+4. Prove ordinary-user, partner, duplicate request, stale session, cross-user, partial-failure/retry, retained-record, and completed-deletion cases in a disposable environment.
+5. Verify that a deleted user cannot refresh a session or continue reading/writing with an old token after the documented expiry/revocation boundary.
+6. Record an owner and fulfillment SLA; do not depend on an unmonitored database queue.
+
+Current primary references:
+- https://developer.apple.com/support/offering-account-deletion-in-your-app/
+- https://support.google.com/googleplay/android-developer/answer/13327111
+- https://supabase.com/docs/guides/auth/managing-user-data
+- https://supabase.com/docs/guides/auth/sessions
+
 Browser install reference:
 - https://web.dev/articles/install-criteria
 
@@ -79,6 +112,7 @@ Before wrapper code starts, approve these exact decisions:
 4. Bundle/application identifier namespace and Apple/Google account owner.
 5. Final public names, manifest short names, support URL, and legally approved privacy-policy URL.
 6. Whether partner/driver/SOM/admin functions ship inside HEHA Local's first binary or remain web-only until customer ordering is stable.
+7. Account-deletion process owner, fulfillment SLA, retention exceptions, and the approved public deletion-request URL.
 
 Recommended defaults:
 
@@ -90,7 +124,7 @@ Recommended defaults:
 ## Prepared implementation and validation order
 
 1. Clear the existing Local and Swipe RC blockers; do not package an unverified RC.
-2. Approve final privacy/legal URLs and store data inventories.
+2. Approve final privacy/legal URLs, store data inventories, and the account-deletion fulfillment contract.
 3. Create a separate wrapper branch per repository from a newly verified release base.
 4. Add native projects without changing web business logic.
 5. Add signing-safe configuration templates; keep keys and provisioning material out of Git.
@@ -108,4 +142,4 @@ Recommended defaults:
 
 ## Rollback
 
-This audit changes documentation only. Reverting its single commit removes the document. No application code, dependency, manifest, deployment, native project, signing material, store record, Supabase state, or external service is changed.
+This audit changes documentation only. Reverting its documentation commits removes the document. No application code, dependency, manifest, deployment, native project, signing material, store record, Supabase state, or external service is changed.
