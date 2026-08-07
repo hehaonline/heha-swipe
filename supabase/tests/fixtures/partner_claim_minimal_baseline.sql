@@ -203,6 +203,19 @@ insert into auth.users (
     false,
     now(),
     now()
+  ),
+  (
+    '13131313-1313-4313-8313-131313131313',
+    'authenticated',
+    'authenticated',
+    'preexisting.owner@example.invalid',
+    null,
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{}'::jsonb,
+    false,
+    false,
+    now(),
+    now()
   );
 
 insert into public.user_roles (user_id, role, active)
@@ -408,6 +421,24 @@ insert into public.partners (
     7,
     5,
     19,
+    true
+  ),
+  (
+    'cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd',
+    null,
+    'Synthetic Pre-existing Unverified Recipient Business',
+    'Nourish',
+    'Pre-existing unverified recipient proof fixture',
+    'approved',
+    false,
+    true,
+    true,
+    false,
+    'reviewed',
+    '[]'::jsonb,
+    3,
+    1,
+    9,
     true
   );
 

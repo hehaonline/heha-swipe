@@ -242,9 +242,15 @@ begin
       else 'Account …' || right(p_intended_user_id::text, 8)
     end;
   else
+    -- Resolve an intended email to a fixed user ID only when Supabase Auth
+    -- has already verified that account's email. An unverified account that
+    -- happens to match must NOT be converted to user-ID binding, or it would
+    -- bypass the verified-email gate enforced by preview/claim; the
+    -- invitation stays email-bound and fails closed until verification.
     select u.id, u.email into bound_user_id, account_email
     from auth.users u
     where lower(btrim(u.email)) = normalized_email
+      and u.email_confirmed_at is not null
     order by u.created_at asc
     limit 1;
 

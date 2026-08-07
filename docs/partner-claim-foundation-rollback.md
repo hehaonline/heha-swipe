@@ -68,7 +68,7 @@ The destructive rollback skeleton at the end of the migration may be used only w
 1. No invitation has been distributed.
 2. No invitation has been consumed.
 3. The pre-apply snapshot is retained.
-4. Shahid approves the exact target and statements.
+4. The designated independent technical reviewer for the current phase (currently Nova, per the phase ownership recorded on the successor PR) approves the exact target and statements, and Geronimo authorizes any execution against a shared or production environment. Destructive rollback must never be self-approved by the implementer.
 
 If a claim has occurred, disable new invite creation by revoking authenticated execution on `create_partner_claim_invite`, preserve invite/audit rows, and ship a reviewed forward migration. Do not clear `owner_id`, delete partners, or rewrite canonical Partner IDs as an emergency rollback.
 

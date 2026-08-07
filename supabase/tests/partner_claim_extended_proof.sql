@@ -760,6 +760,159 @@ begin
 end;
 $$;
 
+-- P0 regression (Nova exact-head review of the v2 successor): an unverified
+-- account that already exists BEFORE an email-targeted invitation is created
+-- must not be silently converted to user-ID binding, because user-ID binding
+-- skips the verified-email gate. The invitation must stay email-bound, the
+-- pre-existing unverified account must be denied, and the same account must
+-- claim exactly once after Supabase Auth verifies the email.
+-- Fixture user 13131313… (preexisting.owner@example.invalid, unconfirmed)
+-- exists from the baseline, i.e. before this invitation.
+select pg_temp.set_auth_context('authenticated', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+create temporary table extended_preexisting_partner_before as
+select to_jsonb(p) as row_data
+from public.partners p
+where p.id = 'cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd';
+
+create temporary table extended_token_preexisting as
+select *
+from public.create_partner_claim_invite(
+  'cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd',
+  interval '1 day',
+  'preexisting-unverified-proof',
+  null,
+  'Preexisting.Owner@Example.Invalid'
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.partner_claim_invites
+    where id = (select invite_id from extended_token_preexisting)
+      and intended_user_id is null
+      and intended_email_normalized = 'preexisting.owner@example.invalid'
+      and recipient_hint = 'p***@example.invalid'
+  ) then
+    raise exception 'pre-existing unverified account was converted to user-ID binding instead of staying email-bound';
+  end if;
+end;
+$$;
+
+select pg_temp.set_auth_context('authenticated', '13131313-1313-4313-8313-131313131313');
+select pg_temp.expect_error(
+  'pre-existing unverified preview denied',
+  format('select * from public.preview_partner_claim(%L)', (select raw_token from extended_token_preexisting)),
+  '42501'
+);
+select pg_temp.expect_error(
+  'pre-existing unverified claim denied',
+  format('select * from public.claim_partner_profile(%L)', (select raw_token from extended_token_preexisting)),
+  '42501'
+);
+
+do $$
+declare
+  before_row jsonb := (select row_data from extended_preexisting_partner_before);
+  after_row jsonb := (
+    select to_jsonb(p)
+    from public.partners p
+    where p.id = 'cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd'
+  );
+  raw_value text := (select raw_token from extended_token_preexisting);
+begin
+  if not exists (
+    select 1
+    from public.partner_claim_invites
+    where id = (select invite_id from extended_token_preexisting)
+      and consumed_at is null
+      and consumed_by is null
+      and revoked_at is null
+      and revoked_by is null
+  ) then
+    raise exception 'pre-existing unverified account changed terminal invitation state';
+  end if;
+
+  if after_row is null
+     or after_row->>'id' <> 'cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd'
+     or after_row->>'owner_id' is not null
+     or after_row->>'relationship_status' = 'claimed'
+     or after_row is distinct from before_row then
+    raise exception 'pre-existing unverified account changed ownership, Partner ID or public fields';
+  end if;
+
+  if exists (
+    select 1
+    from public.admin_audit_logs
+    where action_type = 'partner_profile_claimed'
+      and related_id = 'cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd'
+  ) then
+    raise exception 'pre-existing unverified account produced a successful claim audit event';
+  end if;
+
+  if exists (
+    select 1
+    from public.admin_audit_logs
+    where related_id = 'cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd'
+      and (
+        position('preexisting.owner@example.invalid' in coalesce(previous_value::text, '') || coalesce(new_value::text, '')) > 0
+        or position(raw_value in coalesce(previous_value::text, '') || coalesce(new_value::text, '')) > 0
+      )
+  ) then
+    raise exception 'pre-existing unverified audit output exposed the full email or raw token';
+  end if;
+
+  insert into pg_temp.partner_claim_extended_results
+  values (
+    'pre-existing unverified email denied',
+    'account existing before the invitation stays email-bound and cannot preview or claim while unverified; invitation and business unchanged'
+  );
+end;
+$$;
+
+-- Positive proof: after Supabase Auth verifies the same account, it claims
+-- the intended partner exactly once through the still-email-bound invitation.
+update auth.users
+set email_confirmed_at = now(),
+    updated_at = now()
+where id = '13131313-1313-4313-8313-131313131313';
+
+select pg_temp.set_auth_context('authenticated', '13131313-1313-4313-8313-131313131313');
+
+do $$
+begin
+  perform public.claim_partner_profile((select raw_token from extended_token_preexisting));
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from public.partners
+    where id = 'cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd'
+      and owner_id = '13131313-1313-4313-8313-131313131313'
+  ) then
+    raise exception 'verified pre-existing account did not claim the intended partner';
+  end if;
+
+  if not exists (
+    select 1 from public.partner_claim_invites
+    where id = (select invite_id from extended_token_preexisting)
+      and consumed_at is not null
+      and consumed_by = '13131313-1313-4313-8313-131313131313'
+      and revoked_at is null
+  ) then
+    raise exception 'verified pre-existing claim did not consume the invitation exactly once';
+  end if;
+
+  insert into pg_temp.partner_claim_extended_results
+  values (
+    'pre-existing verified email claims',
+    'the same account claims exactly once after verification; Partner ID preserved'
+  );
+end;
+$$;
+
 -- Claiming an official partner preserves that separate relationship and public fields.
 select pg_temp.set_auth_context('service_role');
 update public.partners

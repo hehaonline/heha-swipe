@@ -302,16 +302,18 @@ begin
     jsonb_build_object('sub', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'role', 'authenticated')::text, true);
   perform set_config('request.jwt.claim.sub', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', true);
   perform set_config('request.jwt.claim.role', 'authenticated', true);
+
+  -- perform (not select) so the raw one-time token never reaches stdout or
+  -- any uploaded proof artifact.
+  perform public.create_partner_claim_invite(
+    '11111111-1111-4111-8111-111111111111',
+    interval '1 day',
+    'acl-matrix-proof',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    null
+  );
 end;
 $$;
-
-select public.create_partner_claim_invite(
-  '11111111-1111-4111-8111-111111111111',
-  interval '1 day',
-  'acl-matrix-proof',
-  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-  null
-);
 
 do $$
 declare
@@ -361,16 +363,17 @@ begin
   perform set_config('request.jwt.claims',
     jsonb_build_object('sub', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'role', 'authenticated')::text, true);
   perform set_config('request.jwt.claim.sub', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', true);
+
+  -- perform (not select): the raw token must not appear in proof output.
+  perform public.create_partner_claim_invite(
+    '22222222-2222-4222-8222-222222222222',
+    interval '1 day',
+    'acl-matrix-proof',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    null
+  );
 end;
 $$;
-
-select public.create_partner_claim_invite(
-  '22222222-2222-4222-8222-222222222222',
-  interval '1 day',
-  'acl-matrix-proof',
-  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-  null
-);
 
 do $$
 declare

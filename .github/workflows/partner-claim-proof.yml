@@ -29,10 +29,24 @@ jobs:
       - name: Check out PR branch
         uses: actions/checkout@v4
 
-      - name: Install Supabase CLI
+      - name: Install Supabase CLI (pinned)
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.112.0
+
+      - name: Record executed revision and toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/partner-claim-proof
+          {
+            echo "github_event=${{ github.event_name }}"
+            echo "checked_out_sha=$(git rev-parse HEAD)"
+            echo "github_sha=${{ github.sha }}"
+            echo "pr_head_sha=${{ github.event.pull_request.head.sha }}"
+            echo "pr_base_sha=${{ github.event.pull_request.base.sha }}"
+          } | tee artifacts/partner-claim-proof/executed-revision.txt
+          supabase --version 2>&1 | tee artifacts/partner-claim-proof/supabase-cli-version.txt
 
       - name: Install PostgreSQL client
         shell: bash
@@ -42,7 +56,7 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y postgresql-client
           fi
-          psql --version
+          psql --version | tee -a artifacts/partner-claim-proof/supabase-cli-version.txt
 
       - name: Prepare isolated synthetic Supabase project
         shell: bash
@@ -62,9 +76,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifacts/partner-claim-proof
           cd .ci/partner-claim
-          supabase start 2>&1 | tee ../../artifacts/partner-claim-proof/supabase-start.txt
+          # Full startup output (which prints disposable local credentials) is
+          # kept out of the uploaded evidence; only sanitized status evidence
+          # is retained.
+          if supabase start > supabase-start-full.log 2>&1; then
+            start_status=started
+          else
+            start_status=failed
+          fi
+          grep -Ei 'supabase local development|started|stopped|error|warn' supabase-start-full.log \
+            | grep -viE 'key|secret|token|jwt|password|url|s3' \
+            > ../../artifacts/partner-claim-proof/supabase-start-sanitized.txt || true
+          echo "supabase_start=$start_status" >> ../../artifacts/partner-claim-proof/supabase-start-sanitized.txt
+          test "$start_status" = started
 
       - name: Run core, extended and ACL-matrix rollback proofs
         shell: bash
@@ -72,7 +97,6 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: |
           set -euo pipefail
-          mkdir -p artifacts/partner-claim-proof
 
           psql "$DATABASE_URL" \
             -v ON_ERROR_STOP=1 \
@@ -101,6 +125,35 @@ jobs:
             union all
             select 'synthetic_partner_count', (select count(*)::text from public.partners where is_test_record = true);
           " > artifacts/partner-claim-proof/schema-evidence.txt
+
+      - name: Prove corrective migration re-apply (idempotency)
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20260807160000_partner_claim_foundation_v2.sql \
+            2>&1 | tee artifacts/partner-claim-proof/idempotency-reapply.txt
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/partner_claim_acl_matrix_proof.sql \
+            > /dev/null
+          echo "acl_matrix_proof_after_reapply=pass" \
+            | tee -a artifacts/partner-claim-proof/idempotency-reapply.txt
+
+      - name: Scan evidence for raw tokens or credential material
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Raw one-time claim tokens are 64 lowercase hex chars; local stack
+          # credentials are JWT-shaped or key/secret-labelled. None may appear
+          # in uploaded evidence.
+          if grep -rInE '(eyJ[A-Za-z0-9_-]{20,}|[0-9a-f]{64}|sb_secret_|sb_publishable_|service_role_key|anon[ _]key|secret[ _]key|access[ _]key)' \
+              artifacts/partner-claim-proof; then
+            echo 'Sensitive material found in proof evidence; failing.'
+            exit 1
+          fi
+          echo 'Evidence scan clean: no raw tokens or credential material.'
 
       - name: Upload proof evidence
         if: always()
