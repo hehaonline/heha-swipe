@@ -112,6 +112,27 @@ Current primary references:
 Browser install reference:
 - https://web.dev/articles/install-criteria
 
+### Supporter-payment return trust blocker — revalidated 2026-08-07
+
+Swipe RC #113 at exact head `885461f55f64ea56a9366e6573b6002769820f06` does not bind the supporter success screen to the Checkout Session that returned the user:
+
+- `src/App.jsx` selects `/support/success` before the unauthenticated-app branch, so a signed-out direct visit can render “Thank you for supporting HEHA Swipe.”
+- `supabase/functions/create-supporter-checkout/index.ts` sets the success URL to `/support/success` without Stripe's `{CHECKOUT_SESSION_ID}` template.
+- `src/lib/supporterStatus.js` asks for the current user's active supporter entitlement; it does not verify the returned Checkout Session.
+
+The thank-you screen is therefore not proof that this checkout succeeded. An existing active entitlement could also make an unrelated return appear successful. This is a HEHA payment-trust and release-evidence blocker; it is not presented here as a store-policy claim.
+
+Required before the supporter flow is eligible for a web soft launch or store packaging:
+
+1. Require an authenticated return or fail closed without rendering success.
+2. Include `{CHECKOUT_SESSION_ID}` in the checkout success URL.
+3. Retrieve the exact session server-side and verify the authenticated user or `client_reference_id`, expected price/product, subscription mode, payment/subscription state, and environment.
+4. Reject a missing, mismatched, unpaid, or replayed session. Do not let an older active entitlement prove the new checkout.
+5. Keep entitlement fulfillment webhook-driven; the return page should only display a server-verified status and truthful pending/failure recovery.
+6. Prove signed-out direct URL, missing session, wrong user, unpaid, stale/replayed, delayed webhook, pre-existing entitlement, successful return, cancellation, timeout, and retry cases in a non-production Stripe/Supabase environment.
+
+Evidence: https://github.com/hehaonline/heha-swipe/pull/113#issuecomment-5221820682
+
 ## Smallest approval package
 
 Before wrapper code starts, approve these exact decisions:
@@ -133,7 +154,7 @@ Recommended defaults:
 
 ## Prepared implementation and validation order
 
-1. Clear the existing Local and Swipe RC blockers; do not package an unverified RC.
+1. Clear the existing Local and Swipe RC blockers, including session-bound supporter-return verification; do not package an unverified RC.
 2. Approve final privacy/legal URLs, store data inventories, and the account-deletion fulfillment contract.
 3. Create a separate wrapper branch per repository from a newly verified release base.
 4. Add native projects without changing web business logic.
