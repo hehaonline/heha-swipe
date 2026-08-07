@@ -172,22 +172,17 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- 3. Behavioral denial proofs. Probe tables are owned by the client role so
---    each attempt fails on the missing table privilege, not on probe
---    ownership. Every attempt must raise SQLSTATE 42501.
+-- 3. Behavioral denial proofs. Each client role creates its own probe table
+--    in a transaction-scoped scratch schema, so the REFERENCES attempt fails
+--    on the missing privilege for partner_claim_invites, not on probe
+--    ownership. No ALTER OWNER is used because the proof must also run where
+--    the executor is not a superuser (e.g. the Supabase-local postgres role)
+--    and client roles hold no CREATE on schema public. Every adversarial
+--    attempt must raise SQLSTATE 42501.
 -- ---------------------------------------------------------------------------
 
-create table public.acl_probe_authenticated (
-  id uuid primary key default gen_random_uuid(),
-  invite_id uuid
-);
-alter table public.acl_probe_authenticated owner to authenticated;
-
-create table public.acl_probe_anon (
-  id uuid primary key default gen_random_uuid(),
-  invite_id uuid
-);
-alter table public.acl_probe_anon owner to anon;
+create schema acl_probe_scratch;
+grant usage, create on schema acl_probe_scratch to authenticated, anon;
 
 create or replace function pg_temp.acl_probe_trigger_fn()
 returns trigger
@@ -201,13 +196,18 @@ $$;
 -- authenticated adversarial attempts.
 set local role authenticated;
 
+create table acl_probe_scratch.probe_authenticated (
+  id uuid primary key,
+  invite_id uuid
+);
+
 select pg_temp.expect_denied(
   'authenticated TRUNCATE',
   'truncate table public.partner_claim_invites'
 );
 select pg_temp.expect_denied(
   'authenticated REFERENCES',
-  'alter table public.acl_probe_authenticated
+  'alter table acl_probe_scratch.probe_authenticated
      add constraint acl_probe_auth_fk
      foreign key (invite_id) references public.partner_claim_invites(id)'
 );
@@ -240,6 +240,11 @@ reset role;
 -- anon adversarial attempts, including bare SELECT.
 set local role anon;
 
+create table acl_probe_scratch.probe_anon (
+  id uuid primary key,
+  invite_id uuid
+);
+
 select pg_temp.expect_denied(
   'anon SELECT',
   'select count(*) from public.partner_claim_invites'
@@ -250,7 +255,7 @@ select pg_temp.expect_denied(
 );
 select pg_temp.expect_denied(
   'anon REFERENCES',
-  'alter table public.acl_probe_anon
+  'alter table acl_probe_scratch.probe_anon
      add constraint acl_probe_anon_fk
      foreign key (invite_id) references public.partner_claim_invites(id)'
 );
