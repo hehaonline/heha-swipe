@@ -141,26 +141,79 @@ jobs:
           echo "acl_matrix_proof_after_reapply=pass" \
             | tee -a artifacts/partner-claim-proof/idempotency-reapply.txt
 
+      - name: 'Negative control: evidence scan must detect seeded token material'
+        shell: bash
+        env:
+          EVIDENCE_SCAN_PATTERN: (eyJ[A-Za-z0-9_-]{20,}|[0-9a-f]{64}|sb_secret_|sb_publishable_|service_role_key|anon[ _]key|secret[ _]key|access[ _]key)
+        run: |
+          set -euo pipefail
+          # Prove the scan actually detects each class of forbidden material
+          # before trusting its clean verdict on the real evidence. The seeds
+          # live outside the artifact directory and are deleted afterwards.
+          control_dir="$(mktemp -d)"
+          printf 'synthetic raw token: %s\n' "$(printf 'ab%.0s' $(seq 1 32))" > "$control_dir/token.txt"
+          printf 'synthetic jwt: eyJabcdefghijklmnopqrstuvwxyz012345\n' > "$control_dir/jwt.txt"
+          printf 'service_role_key: synthetic\n' > "$control_dir/label.txt"
+          for f in token.txt jwt.txt label.txt; do
+            if ! grep -rInE "$EVIDENCE_SCAN_PATTERN" "$control_dir/$f" > /dev/null; then
+              echo "Negative control FAILED: scan did not detect seeded $f"
+              exit 1
+            fi
+          done
+          rm -rf "$control_dir"
+          echo 'Negative control passed: scan detects seeded token, JWT and key-label material.'
+
       - name: Scan evidence for raw tokens or credential material
         shell: bash
+        env:
+          EVIDENCE_SCAN_PATTERN: (eyJ[A-Za-z0-9_-]{20,}|[0-9a-f]{64}|sb_secret_|sb_publishable_|service_role_key|anon[ _]key|secret[ _]key|access[ _]key)
         run: |
           set -euo pipefail
           # Raw one-time claim tokens are 64 lowercase hex chars; local stack
           # credentials are JWT-shaped or key/secret-labelled. None may appear
           # in uploaded evidence.
-          if grep -rInE '(eyJ[A-Za-z0-9_-]{20,}|[0-9a-f]{64}|sb_secret_|sb_publishable_|service_role_key|anon[ _]key|secret[ _]key|access[ _]key)' \
-              artifacts/partner-claim-proof; then
+          if grep -rInE "$EVIDENCE_SCAN_PATTERN" artifacts/partner-claim-proof; then
             echo 'Sensitive material found in proof evidence; failing.'
             exit 1
           fi
           echo 'Evidence scan clean: no raw tokens or credential material.'
 
+      # Evidence content is uploaded only when every prior step — including the
+      # scan — succeeded, so a scan failure can never publish the material it
+      # rejected. always() is reserved for stack cleanup below.
       - name: Upload proof evidence
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: partner-claim-proof-${{ github.sha }}
           path: artifacts/partner-claim-proof
+          if-no-files-found: warn
+          retention-days: 14
+
+      # On any failure, publish only a content-free manifest (names, sizes,
+      # SHA-256 digests) so the failed run stays diagnosable without shipping
+      # evidence content that may not have passed the scan.
+      - name: Build content-free failure manifest
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p artifacts/failure-manifest
+          {
+            echo "run_conclusion=failure"
+            echo "checked_out_sha=$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+            if [ -d artifacts/partner-claim-proof ]; then
+              (cd artifacts/partner-claim-proof && find . -type f -exec sh -c \
+                'printf "%s %s bytes sha256=%s\n" "$1" "$(wc -c < "$1")" "$(sha256sum "$1" | cut -d" " -f1)"' _ {} \;)
+            fi
+          } > artifacts/failure-manifest/manifest.txt
+          cat artifacts/failure-manifest/manifest.txt
+
+      - name: Upload failure manifest
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: partner-claim-proof-failure-manifest-${{ github.sha }}
+          path: artifacts/failure-manifest
           if-no-files-found: warn
           retention-days: 14
 
