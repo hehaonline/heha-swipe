@@ -79,6 +79,16 @@ A table insert is therefore not evidence that deletion was fulfilled. Supabase a
 
 No dedicated public HEHA account-deletion resource was found during the repository/public-site inspection. The current HEHA privacy page only says users may request deletion “where legally allowed” and provides general contact information; it is not an app-specific, prominent request path with scope, identity verification, timing, retention exceptions, and completion expectations.
 
+#### Approved contact and interim ownership — 2026-08-07
+
+Geronimo approved `support@heha.online` as the canonical email destination for HEHA Local and HEHA Swipe support, privacy, and account-deletion requests, with Geronimo as the temporary soft-launch human request owner. This closes the contact/owner decision only; it does not make the mailbox, deletion workflow, or public request page operational.
+
+Before public use, verify mailbox provisioning, inbound delivery, Geronimo's access, copyable fallback behavior, queue/status handling, escalation, and response/fulfillment targets. Opening an email draft is not proof that a request was sent, and receiving a deletion request is not proof that an account was deleted. The stable public deletion-request URL and server-owned fulfillment contract remain open blockers.
+
+Decision evidence:
+- https://github.com/hehaonline/heha-order-hub/issues/187#issuecomment-5222122308
+- https://github.com/hehaonline/heha-swipe/issues/115#issuecomment-5222123150
+
 This blocks both store packages:
 
 - Apple requires apps that support account creation to let users initiate deletion within the app and offer deletion of the full account plus associated non-retained data.
@@ -91,7 +101,7 @@ Required before internal-store release:
 3. Publish a stable, prominent web request page only after legal/operational approval; link it from both apps and the Google Play Data safety form.
 4. Prove ordinary-user, partner, duplicate request, stale session, cross-user, partial-failure/retry, retained-record, and completed-deletion cases in a disposable environment.
 5. Verify that a deleted user cannot refresh a session or continue reading/writing with an old token after the documented expiry/revocation boundary.
-6. Record an owner and fulfillment SLA; do not depend on an unmonitored database queue.
+6. Geronimo is the approved temporary owner; verify mailbox access and monitoring, then define the fulfillment SLA and escalation path. Do not depend on an unmonitored email address or database queue.
 
 Current primary references:
 - https://developer.apple.com/support/offering-account-deletion-in-your-app/
@@ -112,7 +122,7 @@ Before wrapper code starts, approve these exact decisions:
 4. Bundle/application identifier namespace and Apple/Google account owner.
 5. Final public names, manifest short names, support URL, and legally approved privacy-policy URL.
 6. Whether partner/driver/SOM/admin functions ship inside HEHA Local's first binary or remain web-only until customer ordering is stable.
-7. Account-deletion process owner, fulfillment SLA, retention exceptions, and the approved public deletion-request URL.
+7. Account-deletion fulfillment SLA, retention exceptions, and the approved public deletion-request URL. The interim owner and email destination are approved; delivery/access and operations are not yet verified.
 
 Recommended defaults:
 
