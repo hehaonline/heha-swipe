@@ -24,6 +24,20 @@ Every invitation is bound to exactly one intended recipient in addition to its h
 
 The separate `recipient_hint` is server-generated and masked. Claim and preview RPCs compare the binding with `auth.uid()` or the confirmed Auth email before ownership or invitation state can change. Recipient mismatch fails closed and does not consume or revoke the invitation.
 
+## Retention and account-deletion lifecycle
+
+Every `auth.users` reference on `partner_claim_invites` (`created_by`, `intended_user_id`, `consumed_by`, `revoked_by`) is `ON DELETE SET NULL`, so deleting an Auth account is never blocked by invitation history. The invitation row remains as an immutable tombstone and `admin_audit_logs` keeps the event trail with identifiers embedded as plain values. An ACTIVE invitation whose intended recipient is deleted becomes recipient-less and fails closed (42501) in preview/claim until an internal admin issues a replacement; the recipient check permits zero bindings only as this tombstone state, while `create_partner_claim_invite` still requires exactly one binding at creation.
+
+`partner_id` stays `ON DELETE RESTRICT` deliberately: the approved opt-out policy hides listings without deleting the canonical Partner ID, so any partner hard-delete needs a reviewed forward migration that first resolves invitation history.
+
+**Decisions that stay with Geronimo (not implemented here):** the retention duration for terminal (consumed/revoked/expired) invitation rows, any scheduled anonymization of `intended_email_normalized` on terminal rows, and any partner hard-delete policy. Until those are approved, terminal rows are retained indefinitely as audit evidence; if privacy deletion and audit retention conflict for a specific account, prefer a reviewed forward migration that anonymizes the row (`intended_email_normalized`, `recipient_hint`) while keeping the token hash and timestamps.
+
+`supabase/tests/partner_claim_lifecycle_proof.sql` proves creator/recipient/claimant deletion in each state and the intentional partner-delete block.
+
+## Concurrency and lock order
+
+`create_partner_claim_invite` and `claim_partner_profile` both acquire row locks partner-first, invitation-second, so replace-vs-claim and revoke-vs-claim serialize on the partner row with one deterministic winner instead of deadlocking (`40P01`). `claim_partner_profile` resolves the token without locking only to learn the partner, then re-reads and re-validates the invitation after both locks are held. `supabase/tests/partner_claim_concurrency_proof.sh` drives two real sessions through both races (disposable database only).
+
 ## Required proof run
 
 Choose two disposable, unclaimed partner rows, two ordinary Auth users, and one Auth user with an allowed active internal role. Run:

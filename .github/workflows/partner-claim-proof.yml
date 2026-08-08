@@ -118,6 +118,11 @@ jobs:
             -f supabase/tests/partner_claim_acl_matrix_proof.sql \
             2>&1 | tee artifacts/partner-claim-proof/acl-matrix-proof.txt
 
+          psql "$DATABASE_URL" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/tests/partner_claim_lifecycle_proof.sql \
+            2>&1 | tee artifacts/partner-claim-proof/lifecycle-proof.txt
+
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -X -A -F '|' -c "
             select 'claim_table_exists', (to_regclass('public.partner_claim_invites') is not null)::text
             union all
@@ -140,6 +145,15 @@ jobs:
             > /dev/null
           echo "acl_matrix_proof_after_reapply=pass" \
             | tee -a artifacts/partner-claim-proof/idempotency-reapply.txt
+
+      - name: Two-session concurrency proof (replace-vs-claim, revoke-vs-claim)
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          bash supabase/tests/partner_claim_concurrency_proof.sh \
+            2>&1 | tee artifacts/partner-claim-proof/concurrency-proof.txt
 
       - name: 'Negative control: evidence scan must detect seeded token material'
         shell: bash

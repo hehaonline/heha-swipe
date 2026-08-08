@@ -99,11 +99,20 @@ before insert on public.partners
 for each row
 execute function app_private.set_partner_listing_origin();
 
+-- Account-deletion lifecycle: every auth.users reference is ON DELETE SET
+-- NULL so deleting an Auth account (creator, intended recipient, claimant,
+-- revoker) can never be blocked by invite history. The row itself is the
+-- immutable tombstone; admin_audit_logs keeps the event trail. An ACTIVE
+-- invitation whose intended recipient is deleted becomes recipient-less and
+-- fails closed in preview/claim (42501) until an internal admin replaces it.
+-- partner_id stays ON DELETE RESTRICT deliberately: the approved opt-out
+-- policy hides listings without deleting the canonical Partner ID, and any
+-- partner hard-delete requires a reviewed forward migration first.
 create table if not exists public.partner_claim_invites (
   id uuid primary key default gen_random_uuid(),
   partner_id uuid not null references public.partners(id) on delete restrict,
   token_hash bytea not null unique,
-  created_by uuid not null references auth.users(id) on delete restrict,
+  created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   expires_at timestamptz not null,
   consumed_at timestamptz,
@@ -111,12 +120,15 @@ create table if not exists public.partner_claim_invites (
   revoked_at timestamptz,
   revoked_by uuid references auth.users(id) on delete set null,
   outreach_channel text,
-  intended_user_id uuid references auth.users(id) on delete restrict,
+  intended_user_id uuid references auth.users(id) on delete set null,
   intended_email_normalized text,
   recipient_hint text not null,
   constraint partner_claim_invites_expiry_check check (expires_at > created_at),
+  -- At most one binding. Zero bindings is the deletion tombstone state
+  -- (intended account removed); create_partner_claim_invite still requires
+  -- exactly one binding at creation, and preview/claim fail closed on zero.
   constraint partner_claim_invites_recipient_check check (
-    num_nonnulls(intended_user_id, intended_email_normalized) = 1
+    num_nonnulls(intended_user_id, intended_email_normalized) <= 1
   ),
   constraint partner_claim_invites_email_normalized_check check (
     intended_email_normalized is null
@@ -137,6 +149,30 @@ create index if not exists partner_claim_invites_partner_id_idx
 create unique index if not exists partner_claim_invites_one_active_per_partner_uidx
   on public.partner_claim_invites(partner_id)
   where consumed_at is null and revoked_at is null;
+
+-- Corrective normalization for any environment where the never-merged #82
+-- draft table already exists with ON DELETE RESTRICT user bindings or the
+-- exactly-one recipient check. Final state must match the definition above.
+alter table public.partner_claim_invites
+  alter column created_by drop not null;
+
+alter table public.partner_claim_invites
+  drop constraint if exists partner_claim_invites_created_by_fkey;
+alter table public.partner_claim_invites
+  add constraint partner_claim_invites_created_by_fkey
+  foreign key (created_by) references auth.users(id) on delete set null;
+
+alter table public.partner_claim_invites
+  drop constraint if exists partner_claim_invites_intended_user_id_fkey;
+alter table public.partner_claim_invites
+  add constraint partner_claim_invites_intended_user_id_fkey
+  foreign key (intended_user_id) references auth.users(id) on delete set null;
+
+alter table public.partner_claim_invites
+  drop constraint if exists partner_claim_invites_recipient_check;
+alter table public.partner_claim_invites
+  add constraint partner_claim_invites_recipient_check
+  check (num_nonnulls(intended_user_id, intended_email_normalized) <= 1);
 
 alter table public.partner_claim_invites enable row level security;
 
@@ -386,6 +422,13 @@ begin
     raise exception using errcode = 'P0002', message = 'This claim link has expired.';
   end if;
 
+  -- Deletion tombstone: the intended account was removed after issuance.
+  -- Fail closed; only a replacement invitation can restore claimability.
+  if invite_row.intended_user_id is null
+     and invite_row.intended_email_normalized is null then
+    raise exception using errcode = '42501', message = 'This claim link is no longer valid.';
+  end if;
+
   if invite_row.intended_user_id is not null then
     if invite_row.intended_user_id <> auth.uid() then
       raise exception using errcode = '42501', message = 'This one-time claim link belongs to a different account.';
@@ -449,10 +492,35 @@ begin
     raise exception using errcode = '22023', message = 'Claim token is required.';
   end if;
 
+  -- Resolve the invitation WITHOUT locking, only to learn the partner, then
+  -- take row locks in the same order as create_partner_claim_invite —
+  -- partner first, invitation second — so a concurrent replace/claim pair
+  -- serializes on the partner row instead of deadlocking (40P01). Every
+  -- state check below runs on the re-read invitation after both locks are
+  -- held; the unlocked read is never trusted for state.
   select *
   into invite_row
   from public.partner_claim_invites
-  where token_hash = extensions.digest(btrim(p_raw_token), 'sha256')
+  where token_hash = extensions.digest(btrim(p_raw_token), 'sha256');
+
+  if not found then
+    raise exception using errcode = 'P0002', message = 'This claim link is not recognized.';
+  end if;
+
+  select *
+  into partner_row
+  from public.partners
+  where id = invite_row.partner_id
+  for update;
+
+  if not found then
+    raise exception using errcode = 'P0002', message = 'Partner profile not found.';
+  end if;
+
+  select *
+  into invite_row
+  from public.partner_claim_invites
+  where id = invite_row.id
   for update;
 
   if not found then
@@ -466,6 +534,12 @@ begin
   end if;
   if invite_row.expires_at <= claim_time then
     raise exception using errcode = 'P0002', message = 'This claim link has expired.';
+  end if;
+
+  -- Deletion tombstone: intended account removed after issuance; fail closed.
+  if invite_row.intended_user_id is null
+     and invite_row.intended_email_normalized is null then
+    raise exception using errcode = '42501', message = 'This claim link is no longer valid.';
   end if;
 
   if invite_row.intended_user_id is not null then
@@ -482,16 +556,6 @@ begin
        or actor_email_normalized <> invite_row.intended_email_normalized then
       raise exception using errcode = '42501', message = 'This one-time claim link belongs to a different account.';
     end if;
-  end if;
-
-  select *
-  into partner_row
-  from public.partners
-  where id = invite_row.partner_id
-  for update;
-
-  if not found then
-    raise exception using errcode = 'P0002', message = 'Partner profile not found.';
   end if;
 
   if partner_row.relationship_status in ('opted_out', 'removed') then
