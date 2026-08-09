@@ -66,6 +66,36 @@ Google's current documentation requires release signing and uses Android App Bun
 - https://developer.chrome.com/docs/android/trusted-web-activity/quick-start
 - https://developer.chrome.com/docs/android/trusted-web-activity/android-for-web-devs
 
+### Store billing and external-checkout blocker — revalidated 2026-08-09
+
+Swipe's audited RC sells a recurring Stripe supporter subscription from inside `CommunityPassTab.jsx`:
+
+- the in-app buttons open `create-supporter-checkout`, which creates a Stripe `subscription` Checkout Session;
+- the $1–$100 monthly payment unlocks an active supporter entitlement inside the app;
+- the advertised digital benefits include early feature access, supporter-only deal drops, voting on future HEHA partners, first looks, community updates, and event invites.
+
+This is not a payment for food, transportation, or another physical service. It is also not safe to treat as a no-benefit donation: the payment produces a digital entitlement and advertised in-app benefits, and no approved tax-exempt-donation eligibility is evidenced.
+
+Apple's App Review Guideline 3.1.1 requires In-App Purchase when payment unlocks app features, subscriptions, or premium digital content. Apple's external-link rules vary by storefront and entitlement; United States treatment does not establish eligibility everywhere. Google Play's Payments policy likewise requires Play Billing for in-app functionality, digital content, and subscriptions unless an applicable exception or enrolled regional program applies, and otherwise prohibits buttons or flows that lead to another payment method.
+
+Current primary references:
+
+- https://developer.apple.com/app-store/review/guidelines/#in-app-purchase
+- https://support.google.com/googleplay/android-developer/answer/9858738
+- https://developer.android.com/google/play/billing/subscriptions.html
+
+This is a store-packaging blocker independent of the existing session-verification defect. Fixing the Stripe return page would make the web checkout more trustworthy; it would not by itself make that checkout an approved store payment path.
+
+Recommended default for the first TestFlight and Play internal builds:
+
+1. Keep Stripe supporter purchase and digital entitlement surfaces web-only.
+2. Omit or fail closed the supporter purchase CTA and paid-benefit unlocks in store builds; do not merely open the Stripe page in an in-app browser or external browser.
+3. Preserve free discovery/community functionality so the initial binaries do not depend on monetization.
+4. If paid supporter benefits are required in the native apps, implement StoreKit and Play Billing, verify receipts/tokens server-side, reconcile native and Stripe entitlements without double subscriptions, support restore/cancel/refund/grace-period states, and submit the products for review.
+5. Treat storefront-specific external-link or alternative-billing programs as a separate approval and compliance project. Verify eligibility, enrollment, disclosures, fees, reporting, and geography before relying on one.
+
+Required validation includes store-build feature-flag denial, direct/deep-link denial, existing-web-supporter behavior, duplicate-subscription prevention, restore, refund/revocation, billing retry/grace period, account deletion with active subscriptions, and exact reviewer notes. No billing product, store record, price, payment provider, or production configuration is authorized by this audit.
+
 ### Account-deletion store blocker — revalidated 2026-08-07
 
 Swipe's audited RC does expose **Request account deletion** in `ProfileTab.jsx`, but the current behavior is only a partial request flow:
@@ -140,10 +170,11 @@ Before wrapper code starts, approve these exact decisions:
 1. Public store products: separate **HEHA Local** and **HEHA Swipe** apps.
 2. Initial channel: web soft launch first; TestFlight and Play internal testing second.
 3. Default wrapper: Capacitor for both products.
-4. Bundle/application identifier namespace and Apple/Google account owner.
-5. Final public names, manifest short names, support URL, and legally approved privacy-policy URL.
-6. Whether partner/driver/SOM/admin functions ship inside HEHA Local's first binary or remain web-only until customer ordering is stable.
-7. Account-deletion fulfillment SLA, retention exceptions, and the approved public deletion-request URL. The interim owner and email destination are approved; delivery/access and operations are not yet verified.
+4. Store monetization: omit supporter purchases and paid entitlements from the first binaries (recommended), or fund and implement StoreKit/Play Billing before they ship.
+5. Bundle/application identifier namespace and Apple/Google account owner.
+6. Final public names, manifest short names, support URL, and legally approved privacy-policy URL.
+7. Whether partner/driver/SOM/admin functions ship inside HEHA Local's first binary or remain web-only until customer ordering is stable.
+8. Account-deletion fulfillment SLA, retention exceptions, and the approved public deletion-request URL. The interim owner and email destination are approved; delivery/access and operations are not yet verified.
 
 Recommended defaults:
 
@@ -155,12 +186,13 @@ Recommended defaults:
 ## Prepared implementation and validation order
 
 1. Clear the existing Local and Swipe RC blockers, including session-bound supporter-return verification; do not package an unverified RC.
-2. Approve final privacy/legal URLs, store data inventories, and the account-deletion fulfillment contract.
-3. Create a separate wrapper branch per repository from a newly verified release base.
-4. Add native projects without changing web business logic.
-5. Add signing-safe configuration templates; keep keys and provisioning material out of Git.
-6. Validate web manifests/icons, then generate full native icon/splash sets.
-7. Test exact signed internal builds on supported phones and tablets:
+2. Approve the store monetization plan. Default to no supporter purchase or paid-entitlement surface in the first binaries; native billing is a separate reviewed implementation.
+3. Approve final privacy/legal URLs, store data inventories, and the account-deletion fulfillment contract.
+4. Create a separate wrapper branch per repository from a newly verified release base.
+5. Add native projects without changing web business logic.
+6. Add signing-safe configuration templates; keep keys and provisioning material out of Git.
+7. Validate web manifests/icons, then generate full native icon/splash sets.
+8. Test exact signed internal builds on supported phones and tablets:
    - cold start, update, offline/error recovery;
    - signup/sign-in/sign-out/account deletion;
    - guest/auth and role boundaries;
@@ -168,8 +200,8 @@ Recommended defaults:
    - catalog/discovery, cart/request, partner, driver/SOM/admin gates;
    - keyboard, screen reader, dynamic text/zoom, safe areas, rotation;
    - privacy permissions and denied-permission recovery.
-8. Produce store metadata, privacy/data-safety answers, review notes, support path, release notes, and rollback receipt.
-9. Submit only to TestFlight/Play internal testing after an exact approval. Public submission remains a separate approval.
+9. Produce store metadata, privacy/data-safety answers, review notes, support path, release notes, and rollback receipt.
+10. Submit only to TestFlight/Play internal testing after an exact approval. Public submission remains a separate approval.
 
 ## Rollback
 
