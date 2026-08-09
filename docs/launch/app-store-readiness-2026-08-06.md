@@ -56,6 +56,34 @@ Evidence:
 - Local presents itself as “HEHA Order Hub” and describes real-time orders, drivers, and payouts, while the public product is HEHA Local. Approve truthful public naming before promoting installation.
 - Each icon is declared as both `any maskable` using one asset. Maskable safe-zone appearance still needs visual validation.
 
+### Anonymous public-partner projection privacy blocker — revalidated 2026-08-09
+
+Swipe RC #113 carries #112's guest-browsing path. At exact RC head `885461f55f64ea56a9366e6573b6002769820f06`:
+
+- `loadPublicPartners()` performs an unauthenticated `public_swipe_partners.select("*")`;
+- the committed `security_invoker` view grants `SELECT` to `anon` and `authenticated`;
+- the view projects far more than a discovery card, including `owner_id`, `contact`, `phone`, swipe/save/profile-view totals, pricing/service-fee fields, routing notes, routing staff IDs, and routing timestamps.
+
+Row-level security and `security_invoker=true` can constrain which rows an invoker may read; they do not remove columns explicitly projected by the view. Hiding those fields in React also does not keep them out of the Data API response. The repository's migration-lineage evidence does not establish a verified live baseline for the prerequisite view/grants/RLS chain.
+
+This is a web soft-launch privacy and reconnaissance blocker and therefore also blocks native packaging. Public contact details need an explicit publication/consent contract; owner/staff identifiers, internal routing/audit data, analytics, and commercial configuration should not be exposed by a public discovery projection.
+
+Required fail-closed repair:
+
+1. Define an explicit public-card projection containing only reviewed display fields; exclude owner/staff identifiers, routing/audit data, analytics, and commercial/admin configuration.
+2. Omit contact/phone unless an approved public-contact consent rule explicitly permits them.
+3. Replace the guest client's wildcard query with the same display-field allowlist as defense in depth.
+4. Preserve explicit grants, `security_invoker=true`, and a public-row policy limited to approved/live, Swipe-eligible, non-test records.
+5. Prove on an approved disposable Supabase target that anonymous and authenticated public reads cannot retrieve excluded columns or hidden rows, partner/admin private workflows remain intact, and the canonical migration chain replays cleanly.
+
+Do not patch or apply a migration from this documentation branch. The data/authorization domain overlaps the deployment-frozen claim work in #117 and the stale predecessor #82; rebuild the eventual repair from the approved canonical database baseline and review it separately.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/pull/112#issuecomment-5228082440
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/src/App.jsx
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/supabase/migrations/20260720093100_partner_multi_categories_view_security_invoker.sql
+
 ### Apple App Store blockers
 
 - No iOS/Xcode or wrapper project.
@@ -204,7 +232,7 @@ Recommended defaults:
 
 ## Prepared implementation and validation order
 
-1. Clear the existing Local and Swipe RC blockers, including session-bound supporter-return verification; do not package an unverified RC.
+1. Clear the existing Local and Swipe RC blockers, including the anonymous public-partner projection and session-bound supporter-return verification; do not package an unverified RC.
 2. Approve the store monetization plan. Default to no supporter purchase or paid-entitlement surface in the first binaries; native billing is a separate reviewed implementation.
 3. Approve final privacy/legal URLs, store data inventories, and the account-deletion fulfillment contract.
 4. Create a separate wrapper branch per repository from a newly verified release base.
