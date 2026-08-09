@@ -84,6 +84,36 @@ Evidence:
 - https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/src/App.jsx
 - https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/supabase/migrations/20260720093100_partner_multi_categories_view_security_invoker.sql
 
+### Client-side account webhook privacy and integrity gate — revalidated 2026-08-09
+
+Swipe RC #113 at exact head `885461f55f64ea56a9366e6573b6002769820f06` invokes `pingNewUserWebhook(session.user)` whenever an authenticated user ID becomes active. That includes an ordinary restored session on app load; the call is not tied to evidence that the account was newly created.
+
+When `VITE_MAKE_NEW_USER_WEBHOOK` is configured, browser code posts `user_id`, email, phone, account creation time, and a product source value directly to the endpoint. Because Vite exposes `VITE_` values to the built client, this endpoint URL must be treated as public: it cannot serve as a secret or by itself authenticate that a request came from HEHA. The current call has no event ID or idempotency key, no signed server assertion, no response validation, and no durable delivery receipt; failures are silently ignored. The repository does not establish whether the variable is configured in preview or production, so live activation and delivery remain **unknown**, not passed.
+
+This creates two launch risks if configured:
+
+- account identifiers can be sent to a third-party automation on routine session restoration rather than a defined, consented new-account lifecycle event;
+- a browser-visible webhook can be replayed, spoofed, or spammed, while repeated mounts/session activity can produce duplicate notifications without an idempotency contract.
+
+Issue #86 separately tracks rotation and server-side protection for Make credentials embedded in database functions. It does not close this client-exposed path. Coordinate remediation so no replacement bearer endpoint is returned to frontend code.
+
+Required fail-closed plan:
+
+1. **Recommended soft-launch default:** verify the deployment variable by name only and leave `VITE_MAKE_NEW_USER_WEBHOOK` unset until an approved server-owned event path exists. Do not expose or paste its value into evidence.
+2. Define the exact business event, minimum necessary fields, consent/privacy-inventory treatment, retention, and processor ownership. An app session or sign-in is not a “new user” event.
+3. Emit the event from a trusted server/database boundary only after the intended account lifecycle transition, using an authenticated server-held destination, an immutable event ID, idempotent delivery, bounded retries, and a durable success/failure receipt.
+4. Do not place replacement webhook credentials in `VITE_` variables, browser bundles, client logs, or public error responses.
+5. Prove unconfigured fail-closed behavior, first account creation, ordinary sign-in, session restore, remount/Strict Mode, token refresh, replay, forged payload, rate limit, timeout, third-party failure/retry, and deletion/retention handling in a disposable environment.
+6. Inventory the similarly named partner-approval webhook separately before changing shared Make scenarios or credentials; do not broaden this documentation draft into an integration repair.
+
+No Vercel variable, Make scenario, Supabase function, credential, or production environment is changed or authorized by this audit.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/src/App.jsx
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/.env.example
+- https://github.com/hehaonline/heha-swipe/issues/86
+
 ### Apple App Store blockers
 
 - No iOS/Xcode or wrapper project.
