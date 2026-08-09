@@ -144,6 +144,31 @@ Evidence:
 - https://github.com/hehaonline/heha-swipe/pull/78#issuecomment-5227563825
 - https://github.com/hehaonline/heha-swipe/issues/86
 
+### Pending partner queue discoverability gate — revalidated 2026-08-09
+
+The durable partner row is recoverable to its owner after a reload: `App.jsx` queries the latest `partners` row by `owner_id`, and `ProfileTab.jsx` independently reloads that owner-scoped row and shows its listing status. This closes the owner-side uncertainty after a successful insert even if the wizard's local `submittedListing` state is lost.
+
+The internal recovery path is not launch-ready, however. A new registration is inserted with listing `status = 'pending'`. The canonical routing migration gives `routing_status` a default of `suggested`; its trigger promotes that field to `needs_review` only when the listing itself is already public (`approved`, `live`, or `listed`). `RoutingDashboard.jsx` loads the rows but defaults its filter to `needs_review`, so a newly submitted pending row is hidden until an operator deliberately selects **Suggested** or **All**. That screen reviews cross-platform routing, not partner-publication approval, and the exact RC contains no dedicated pending-publication queue or frontend call to `approve_partner(uuid)`.
+
+This makes the unset-webhook fallback incomplete: the record is durable, but there is no default-visible, purpose-built queue proving that HEHA operations will discover and disposition it. The optional browser webhook must not be treated as the approval queue or the only notification path.
+
+Required soft-launch gate:
+
+1. **Recommended safe default:** keep live partner registration closed, or staff a documented manual query for `status = 'pending'` before accepting submissions. Continue leaving `VITE_MAKE_PARTNER_APPROVAL_WEBHOOK` unset.
+2. Add a dedicated, least-privilege internal pending-publication queue ordered oldest-first. Show only the fields required to review, with explicit empty, loading, timeout, retry, and error states.
+3. Keep publication approval separate from routing review. Routing status must not imply that a partner is approved, public, or HEHA Certified; final publication remains super-admin/service-owned.
+4. Define owner, cadence/SLA, duplicate handling, rejection/needs-information states, escalation, and an auditable disposition receipt. A row that is merely selectable under **Suggested** is not evidence of an operated approval process.
+5. Prove a successful insert with the webhook unset, reload/owner recovery, default internal discovery, oldest-first processing, unauthorized access denial, concurrent reviewers, approve/reject/needs-information paths, partial failure/retry, and public-visibility separation in a disposable environment.
+6. Reconcile the live migration/RLS baseline before implementation. Do not apply schema, policy, role, RPC, webhook, or production-data changes from this documentation branch.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/src/App.jsx
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/src/components/ProfileTab.jsx
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/src/components/admin/routing/RoutingDashboard.jsx
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/supabase/migrations/20260705001100_canonical_partner_routing.sql
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/supabase/migrations/20260707045848_partner_security_foundation.sql
+
 ### Apple App Store blockers
 
 - No iOS/Xcode or wrapper project.
