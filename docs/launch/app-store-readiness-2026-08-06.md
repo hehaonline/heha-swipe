@@ -114,6 +114,36 @@ Evidence:
 - https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/.env.example
 - https://github.com/hehaonline/heha-swipe/issues/86
 
+### Client-side partner-review webhook recovery gate — revalidated 2026-08-09
+
+Swipe RC #113's partner registration flow has a separate client-side webhook boundary in `PartnerWizard.jsx`. After the authenticated `partners` insert succeeds, the component awaits `VITE_MAKE_PARTNER_APPROVAL_WEBHOOK` before it calls `setSubmittedListing(data)` and leaves the loading state.
+
+The code does not set an application timeout, inspect `response.ok`, persist a delivery result, or offer notification retry/reconciliation. Its catch block only handles rejected fetches and intentionally suppresses them. Therefore:
+
+- a slow or non-returning endpoint can strand the user in a loading state after the partner row has already been committed, creating an uncertain submission experience;
+- an HTTP 4xx/5xx resolves normally and is treated the same as delivery success;
+- a network rejection is hidden, so the user can see a successful registration even though the operational notification may be missing;
+- when configured, the browser-visible `VITE_` endpoint receives partner identity, category, neighborhood, and owner email/phone and can be forged, replayed, or spammed by a client.
+
+The database record—not the Make call—must be the authoritative review queue. Notification delivery must never sit between a committed submission and truthful user confirmation.
+
+PR #78 does not repair the release path. It is an unwired, stale adapter draft that checks `response.ok` but still uses the browser-visible endpoint, still has no application timeout or durable receipt, and is not part of RC #113. Preserve it as design evidence; do not merge or finish it as a release fix. Issue #86 owns related server/database credential rotation and consumer inventory, so the eventual notification repair must coordinate with that work rather than introducing another endpoint or credential.
+
+Required fail-closed plan:
+
+1. **Recommended soft-launch default:** verify the variable by name only and leave `VITE_MAKE_PARTNER_APPROVAL_WEBHOOK` unset. Treat the authenticated pending partner row as the review queue and establish a manual queue/owner check before accepting live registrations.
+2. Return truthful registration success immediately after the database insert. Make clear that the listing is pending review; do not imply that a notification was delivered.
+3. Move optional notifications to a server-owned outbox/worker triggered from the committed record. Derive the payload server-side, minimize personal data, authenticate the destination with server-held credentials, and use an immutable event ID plus idempotent delivery.
+4. Record pending/sent/failed status and bounded retry attempts without exposing endpoint values or raw personal data in logs. Provide an operational reconciliation view so failed notifications cannot hide submissions.
+5. Prove database-insert failure, unset endpoint, 2xx, 4xx, 5xx, timeout, offline/rejected fetch, delayed response, replay/forgery, duplicate event, retry recovery, and manual-queue fallback in a disposable environment.
+6. Inventory and coordinate the existing account and partner-approved notification consumers before rotating or replacing any Make endpoint. No live scenario, credential, Vercel variable, database trigger, or Supabase function may change without exact approval.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/src/components/PartnerWizard.jsx
+- https://github.com/hehaonline/heha-swipe/pull/78#issuecomment-5227563825
+- https://github.com/hehaonline/heha-swipe/issues/86
+
 ### Apple App Store blockers
 
 - No iOS/Xcode or wrapper project.
