@@ -3,6 +3,7 @@ import { filterPublicTags } from "../lib/partnerTags";
 import { publicDescription, TWO_LINE_CLAMP } from "../lib/cardCopy";
 import {
   isHehaLocalPartner,
+  partnerLocalRequestCopy,
   partnerOrderLabel,
   partnerOrderUrl,
 } from "../lib/hehaLocalRouting";
@@ -101,6 +102,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
     const currentImage = images[galleryIndex] || fallbackImage(selectedPartner);
     const isOfficialPartner = Boolean(selectedPartner.heha_partner);
     const isLocalPartner = isHehaLocalPartner(selectedPartner);
+    const localRequestCopy = partnerLocalRequestCopy(selectedPartner);
     const website = hasRealWebsite(selectedPartner.website) ? selectedPartner.website : null;
     const canSubmitDiscount = discountForm.user_phone.trim().length >= 7 && discountForm.consent_to_contact;
 
@@ -144,8 +146,8 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
 
         <section className="detail-section card-like">
           <div className="detail-section-heading">
-            <p className="eyebrow">{items.length ? "Select items" : isOfficialPartner ? "Ordering" : "Community interest"}</p>
-            <h3>{items.length ? "Choose what you want to view or order" : isOfficialPartner ? "Ordering coming soon" : "Want HEHA member discounts here?"}</h3>
+            <p className="eyebrow">{items.length ? "Select items" : localRequestCopy?.eyebrow || (isOfficialPartner ? "Ordering" : "Community interest")}</p>
+            <h3>{items.length ? "Choose what you want to view or order" : localRequestCopy?.heading || (isOfficialPartner ? "Ordering coming soon" : "Want HEHA member discounts here?")}</h3>
           </div>
 
           {items.length ? (
@@ -169,7 +171,9 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
             </div>
           ) : (
             <p className="detail-bio">
-              {isOfficialPartner
+              {localRequestCopy
+                ? localRequestCopy.body
+                : isOfficialPartner
                 ? "This partner does not have orderable items listed yet. You can still contact them or HEHA."
                 : "This business is listed for discovery, but it is not yet an official HEHA partner. HEHA can check whether a member discount, daily deal, or partnership offer is available."}
             </p>

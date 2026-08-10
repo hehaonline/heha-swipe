@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { PUBLIC_PARTNER_DIRECTORY_FIELD_LIST } from "../../lib/publicPartnerDirectoryContract";
 
 const PILLARS = [
   ["all", "All"],
@@ -19,7 +20,6 @@ function textIndex(partner) {
     partner.tagline,
     partner.bio,
     partner.neighborhood,
-    partner.location,
     ...(partner.tags || []),
     ...(partner.offerings || []),
   ]
@@ -41,7 +41,7 @@ function secondaryUrl(partner) {
 }
 
 function locationLabel(partner) {
-  return partner.neighborhood || partner.location || "Tampa Bay";
+  return partner.neighborhood || "Tampa Bay";
 }
 
 function summary(partner) {
@@ -65,7 +65,7 @@ export default function PartnerDirectoryEmbed() {
       setError("");
       const { data, error: loadError } = await supabase
         .from("public_partner_directory")
-        .select("id,name,category,business_type,tagline,bio,neighborhood,location,tags,offerings,image_url,photo_emoji,heha_pillar,primary_cta_destination,primary_cta_label,primary_cta_path,created_at")
+        .select(PUBLIC_PARTNER_DIRECTORY_FIELD_LIST)
         .order("created_at", { ascending: false });
 
       if (cancelled) return;

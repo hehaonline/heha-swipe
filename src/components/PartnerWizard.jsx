@@ -1,5 +1,20 @@
-import { useState } from "react";
+import { Children, cloneElement, isValidElement, useId, useState } from "react";
 import { supabase } from "../lib/supabase";
+import {
+  PARTNER_DESTINATIONS,
+  availablePartnerDestinations,
+  createPartnerConsentRequestKey,
+  publicationStatusLabel,
+  supportsHehaLocal,
+  validatePartnerDraftAuthorization,
+} from "../lib/partnerPublicationConsent";
+import {
+  authorizePartnerProfilePublication,
+  getMyPartnerPublicationStatus,
+  submitPartnerRegistrationWithConsent,
+} from "../services/partnerPublicationConsentRepository";
+import PartnerPublicationPreview from "./PartnerPublicationPreview";
+import { hasSpecificHehaLocalDestination } from "../lib/hehaLocalRouting";
 
 const CATEGORIES = [
   { value: "Restaurant", label: "Restaurants", emoji: "🥗" },
@@ -86,6 +101,16 @@ const emptyForm = {
   color: "#ff8a24",
 };
 
+const emptyAuthorization = {
+  destinations: [],
+  representativeName: "",
+  representativeTitle: "",
+  authorityConfirmed: false,
+  profileConfirmed: false,
+  mediaPermissionConfirmed: false,
+  tampaBayServiceConfirmed: false,
+};
+
 function normalizeInstagram(value) {
   return value.trim().replace(/^@/, "");
 }
@@ -117,34 +142,65 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState(emptyForm);
+  const [authorization, setAuthorization] = useState(emptyAuthorization);
+  const [submissionKey] = useState(() => createPartnerConsentRequestKey());
   const [newOffering, setNewOffering] = useState("");
   const [newItem, setNewItem] = useState({ name: "", price: "", emoji: "✦" });
   const [submittedListing, setSubmittedListing] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusError, setStatusError] = useState(null);
+  const authorizationErrorPrefix = useId();
 
   const activeStep = STEPS[step];
+
+  const focusFirstError = () => {
+    window.requestAnimationFrame(() => {
+      document.querySelector('[aria-invalid="true"], .wizard-error')?.focus();
+    });
+  };
 
   const set = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: null }));
   };
 
-  const toggleCategory = (value) => {
-    setForm((current) => {
-      const selected = current.categories.includes(value)
-        ? current.categories.filter((category) => category !== value)
-        : [...current.categories, value];
+  const setAuthorizationField = (field, value) => {
+    setAuthorization((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: null }));
+  };
 
-      return {
+  const toggleDestination = (destination) => {
+    setAuthorization((current) => ({
+      ...current,
+      destinations: current.destinations.includes(destination)
+        ? current.destinations.filter((value) => value !== destination)
+        : [...current.destinations, destination],
+    }));
+    setErrors((current) => ({ ...current, destinations: null }));
+  };
+
+  const toggleCategory = (value) => {
+    const selected = form.categories.includes(value)
+      ? form.categories.filter((category) => category !== value)
+      : [...form.categories, value];
+
+    setForm((current) => ({
+      ...current,
+      categories: selected,
+      category: selected[0] || "",
+      photo_emoji: current.categories.length === 0 && selected.length === 1
+        ? CATEGORY_EMOJIS[selected[0]] || current.photo_emoji
+        : current.photo_emoji,
+    }));
+
+    if (!supportsHehaLocal(selected)) {
+      setAuthorization((current) => ({
         ...current,
-        categories: selected,
-        category: selected[0] || "",
-        photo_emoji: current.categories.length === 0 && selected.length === 1
-          ? CATEGORY_EMOJIS[selected[0]] || current.photo_emoji
-          : current.photo_emoji,
-      };
-    });
+        destinations: current.destinations.filter(
+          (destination) => destination !== PARTNER_DESTINATIONS.local
+        ),
+      }));
+    }
     setErrors((current) => ({ ...current, category: null }));
   };
 
@@ -164,6 +220,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
     }
     if (step === 2 && !form.phone.trim() && !form.contact.trim()) nextErrors.phone = "Add at least a phone number or email.";
     setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) focusFirstError();
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -188,71 +245,66 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
   };
 
   const submit = async () => {
+    const authorizationResult = validatePartnerDraftAuthorization({
+      categories: form.categories,
+      ...authorization,
+    });
+    if (!authorizationResult.valid) {
+      setErrors((current) => ({ ...current, ...authorizationResult.errors }));
+      focusFirstError();
+      return;
+    }
+
     setLoading(true);
     setErrors({});
     try {
-      const completePct = [
-        form.name,
-        form.categories.length > 0,
-        form.neighborhood,
-        form.tagline,
-        form.bio,
-        form.phone || form.contact,
-        form.website,
-        form.instagram,
-        form.offerings.length > 0,
-        form.items.length > 0,
-      ].filter(Boolean).length * 10;
+      const data = await submitPartnerRegistrationWithConsent({
+        form: {
+          ...form,
+          hours: operatingHoursSummary(form) || null,
+          deliveryDays: orderedScheduleDays(form.scheduleDays),
+          instagram: normalizeInstagram(form.instagram),
+        },
+        authorization: {
+          ...authorization,
+          destinations: authorizationResult.destinations,
+        },
+        submissionKey,
+      });
 
-      const { data, error } = await supabase.from("partners").insert({
-        owner_id: user.id,
-        name: form.name.trim(),
-        category: form.categories[0],
-        categories: form.categories,
-        neighborhood: form.neighborhood.trim(),
-        tagline: form.tagline.trim(),
-        bio: form.bio.trim(),
-        hours: operatingHoursSummary(form) || null,
-        delivery_days: orderedScheduleDays(form.scheduleDays),
-        business_type: form.business_type.trim() || null,
-        phone: form.phone.trim() || null,
-        contact: form.contact.trim() || null,
-        website: form.website.trim() || null,
-        instagram: normalizeInstagram(form.instagram) || null,
-        location: form.location.trim() || null,
-        offerings: form.offerings,
-        items: form.items,
-        photo_emoji: form.photo_emoji,
-        color: form.color,
-        status: "pending",
-        complete_pct: completePct,
-        heha_partner: false,
-      }).select().single();
-
-      if (error) throw error;
-
+      let reviewHandoffWarning = null;
       try {
         const webhookUrl = import.meta.env.VITE_MAKE_PARTNER_APPROVAL_WEBHOOK;
         if (webhookUrl) {
-          await fetch(webhookUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              partner_id: data.id,
-              partner_name: data.name,
-              category: data.category,
-              categories: data.categories || form.categories,
-              neighborhood: data.neighborhood,
-              owner_email: user.email || user.phone,
-              status: "pending_review",
-            }),
-          });
+          const controller = new AbortController();
+          const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+          try {
+            const response = await fetch(webhookUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              signal: controller.signal,
+              body: JSON.stringify({
+                partner_id: data.id,
+                partner_name: data.name,
+                category: data.category,
+                categories: data.categories || form.categories,
+                neighborhood: form.neighborhood.trim(),
+                owner_email: user.email || user.phone,
+                requested_destinations: authorizationResult.destinations,
+                status: "pending_review",
+              }),
+            });
+            if (!response.ok) throw new Error(`Partner review handoff returned ${response.status}.`);
+          } finally {
+            window.clearTimeout(timeoutId);
+          }
         }
       } catch {
-        // Webhook issues should not block the user from submitting their listing.
+        reviewHandoffWarning = "Your registration is saved in HEHA’s review queue, but the optional review notification did not send. HEHA can still recover and review this submission.";
       }
 
       setSubmittedListing(data);
+      setStatusError(reviewHandoffWarning);
     } catch (error) {
       setErrors({ submit: error.message || "Could not submit this listing yet." });
     } finally {
@@ -267,7 +319,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
     try {
       const { data, error } = await supabase
         .from("partners")
-        .select("id, name, category, categories, status, created_at, updated_at, complete_pct, heha_partner")
+        .select("id, name, category, categories, status, created_at, updated_at, complete_pct, heha_partner, swipe_eligible, local_eligible, local_lane, primary_cta_destination, primary_cta_path")
         .eq("id", submittedListing.id)
         .eq("owner_id", user.id)
         .maybeSingle();
@@ -286,6 +338,10 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
         listing={submittedListing}
         loading={statusLoading}
         error={statusError}
+        authorization={{
+          ...authorization,
+          destinations: [...authorization.destinations].sort(),
+        }}
         onRefresh={refreshSubmittedListing}
         onContinue={() => onComplete(submittedListing)}
       />
@@ -421,7 +477,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
               </div>
             </Field>
 
-            <Field label="Full address" hint="optional">
+            <Field label="Full address" hint="optional · kept private for review and logistics">
               <input value={form.location} onChange={(event) => set("location", event.target.value)} placeholder="123 Main St, Tampa, FL 33601" />
             </Field>
 
@@ -460,6 +516,11 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
 
             <div className="wizard-field-block">
               <Label>Featured items <em>(optional)</em></Label>
+              {supportsHehaLocal(form.categories) && (
+                <p className="fine-print">
+                  For chefs and caterers, these details stay private during Wave 1. You set the real menu or per-portion price when approving a customer quote.
+                </p>
+              )}
               <div className="wizard-item-row">
                 <input value={newItem.name} onChange={(event) => setNewItem((current) => ({ ...current, name: event.target.value }))} placeholder="Item name" />
                 <input value={newItem.price} onChange={(event) => setNewItem((current) => ({ ...current, price: event.target.value }))} placeholder="$0" />
@@ -519,7 +580,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
 
         {step === 5 && (
           <WizardPanel>
-            <p className="wizard-helper-copy">Everything look good? HEHA will review your listing before it appears publicly.</p>
+            <p className="wizard-helper-copy">Review the profile, choose where HEHA may prepare it, and record the authorized business representative. Nothing is published automatically.</p>
             <div className="wizard-review-card">
               <div className="wizard-review-top" style={{ "--preview-color": form.color }}>
                 <span>{form.photo_emoji}</span>
@@ -534,15 +595,19 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
               </div>
             </div>
 
+            <p className="eyebrow">Public profile fields</p>
             <div className="wizard-review-list">
               {[
                 ["Categories", categorySummary(form.categories) || "None selected"],
-                ["Phone", form.phone || "Not provided"],
+                ["Public service area", form.neighborhood || "Not provided"],
                 ["Hours", operatingHoursSummary(form) || "Not provided"],
+                ["Business type", form.business_type || "Not provided"],
                 ["Website", form.website || "Not provided"],
                 ["Instagram", form.instagram ? `@${normalizeInstagram(form.instagram)}` : "Not provided"],
                 ["Offerings", form.offerings.length ? form.offerings.join(", ") : "None added"],
-                ["Featured items", form.items.length ? `${form.items.length} item${form.items.length === 1 ? "" : "s"}` : "None added"],
+                ...(supportsHehaLocal(form.categories)
+                  ? [["Wave 1 pricing", "To be quoted — you set the food/service price"]]
+                  : [["Featured items", form.items.length ? `${form.items.length} item${form.items.length === 1 ? "" : "s"}` : "None added"]]),
               ].map(([label, value]) => (
                 <div key={label}>
                   <span>{label}</span>
@@ -551,9 +616,137 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
               ))}
             </div>
 
-            <div className="wizard-note">Listings are submitted as pending review. HEHA approval/verification is not automatic.</div>
+            <p className="eyebrow wizard-private-heading">Private verification and logistics</p>
+            <div className="wizard-review-list wizard-private-fields">
+              {[
+                ["Phone", form.phone || "Not provided"],
+                ["Direct contact", form.contact || "Not provided"],
+                ["Full address", form.location || "Not provided"],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+            <p className="fine-print">Private fields are not included in HEHA’s public partner views.</p>
+
+            <div className="wizard-consent-card">
+              <div>
+                <p className="eyebrow">Private profile preparation</p>
+                <h2>Where may HEHA prepare this profile?</h2>
+                <p>Nothing is selected for you. HEHA Local is offered here only to caterers and private chefs.</p>
+              </div>
+
+              <div
+                className="wizard-destination-list"
+                role="group"
+                aria-label="HEHA profile destinations"
+                aria-describedby={errors.destinations ? `${authorizationErrorPrefix}-destinations` : undefined}
+              >
+                {availablePartnerDestinations(form.categories).map((destination) => (
+                  <label key={destination.value} className="wizard-check-row">
+                    <input
+                      type="checkbox"
+                      checked={authorization.destinations.includes(destination.value)}
+                      onChange={() => toggleDestination(destination.value)}
+                      aria-invalid={errors.destinations ? "true" : undefined}
+                    />
+                    <span>
+                      <strong>{destination.label}</strong>
+                      <small>{destination.description}</small>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {errors.destinations && <Error id={`${authorizationErrorPrefix}-destinations`}>{errors.destinations}</Error>}
+
+              <Field label="Authorized representative" required error={errors.representativeName}>
+                <input
+                  value={authorization.representativeName}
+                  onChange={(event) => setAuthorizationField("representativeName", event.target.value)}
+                  placeholder="Full name"
+                  autoComplete="name"
+                />
+              </Field>
+              <Field label="Role or title" required error={errors.representativeTitle}>
+                <input
+                  value={authorization.representativeTitle}
+                  onChange={(event) => setAuthorizationField("representativeTitle", event.target.value)}
+                  placeholder="Owner, founder, manager…"
+                />
+              </Field>
+
+              <label className="wizard-check-row">
+                <input
+                  type="checkbox"
+                  checked={authorization.authorityConfirmed}
+                  onChange={(event) => setAuthorizationField("authorityConfirmed", event.target.checked)}
+                  aria-invalid={errors.authorityConfirmed ? "true" : undefined}
+                  aria-describedby={errors.authorityConfirmed ? `${authorizationErrorPrefix}-authorityConfirmed` : undefined}
+                />
+                <span>
+                  <strong>I am authorized to represent this business.</strong>
+                  <small>HEHA records the signed-in account and timestamp as evidence.</small>
+                </span>
+              </label>
+              {errors.authorityConfirmed && <Error id={`${authorizationErrorPrefix}-authorityConfirmed`}>{errors.authorityConfirmed}</Error>}
+
+              <label className="wizard-check-row">
+                <input
+                  type="checkbox"
+                  checked={authorization.profileConfirmed}
+                  onChange={(event) => setAuthorizationField("profileConfirmed", event.target.checked)}
+                  aria-invalid={errors.profileConfirmed ? "true" : undefined}
+                  aria-describedby={errors.profileConfirmed ? `${authorizationErrorPrefix}-profileConfirmed` : undefined}
+                />
+                <span>
+                  <strong>HEHA may prepare a private draft for the destinations I selected.</strong>
+                  <small>I will separately approve the exact profile version before HEHA may publish it.</small>
+                </span>
+              </label>
+              {errors.profileConfirmed && <Error id={`${authorizationErrorPrefix}-profileConfirmed`}>{errors.profileConfirmed}</Error>}
+
+              <label className="wizard-check-row">
+                <input
+                  type="checkbox"
+                  checked={authorization.mediaPermissionConfirmed}
+                  onChange={(event) => setAuthorizationField("mediaPermissionConfirmed", event.target.checked)}
+                  aria-invalid={errors.mediaPermissionConfirmed ? "true" : undefined}
+                  aria-describedby={errors.mediaPermissionConfirmed ? `${authorizationErrorPrefix}-mediaPermissionConfirmed` : undefined}
+                />
+                <span>
+                  <strong>I own or have permission to use business media I supply to HEHA.</strong>
+                  <small>HEHA will not treat stock placeholders as partner-supplied media.</small>
+                </span>
+              </label>
+              {errors.mediaPermissionConfirmed && <Error id={`${authorizationErrorPrefix}-mediaPermissionConfirmed`}>{errors.mediaPermissionConfirmed}</Error>}
+
+              {supportsHehaLocal(form.categories) && (
+                <>
+                  <label className="wizard-check-row">
+                    <input
+                      type="checkbox"
+                      checked={authorization.tampaBayServiceConfirmed}
+                      onChange={(event) => setAuthorizationField("tampaBayServiceConfirmed", event.target.checked)}
+                      aria-invalid={errors.tampaBayServiceConfirmed ? "true" : undefined}
+                      aria-describedby={errors.tampaBayServiceConfirmed ? `${authorizationErrorPrefix}-tampaBayServiceConfirmed` : undefined}
+                    />
+                    <span>
+                      <strong>This business accepts chef or catering requests in Tampa Bay.</strong>
+                      <small>HEHA records Tampa Bay as the service area for this Wave 1 profile.</small>
+                    </span>
+                  </label>
+                  {errors.tampaBayServiceConfirmed && <Error id={`${authorizationErrorPrefix}-tampaBayServiceConfirmed`}>{errors.tampaBayServiceConfirmed}</Error>}
+                </>
+              )}
+            </div>
+
+            <div className="wizard-note">
+              Step 1 saves a private draft authorization. Step 2 asks you to approve this exact profile version. HEHA review and HEHA Certified status remain separate. Partner terms and privacy acknowledgements must be completed before activation.
+            </div>
             {errors.submit && <Error>{errors.submit}</Error>}
-            <button className="wizard-submit-button" type="button" disabled={loading} onClick={submit}>{loading ? "Submitting…" : "Submit for review"}</button>
+            <button className="wizard-submit-button" type="button" disabled={loading} onClick={submit}>{loading ? "Saving private draft…" : "Prepare private profile"}</button>
             <button className="wizard-text-back" type="button" onClick={back}>← Back to edit</button>
           </WizardPanel>
         )}
@@ -562,15 +755,87 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
   );
 }
 
-function PartnerSubmissionStatus({ listing, loading, error, onRefresh, onContinue }) {
+function PartnerSubmissionStatus({ listing, loading, error, authorization, onRefresh, onContinue }) {
   const status = String(listing?.status || "pending").toLowerCase();
-  const visible = PUBLIC_STATUSES.includes(status);
+  const baseVisible = PUBLIC_STATUSES.includes(status);
   const certified = listing?.heha_partner === true;
   const listingCategories = Array.isArray(listing?.categories) && listing.categories.length
     ? listing.categories
     : listing?.category
     ? [listing.category]
     : [];
+  const [approvalConfirmed, setApprovalConfirmed] = useState(false);
+  const [approvalLoading, setApprovalLoading] = useState(false);
+  const [approvalError, setApprovalError] = useState(null);
+  const [approvalKey, setApprovalKey] = useState(() => createPartnerConsentRequestKey());
+  const [approvalRecorded, setApprovalRecorded] = useState(false);
+  const [publicationStatus, setPublicationStatus] = useState({
+    prepare_destinations: authorization.destinations,
+    publication_destinations: [],
+    profile_snapshot: listing.public_profile_snapshot,
+    profile_snapshot_hash: listing.public_profile_snapshot_hash,
+  });
+  const publicationApproved = publicationStatusLabel(publicationStatus) === "Approved to publish";
+  const previewReady = Boolean(
+    publicationStatus.profile_snapshot
+    && publicationStatus.profile_snapshot_hash
+  );
+  const activePublicationDestinations = new Set(
+    publicationStatus.publication_destinations || []
+  );
+  const visible = baseVisible && (
+    (
+      listing?.swipe_eligible === true
+      && activePublicationDestinations.has(PARTNER_DESTINATIONS.swipe)
+    )
+    || (
+      listing?.local_eligible === true
+      && activePublicationDestinations.has(PARTNER_DESTINATIONS.local)
+      && hasSpecificHehaLocalDestination(listing)
+    )
+  );
+
+  const approvePublication = async () => {
+    if (!approvalConfirmed || publicationApproved || !previewReady) return;
+    setApprovalLoading(true);
+    setApprovalError(null);
+    try {
+      await authorizePartnerProfilePublication({
+        partnerId: listing.id,
+        destinations: authorization.destinations,
+        representativeName: authorization.representativeName,
+        representativeTitle: authorization.representativeTitle,
+        requestKey: approvalKey,
+        expectedProfileSnapshotHash: publicationStatus.profile_snapshot_hash,
+      });
+      setApprovalRecorded(true);
+      setApprovalConfirmed(false);
+      setApprovalKey(createPartnerConsentRequestKey());
+      try {
+        const nextStatus = await getMyPartnerPublicationStatus(listing.id);
+        setPublicationStatus(nextStatus);
+        setApprovalRecorded(false);
+      } catch (statusRefreshError) {
+        setApprovalError("Publication approval was saved, but its status could not refresh. Use Refresh status; do not approve again.");
+      }
+    } catch (authorizationError) {
+      setApprovalError(authorizationError.message || "Could not record publication approval yet.");
+    } finally {
+      setApprovalLoading(false);
+    }
+  };
+
+  const refreshAll = async () => {
+    await onRefresh();
+    try {
+      const nextStatus = await getMyPartnerPublicationStatus(listing.id);
+      setPublicationStatus(nextStatus);
+      setApprovalError(null);
+      setApprovalRecorded(false);
+    } catch (statusRefreshError) {
+      setApprovalError(statusRefreshError.message || "Could not refresh publication permission yet.");
+    }
+  };
 
   return (
     <main className="partner-wizard-screen">
@@ -594,7 +859,7 @@ function PartnerSubmissionStatus({ listing, loading, error, onRefresh, onContinu
 
         <WizardPanel>
           <p className="wizard-helper-copy">
-            Your business profile was submitted. HEHA reviews listings before they become publicly visible.
+            Your private business profile was saved. Review this exact version before granting publication permission.
           </p>
 
           <div className="wizard-review-card">
@@ -612,6 +877,8 @@ function PartnerSubmissionStatus({ listing, loading, error, onRefresh, onContinu
               ["Status", formatStatus(status)],
               ["Submitted", formatDate(listing.created_at)],
               ["Completion", completionLabel(listing.complete_pct)],
+              ["Profile permission", publicationStatusLabel(publicationStatus)],
+              ["Destinations", authorization.destinations.map((destination) => destination === PARTNER_DESTINATIONS.local ? "HEHA Local" : "HEHA Swipe").join(", ")],
               ["Public visibility", visible ? "Visible" : "Hidden until review"],
               ["HEHA Certified", certified ? "Certified" : "Not certified yet"],
             ].map(([label, value]) => (
@@ -622,16 +889,52 @@ function PartnerSubmissionStatus({ listing, loading, error, onRefresh, onContinu
             ))}
           </div>
 
+          <PartnerPublicationPreview snapshot={publicationStatus.profile_snapshot || listing.public_profile_snapshot} />
+
+          {!publicationApproved ? (
+            <div className="wizard-consent-card publication-approval-card">
+              <div>
+                <p className="eyebrow">Final profile permission</p>
+                <h2>Approve this version to publish</h2>
+                <p>This does not publish the profile now. It authorizes HEHA to publish only this exact version on your selected destinations after HEHA’s separate review.</p>
+              </div>
+              <label className="wizard-check-row">
+                <input
+                  type="checkbox"
+                  checked={approvalConfirmed}
+                  onChange={(event) => setApprovalConfirmed(event.target.checked)}
+                />
+                <span>
+                  <strong>I approve this exact profile version for publication.</strong>
+                  <small>If the public profile changes, HEHA must ask for approval again.</small>
+                </span>
+              </label>
+              <button
+                className="wizard-submit-button"
+                type="button"
+                disabled={!approvalConfirmed || approvalLoading || !previewReady || approvalRecorded}
+                onClick={approvePublication}
+              >
+                {approvalLoading ? "Recording approval…" : previewReady ? "Approve this version to publish" : "Preview required before approval"}
+              </button>
+            </div>
+          ) : (
+            <div className="wizard-success-note" role="status">
+              Profile version approved for publication. HEHA review, activation, and HEHA Certified status are still separate decisions.
+            </div>
+          )}
+
           <div className="wizard-note">
-            Your submission is saved. Public visibility and HEHA Certified status remain separate HEHA review decisions.
+            Your submission is saved. Nothing is public until HEHA completes its review and an authorized HEHA administrator activates only the destinations you approved.
           </div>
 
           {error && <Error>{error}</Error>}
+          {approvalError && <Error>{approvalError}</Error>}
 
           <button className="wizard-submit-button" type="button" onClick={onContinue}>
             Continue to business profile
           </button>
-          <button className="wizard-text-back" type="button" onClick={onRefresh} disabled={loading}>
+          <button className="wizard-text-back" type="button" onClick={refreshAll} disabled={loading || approvalLoading}>
             {loading ? "Refreshing…" : "Refresh status"}
           </button>
 
@@ -652,7 +955,7 @@ function WizardTopbar({ onCancel }) {
         <strong>HEHA</strong>
         <em>swipe</em>
       </div>
-      <button type="button" onClick={onCancel}>Save & exit</button>
+      <button type="button" onClick={onCancel}>Exit without saving</button>
     </div>
   );
 }
@@ -670,17 +973,37 @@ function WizardPanel({ children }) {
 }
 
 function Field({ label, hint, required = false, error, children }) {
+  const generatedId = useId();
+  const errorId = `${generatedId}-error`;
+  const childArray = Children.toArray(children);
+  const controlIndex = childArray.findIndex((child) => isValidElement(child));
+  const sourceControl = controlIndex >= 0 ? childArray[controlIndex] : null;
+  const controlId = sourceControl?.props?.id || generatedId;
+  const renderedChildren = childArray.map((child, index) => (
+    index === controlIndex
+      ? cloneElement(child, {
+          id: controlId,
+          "aria-invalid": error ? "true" : undefined,
+          "aria-describedby": [child.props["aria-describedby"], error ? errorId : null]
+            .filter(Boolean)
+            .join(" ") || undefined,
+        })
+      : child
+  ));
   return (
     <div className="wizard-field-block">
-      <Label required={required}>{label} {hint && <em>({hint})</em>}</Label>
-      {children}
-      {error && <Error>{error}</Error>}
+      <Label htmlFor={sourceControl ? controlId : undefined} required={required}>{label} {hint && <em>({hint})</em>}</Label>
+      {renderedChildren}
+      {error && <Error id={errorId}>{error}</Error>}
     </div>
   );
 }
 
-function Label({ required = false, children }) {
-  return <label className="wizard-label">{children}{required && <span> *</span>}</label>;
+function Label({ htmlFor, required = false, children }) {
+  const content = <>{children}{required && <span> *</span>}</>;
+  return htmlFor
+    ? <label className="wizard-label" htmlFor={htmlFor}>{content}</label>
+    : <div className="wizard-label">{content}</div>;
 }
 
 function NavButtons({ onBack, backLabel = "← Back", onNext, nextLabel = "Next →" }) {
@@ -692,6 +1015,6 @@ function NavButtons({ onBack, backLabel = "← Back", onNext, nextLabel = "Next 
   );
 }
 
-function Error({ children }) {
-  return <div className="wizard-error">{children}</div>;
+function Error({ id, children }) {
+  return <div className="wizard-error" id={id} role="alert" tabIndex={-1}>{children}</div>;
 }
