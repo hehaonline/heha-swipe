@@ -114,6 +114,40 @@ Evidence:
 - https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/.env.example
 - https://github.com/hehaonline/heha-swipe/issues/86
 
+### Supabase auth-state callback deadlock gate — revalidated 2026-08-09
+
+Swipe RC #113 at exact head `885461f55f64ea56a9366e6573b6002769820f06` carries a shared-client auth listener that can hang launch-critical Supabase calls. The locked dependency is `@supabase/supabase-js@2.106.2`. On every non-admin, non-embed page, `main.jsx` renders `InternalDashboardShortcut` beside the app even when its Profile portal target is absent. That component registers `onAuthStateChange(() => { checkAccess(); })`; `checkAccess` immediately starts `supabase.auth.getSession()` and then queries `user_roles`.
+
+Supabase's current troubleshooting guidance (last edited 2026-04-08 and rechecked 2026-08-09) states that an async Supabase API call made in an `onAuthStateChange` callback can deadlock the client and cause the next Supabase call anywhere on that client to hang. The RC's main app and admin-gate listeners only copy the supplied session synchronously; the shortcut listener is the unsafe exception.
+
+This creates a launch-critical recovery risk on sign-in, sign-out, token refresh, password recovery, or other auth events:
+
+- the shortcut's role lookup can hang instead of failing closed;
+- the shared client can then strand later profile, partner, saves, swipe, onboarding, or account-action calls;
+- hiding or lacking the Profile portal target does not contain the effect because the listener is already mounted;
+- green build/preview checks and static auth screenshots do not exercise an auth event followed by a second database call.
+
+Required fail-closed plan:
+
+1. **Recommended soft-launch default:** omit/disable the internal shortcut in the RC until the listener is repaired; keep direct `/admin` authorization as the independent access path.
+2. Keep the auth callback synchronous. Copy the callback's supplied session/user ID into state and return; perform the `user_roles` query in a separate effect or deferred task outside the callback.
+3. Do not call `getSession()` from inside `onAuthStateChange`. Use the supplied session and guard stale results with a generation/cancellation check.
+4. Default visibility to false on no session, error, cancellation, or role mismatch. Do not weaken the direct admin route's session/active-role gate.
+5. Add regression coverage for initial session, sign-in, sign-out, token refresh, password recovery, rapid repeated events, Strict Mode mount/unmount, unauthorized roles, query failure, and proof that a subsequent Supabase query completes after every event.
+6. Re-test against the exact locked package version. If a dependency upgrade is proposed instead, treat it as a separate reviewed dependency/lockfile change and verify the official fix/release note plus the same regression matrix.
+
+PR #99 only moves the shortcut's portal destination and inherits this listener unchanged; preserve its placement idea, but do not use its exact head as the repair input.
+
+No Supabase Auth setting, role, RLS policy, dependency, deployment, production session, or user account is changed or authorized by this audit.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/src/main.jsx
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/src/components/InternalDashboardShortcut.jsx
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/package-lock.json
+- https://supabase.com/docs/guides/troubleshooting/why-is-my-supabase-api-call-not-returning-PGzXw0
+- https://github.com/hehaonline/heha-swipe/pull/99#issuecomment-5226399388
+
 ### Client-side partner-review webhook recovery gate — revalidated 2026-08-09
 
 Swipe RC #113's partner registration flow has a separate client-side webhook boundary in `PartnerWizard.jsx`. After the authenticated `partners` insert succeeds, the component awaits `VITE_MAKE_PARTNER_APPROVAL_WEBHOOK` before it calls `setSubmittedListing(data)` and leaves the loading state.
