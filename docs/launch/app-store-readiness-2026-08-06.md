@@ -237,7 +237,16 @@ Swipe's audited RC does expose **Request account deletion** in `ProfileTab.jsx`,
 - its confirmation explicitly says the Supabase Auth login may remain active until an administrator removes it;
 - it does not sign the requester out, revoke sessions, prove Auth-user removal, provide a completion receipt, or prove deletion from every app table and downstream processor.
 
-A table insert is therefore not evidence that deletion was fulfilled. Supabase also documents that deleting an Auth user does not itself invalidate already-issued JWT access tokens until they expire, so the final server-owned workflow must revoke sessions and account for token lifetime rather than treating row deletion as immediate logout.
+The exact RC has two additional fail-open defects:
+
+- repository-wide code search finds `account_deletion_requests` only in `ProfileTab.jsx`; no committed migration, table definition, generated type, or test establishes that the request queue exists in a reproducible database. A table that exists only in an uninspected live project would be untracked schema drift, not release evidence;
+- after the request insert, the three awaited delete calls do not inspect their returned Supabase `error` values. RLS, network, or schema failure can therefore leave some or all personal data behind while the UI still reports, “Your HEHA Swipe data was cleared from the app tables.”
+
+This is a web soft-launch blocker as well as a store blocker. A table insert is not evidence that deletion was fulfilled, and an unchecked browser-side sequence cannot provide transactionality, retry safety, or an honest completion receipt. Until the canonical schema and server-owned workflow are approved and proven, keep public account creation closed to a controlled pilot and route deletion requests through the verified support owner; do not advertise the destructive button as completed deletion.
+
+Recommended implementation remains approval-gated: create one canonical, least-privilege deletion-request schema and one authenticated server-owned RPC or Edge Function that binds identity to `auth.uid()`, creates an idempotent request, returns a truthful pending receipt, and leaves fulfillment to an auditable admin workflow. Do not delete user data opportunistically in the browser before retention scope, reauthentication, session revocation, partial-failure recovery, and downstream obligations are defined.
+
+Supabase also documents that deleting an Auth user does not itself invalidate already-issued JWT access tokens until they expire, so the final server-owned workflow must revoke sessions and account for token lifetime rather than treating row deletion as immediate logout.
 
 No dedicated public HEHA account-deletion resource was found during the repository/public-site inspection. The current HEHA privacy page only says users may request deletion “where legally allowed” and provides general contact information; it is not an app-specific, prominent request path with scope, identity verification, timing, retention exceptions, and completion expectations.
 
