@@ -56,6 +56,37 @@ Evidence:
 - Local presents itself as “HEHA Order Hub” and describes real-time orders, drivers, and payouts, while the public product is HEHA Local. Approve truthful public naming before promoting installation.
 - Each icon is declared as both `any maskable` using one asset. Maskable safe-zone appearance still needs visual validation.
 
+### Release toolchain and dependency-audit gate — revalidated 2026-08-11
+
+The downloadable-app path does not yet have one supported, repository-pinned JavaScript runtime/package-manager contract.
+
+Current exact evidence:
+
+- Local main `e3261fc72c00ac20fc71fd07b035f16c75893917` has no root `engines`, `.nvmrc`, or `.node-version`. Its lockfile resolves `@supabase/supabase-js@2.105.4`.
+- Local PR #230 exact-head Actions run `31434968073` used `actions/setup-node` with `node-version: 20`, which resolved Node `20.20.2` and npm `10.8.2` — not the npm `11.4.2` used by older release evidence. GitHub emitted repeated Node 20 deprecation warnings.
+- That same successful job's `npm ci` reported 20 audit findings: 3 moderate, 16 high, and 1 critical. The workflow continued to lint/build and concluded success. Snyk also reported success, so the audit summary alone does **not** prove a production-exploitable vulnerability; the advisory identities, dependency paths, runtime reachability, and Snyk policy/ignore behavior remain unreconciled.
+- Swipe main `82ec41a27150847f3d461716bc58636e24babfe6` likewise has no root `engines`, `.nvmrc`, or `.node-version`; its lockfile resolves `@supabase/supabase-js@2.106.2`. PR #116 has no GitHub Actions run, and Swipe exposes no repository lint or full-test script.
+- Supabase announced that packages from its JavaScript monorepo dropped Node 20 support after 2026-06-30. The currently locked HEHA packages still declare `node >=20.0.0` and the exact Local install/build passed, but a future Supabase update cannot safely assume Node 20 support.
+
+This is a release-reproducibility and security-evidence gate, not a request to run `npm audit fix`, upgrade dependencies, or change the production runtime from this documentation branch.
+
+Required bounded plan:
+
+1. Reconcile the 20 Local audit findings by advisory ID, package path, dev/production reachability, available fix, and Snyk policy/ignore state. Treat any reachable critical/high finding as a separate security repair.
+2. Select one supported Node LTS baseline (Node 22 is the minimum safe candidate under Supabase's current notice), then pin the exact Node and npm versions in repository metadata, GitHub Actions, Vercel build settings, local release instructions, and eventual native-wrapper CI.
+3. Validate Local and Swipe clean installs, lint where available, all relevant tests, production builds, auth/realtime/order recovery, and wrapper builds on that exact toolchain before replacing historical Node 20 evidence.
+4. Keep lockfile and dependency upgrades isolated and reviewed; do not mix a runtime migration with Supabase, Vite, Capacitor, or security-package upgrades.
+5. Preserve a rollback path to the last exact successful lockfile/toolchain pair while Node 22 validation is incomplete.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-order-hub/actions/runs/31434968073
+- https://github.com/hehaonline/heha-order-hub/blob/e3261fc72c00ac20fc71fd07b035f16c75893917/package.json
+- https://github.com/hehaonline/heha-order-hub/blob/e3261fc72c00ac20fc71fd07b035f16c75893917/package-lock.json
+- https://github.com/hehaonline/heha-swipe/blob/82ec41a27150847f3d461716bc58636e24babfe6/package.json
+- https://github.com/hehaonline/heha-swipe/blob/82ec41a27150847f3d461716bc58636e24babfe6/package-lock.json
+- https://supabase.com/changelog/45715-deprecation-notice-dropping-support-for-node-js-20
+
 ### Anonymous public-partner projection privacy blocker — revalidated 2026-08-09
 
 Swipe RC #113 carries #112's guest-browsing path. At exact RC head `885461f55f64ea56a9366e6573b6002769820f06`:
