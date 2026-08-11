@@ -234,6 +234,38 @@ Evidence:
 - https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/supabase/migrations/20260705001100_canonical_partner_routing.sql
 - https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/supabase/migrations/20260707045848_partner_security_foundation.sql
 
+### Hybrid partner lifecycle successor gate — revalidated 2026-08-11
+
+Founder decision issue #119 now requires four independent canonical concepts for every partner record: profile claim status, HEHA partnership status, contract status, and public listing status. Claiming must preserve the existing `partners.id` and must not imply Official Partner, contract completion, certification, publication, routing, pricing, or Local eligibility.
+
+The two donor PRs remain useful but are not independently releasable:
+
+- PR #117 exact head `5282d4ae676dbda57b196fd92f756cca839ab99d` is five commits ahead of current Swipe `main@82ec41a27150847f3d461716bc58636e24babfe6`. Its nine-file security migration/proof package has green hosted checks, but the founder disposition keeps it draft and deployment-frozen as a donor because its single relationship field combines claim, partnership, and removal concepts.
+- PR #72 exact head `b76c3d47c476b81f7be1b6f2b7aafcc6e16f240d` is three commits ahead and 38 commits behind current main. Its two-file relationship migration is a stale donor for partnership-interest, review, approval, and contract concepts; it must not be rebased or merged unchanged.
+- Issue #119 contains an automated implementation receipt for local commit `847101efb26c63947f71811b8d1a9837d69f7e81`, but the receipt explicitly says no draft PR was published. Live GitHub inspection found no matching remote commit, branch, or open PR. There is therefore no remote exact head to diff, test, collision-check, or independently review. The receipt also marks the SQL lifecycle proof and two-session concurrency harness as not executed.
+
+The successor preflight must cover more than #72 and #117. The complete 21-open-PR filename/domain sweep found two additional collisions:
+
+- PR #118 changes 18 files and adds `20260810072829_wave1_partner_publication_consent.sql`. That migration creates a publication-consent ledger and privileged publication functions over `public.partners`, directly updates `partners.status` and `routing_status`, and replaces public partner projections. Its exact-version consent and visibility rules behaviorally overlap the new `public listing status`; the successor must map, compose, or explicitly supersede them.
+- Stale PR #82 changes the original claim migrations, workflow, UI, and five exact proof/document paths also changed by #117. It must remain historical evidence, not a third implementation source.
+
+Supabase's current platform defaults add a concrete proof requirement: new tables and functions stopped being automatically exposed by default for new projects on 2026-05-30, and the behavior is scheduled to be enforced for existing projects on 2026-10-30. Every successor table/function therefore needs explicit grants/revokes, RLS where exposed, and exact-role API tests; RLS alone does not constrain column updates or function execution.
+
+**Safe release default:** keep #72, #82, #117, and the unpublished local implementation out of the release chain. Publish one fresh successor draft from the verified current integration base, reconcile #118 explicitly, and require a lineage-faithful disposable apply/re-apply plus state-transition, owner-guard, RLS/BOLA, deletion/reclaim, duplicate-profile, and true multi-session concurrency proofs before exact-head review. No Production migration, Auth change, claim activation, partner status transition, duplicate merge, media transfer, deployment, or cutover is authorized.
+
+Connector-only verification completed: live PR/branch/commit searches, donor ancestry comparisons, all open Swipe PR changed-file sets, hosted donor checks, review threads, and issue #119's decision/receipt. Not run: local checkout, install/build, SQL apply/re-apply, Supabase branch, Auth/RLS execution, concurrency harness, browser QA, or Production access.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/issues/119
+- https://github.com/hehaonline/heha-swipe/pull/117
+- https://github.com/hehaonline/heha-swipe/pull/72
+- https://github.com/hehaonline/heha-swipe/pull/118
+- https://github.com/hehaonline/heha-swipe/pull/82
+- https://supabase.com/changelog/45329-breaking-change-tables-not-exposed-to-data-and-graphql-api-automatically
+- https://supabase.com/docs/guides/database/postgres/row-level-security
+- https://supabase.com/docs/guides/database/postgres/column-level-security
+
 ### Apple App Store blockers
 
 - No iOS/Xcode or wrapper project.
