@@ -7,7 +7,7 @@ PSQL=(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -qtA)
 ADMIN=cccccccc-cccc-4ccc-8ccc-cccccccccccc
 USER_A=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
 PARTNER_A=11111111-1111-4111-8111-111111111111
-PARTNER_W=88888888-8888-4888-8888-888888888888
+PARTNER_W=44444444-4444-4444-8444-444444444444
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
@@ -23,7 +23,6 @@ wait_idle(){ local marker="$1"; for _ in $(seq 1 80); do [ "$("${PSQL[@]}" -c "s
 wait_lock(){ local marker="$1"; for _ in $(seq 1 80); do [ "$("${PSQL[@]}" -c "select count(*) from pg_stat_activity where wait_event_type='Lock' and query like '%$marker%'")" = 1 ] && return; sleep .25; done; echo "FAIL lock wait: $marker" >&2; exit 1; }
 no_deadlock(){ if grep -Eqi '40P01|deadlock detected' "$1"; then echo 'FAIL deadlock detected' >&2; redact < "$1" >&2; exit 1; fi; }
 
-# Scenario 0: explicit partner-first contract while replacement waits.
 echo 'scenario 0: partner-first lock contract vs replacement'
 IFS='|' read -r I0 T0 < <(create_invite "$PARTNER_A" "$USER_A")
 mkfifo "$WORKDIR/s0in"
@@ -43,7 +42,6 @@ no_deadlock "$WORKDIR/s0a"; no_deadlock "$WORKDIR/s0b"
 grep -q s0_invite_lock "$WORKDIR/s0a" || { redact <"$WORKDIR/s0a" >&2; exit 1; }
 echo 'scenario 0 PASS'
 
-# Scenario 1: replace wins, claim waits and then loses on revoked old invite.
 echo 'scenario 1: replace vs claim'
 IFS='|' read -r I1 T1 < <(create_invite "$PARTNER_A" "$USER_A")
 mkfifo "$WORKDIR/s1in"
@@ -67,7 +65,6 @@ grep -q 'This claim link is not valid' "$WORKDIR/s1b" || { redact <"$WORKDIR/s1b
 end \$\$;" >/dev/null
 echo 'scenario 1 PASS'
 
-# Scenario 2: revoke wins, claim waits and then loses.
 echo 'scenario 2: revoke vs claim'
 IFS='|' read -r I2 T2 < <(create_invite "$PARTNER_A" "$USER_A")
 mkfifo "$WORKDIR/s2in"
@@ -90,7 +87,6 @@ grep -q 'This claim link is not valid' "$WORKDIR/s2b" || { redact <"$WORKDIR/s2b
 end \$\$;" >/dev/null
 echo 'scenario 2 PASS'
 
-# Scenario 3: claim wins and holds locks; revoke visibly waits then returns false.
 echo 'scenario 3: genuine claim-wins vs revoke'
 IFS='|' read -r I3 T3 < <(create_invite "$PARTNER_W" "$USER_A")
 mkfifo "$WORKDIR/s3in"
