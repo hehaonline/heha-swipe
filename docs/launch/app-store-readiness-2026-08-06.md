@@ -522,6 +522,22 @@ Evidence:
 - https://github.com/hehaonline/heha-swipe/pull/69
 - https://github.com/hehaonline/heha-swipe/blob/82ec41a27150847f3d461716bc58636e24babfe6/docs/migration-lineage/live-ledger-2026-07-19.csv
 
+## Hybrid partner successor #120 exact-head review gate
+
+Open draft PR #120 at exact head `17f80c241ac11ef27d5896523511ee19210f9ac9` proposes the right high-level separation of claim, partnership, contract, and listing status, but its executable migration is not a safe successor to #72/#117 and must remain outside the release chain.
+
+Confirmed blockers at that exact head:
+
+1. `redeem_partner_claim` requires `auth.jwt()->>'email_verified'`. Supabase's current JWT claims reference does not define that claim; the standard authenticated-token claims include `email`, `is_anonymous`, `aal`, and `amr`, but not `email_verified`. With an ordinary Supabase JWT, `coalesce(..., false)` therefore rejects every claim before recipient matching. Evidence: https://supabase.com/docs/guides/auth/jwt-fields.
+2. Lock order is inverted across the two competing operations: `issue_partner_claim` locks Partner → invitation, while `redeem_partner_claim` locks invitation → Partner. That recreates the replace-vs-claim deadlock interleave that #117's current partner-first implementation and negative control were designed to catch. #120's shell script runs only claim-vs-claim, supplies no authenticated JWT context, and was syntax-checked but not executed.
+3. The SQL "invalid official state" proof uses `where false`, changes no row, and accepts both success and `check_violation`; it therefore cannot prove the constraint. It also omits callable RPC behavior, all seven table privileges, role/identity denials, token lifecycle, deletion behavior, audit invariants, and replacement/revocation races.
+4. Claim issuance and automatic replacement do not write lifecycle events or a revoking actor. The invitation table stores the full recipient email with no retention/anonymization contract. Its Partner FK cascades deletion while the lifecycle-event FK restricts it, leaving deletion behavior dependent on whether an event happens to exist rather than one explicit policy.
+5. #120's preflight says the exact remote donor heads and open-PR collision inventory were unavailable. They are now known: #120 and #117 both start at current `main@82ec41a27150847f3d461716bc58636e24babfe6`; #117 has the more complete current security/ACL/deletion/concurrency evidence; #72 and #82 remain stale historical donors. All four behaviorally overlap despite different filenames.
+
+Recommended successor design: preserve #120's independent status dimensions, but rebuild the migration on current main using #117's recipient binding, deterministic ACL matrix, partner-first lock order, deletion/tombstone contract, adversarial lifecycle proofs, and evidence controls. Do not merge #117 unchanged either: its single `relationship_status` model must first be replaced with the approved independent dimensions. A new exact-head disposable replay must include baseline lineage, state mapping, Business A/B RLS, standard Supabase JWT fixtures, issue/replace/redeem/revoke races, deletion/reclaim, audit privacy, and negative controls.
+
+No migration was applied, no Auth user or Partner row was queried or changed, and no claim token, production database, deployment, or external system was touched.
+
 ## Smallest approval package
 
 Before wrapper code starts, approve these exact decisions:
