@@ -484,6 +484,35 @@ Required before the supporter flow is eligible for a web soft launch or store pa
 
 Evidence: https://github.com/hehaonline/heha-swipe/pull/113#issuecomment-5221820682
 
+### Deployed Stripe webhook fail-open drift blocker — confirmed 2026-08-12
+
+The live HEHA Swipe Supabase project has an active `stripe-webhook` Edge Function at deployed version 10, bundle SHA-256 `d4aa5014ac0e1417e5810197ef23bdec142b868dc18bc69473638bb354694144`, last updated 2026-06-14 13:59:33 UTC. Its platform `verify_jwt=false` setting is intentional for a Stripe webhook: the deployed body requires and cryptographically verifies the `stripe-signature` header against the server-held webhook secret before processing an event. No signature-bypass defect was confirmed.
+
+The confirmed blocker is persistence failure handling. The deployed source awaits writes to `supporter_subscriptions`, `profiles`, `supporter_payments`, and `contributions`, but does not inspect the Supabase client's returned `error` values. PostgREST permission, constraint, and other database failures normally resolve as `{ data, error }`; they do not have to throw. The handler can therefore acknowledge a paid Stripe event with HTTP 200 and `{ received: true }` even when a critical HEHA write failed. Stripe then treats delivery as successful and does not retry that event.
+
+The failure can also be partial: for example, a subscription row can persist while the profile entitlement update fails, or a payment row can persist while the contribution write fails. That creates payment, entitlement, support, and reconciliation risk even though the Stripe charge itself succeeded.
+
+Current repository `main@82ec41a27150847f3d461716bc58636e24babfe6` already contains a source-side repair from commit `138dd64cd8db39f9c3f7fcbe31a810e9a5165a93` (2026-07-10): `persistCritical` checks each Supabase result, throws on `error`, and routes the event to an HTTP 500 response so Stripe can retry; it also makes the contribution write an idempotent upsert. The deployed version does not match that repository source. No open Swipe PR changes either Stripe Edge Function, so this is deployment drift rather than an open-PR collision.
+
+The last-24-hour Edge Function log response contained no `stripe-webhook` or `create-supporter-checkout` entries and no matching processing-error entry. That does not prove the flow is unused or correct, and it cannot reconstruct older missed or partial events.
+
+Required approval-gated recovery plan:
+
+1. **Recommended safe default:** keep the supporter purchase/entitlement path out of the soft launch until the repaired exact source is proven in Stripe test mode and an exact deployment is approved.
+2. In a disposable/non-production Supabase target, send valid signed test events for checkout completion, subscription update, and subscription deletion.
+3. Force each critical persistence operation to fail independently and prove a non-2xx response, Stripe retry, and eventual convergence after recovery.
+4. Replay the same events and prove no duplicate contribution, payment, subscription, or entitlement state; test out-of-order and concurrent delivery.
+5. Verify signature denial, missing/invalid user linkage, test/live environment separation, delayed delivery, cancellation, refund/revocation requirements, and truthful pending UI.
+6. After exact approval, deploy only the reviewed function version and record its deployed version/hash. Reconcile Stripe event history against HEHA rows with a read-only report first; any replay, refund, entitlement correction, or production data mutation requires separate explicit approval.
+7. If rollout verification fails, keep purchase disabled and redeploy the last known bundle while diagnosing; do not acknowledge unpersisted test events as successful.
+
+No Edge Function was deployed, no Stripe product/webhook was changed, no event was replayed, and no production row, entitlement, charge, refund, secret, or environment setting was touched.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/blob/82ec41a27150847f3d461716bc58636e24babfe6/supabase/functions/stripe-webhook/index.ts
+- https://github.com/hehaonline/heha-swipe/commit/138dd64cd8db39f9c3f7fcbe31a810e9a5165a93
+
 ## Smallest approval package
 
 Before wrapper code starts, approve these exact decisions:
