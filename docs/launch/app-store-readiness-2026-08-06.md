@@ -241,7 +241,7 @@ This is evidence against an active application/Data API consumer, not proof that
 Required fail-closed plan:
 
 1. **Recommended soft-launch default:** treat all public pricing, fee, discount, driver-pay, allocation, and partner-launch claims as blocked until an approved canonical source exists; keep #70 outside the RC.
-2. Inventory code plus every Make, Wix, server, report, and other external consumer read-only. Do not assume repository non-use proves zero dependencies.
+2. Treat the repository and database dependency inventory as complete for this evidence packet; inventory every Make, Wix, server, report, copied URL, and other external consumer read-only. Do not assume repository non-use or quiet query telemetry proves zero dormant dependencies.
 3. Prepare a fresh current-base, privilege-only successor that changes the existing view to `security_invoker=true` without redefining its body, revokes `PUBLIC`/`anon`/`authenticated`, and grants only the minimum verified server role. Any canonical pricing replacement must be a separate financial approval.
 4. In a lineage-faithful disposable environment, prove the view definition is byte/semantic-equivalent before and after the privilege repair; anonymous and ordinary authenticated access fail; the approved server consumer succeeds; unrelated partner, supporter, and routing paths remain intact; and the migration re-applies safely.
 5. Prepare an exact rollback and operational fallback for a missed legacy consumer. Do not default to restoring public browser access; prefer a narrowly authenticated server-owned compatibility path.
