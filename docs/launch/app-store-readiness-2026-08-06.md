@@ -228,6 +228,16 @@ Draft PR #70 at exact head `0118cee76f8298f75d36fb3eed8accc7b9bcd747` recognizes
 
 The live definition matching #70's old constants proves what is exposed today; it does not establish that those figures are approved, canonical, or safe for operational use.
 
+
+A bounded read-only consumer inventory on 2026-08-12 narrowed the compatibility uncertainty:
+
+- exact current-main searches in HEHA Swipe, HEHA Local, and HEHA Control found no references to `heha_pricing`, `driver_pay_per_portion`, or `partner_launch_suggested`;
+- the live PostgreSQL catalogs report no dependent view/materialized view, function-source reference, policy reference, or trigger reference;
+- `pg_cron` is not installed, so there is no in-database scheduled job consumer;
+- `pg_stat_statements` has retained top-level statements since 2026-05-29, reports zero deallocations, and contains exactly one direct `select * from public.heha_pricing` fingerprint: one call as `postgres`, returning one row. It contains no matching direct-read fingerprint attributed to `anon`, `authenticated`, `authenticator`, or `service_role`.
+
+This is evidence against an active application/Data API consumer, not proof that none exists. Statement telemetry has no per-call timestamp here, the isolated `postgres` read cannot be attributed to a person or tool, and a dormant Make, Wix, server, report, copied URL, or future job may sit outside repository/database dependency metadata. External consumer confirmation remains the smallest unresolved compatibility gate.
+
 Required fail-closed plan:
 
 1. **Recommended soft-launch default:** treat all public pricing, fee, discount, driver-pay, allocation, and partner-launch claims as blocked until an approved canonical source exists; keep #70 outside the RC.
