@@ -1,20 +1,11 @@
 name: Hybrid Partner Lifecycle Proof
 
 on:
-  push:
-    branches:
-      - codex/github-mention-founder-decision-hybrid-partner-model-sep
-    paths:
-      - .github/workflows/hybrid-partner-proof.yml
-      - supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql
-      - supabase/tests/hybrid_partner_lifecycle_proof.sql
-      - supabase/tests/fixtures/hybrid_partner_minimal_baseline.sql
-      - scripts/hybrid_partner_concurrency_proof.sh
   pull_request:
     branches: [main]
     paths:
       - .github/workflows/hybrid-partner-proof.yml
-      - supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql
+      - supabase/migrations/2026081109*.sql
       - supabase/tests/hybrid_partner_lifecycle_proof.sql
       - supabase/tests/fixtures/hybrid_partner_minimal_baseline.sql
       - scripts/hybrid_partner_concurrency_proof.sh
@@ -44,6 +35,8 @@ jobs:
           {
             echo "checked_out_sha=$(git rev-parse HEAD)"
             echo "github_sha=${GITHUB_SHA}"
+            echo "pr_head_sha=${{ github.event.pull_request.head.sha }}"
+            echo "pr_base_sha=${{ github.event.pull_request.base.sha }}"
             echo "supabase_cli=$(supabase --version)"
             echo "psql=$(psql --version)"
           } | tee artifacts/hybrid-partner-proof/revision.txt
@@ -58,10 +51,13 @@ jobs:
           cd .ci/hybrid-partner
           supabase init
           mkdir -p supabase/migrations
-          cp ../../supabase/tests/fixtures/hybrid_partner_minimal_baseline.sql supabase/migrations/20260811080000_hybrid_partner_minimal_baseline.sql
-          cp ../../supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql
+          cp ../../supabase/tests/fixtures/hybrid_partner_minimal_baseline.sql \
+            supabase/migrations/20260811080000_hybrid_partner_minimal_baseline.sql
+          cp ../../supabase/migrations/2026081109*.sql supabase/migrations/
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' \
+            | sort | tee ../../artifacts/hybrid-partner-proof/migration-order.txt
 
-      - name: Start disposable Supabase and apply migration
+      - name: Start disposable Supabase and apply migrations
         shell: bash
         run: |
           set -euo pipefail
@@ -88,8 +84,12 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: |
           set -euo pipefail
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql \
-            2>&1 | tee artifacts/hybrid-partner-proof/idempotency-reapply.txt
+          : > artifacts/hybrid-partner-proof/idempotency-reapply.txt
+          for migration in supabase/migrations/2026081109*.sql; do
+            echo "reapply=$migration" | tee -a artifacts/hybrid-partner-proof/idempotency-reapply.txt
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration" \
+              2>&1 | tee -a artifacts/hybrid-partner-proof/idempotency-reapply.txt
+          done
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/hybrid_partner_lifecycle_proof.sql \
             > artifacts/hybrid-partner-proof/behavioral-proof-after-reapply.txt 2>&1
           echo 'behavioral_proof_after_reapply=pass' | tee -a artifacts/hybrid-partner-proof/idempotency-reapply.txt
@@ -131,7 +131,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: hybrid-partner-proof-${{ github.sha }}
+          name: hybrid-partner-proof-${{ github.event.pull_request.head.sha || github.sha }}
           path: artifacts/hybrid-partner-proof
           retention-days: 14
 
