@@ -1,0 +1,142 @@
+name: Hybrid Partner Lifecycle Proof
+
+on:
+  push:
+    branches:
+      - codex/github-mention-founder-decision-hybrid-partner-model-sep
+    paths:
+      - .github/workflows/hybrid-partner-proof.yml
+      - supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql
+      - supabase/tests/hybrid_partner_lifecycle_proof.sql
+      - supabase/tests/fixtures/hybrid_partner_minimal_baseline.sql
+      - scripts/hybrid_partner_concurrency_proof.sh
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/hybrid-partner-proof.yml
+      - supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql
+      - supabase/tests/hybrid_partner_lifecycle_proof.sql
+      - supabase/tests/fixtures/hybrid_partner_minimal_baseline.sql
+      - scripts/hybrid_partner_concurrency_proof.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hybrid-partner-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Supabase CLI (pinned)
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.112.0
+
+      - name: Install PostgreSQL client and record revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y postgresql-client; fi
+          mkdir -p artifacts/hybrid-partner-proof
+          {
+            echo "checked_out_sha=$(git rev-parse HEAD)"
+            echo "github_sha=${GITHUB_SHA}"
+            echo "supabase_cli=$(supabase --version)"
+            echo "psql=$(psql --version)"
+          } | tee artifacts/hybrid-partner-proof/revision.txt
+          bash -n scripts/hybrid_partner_concurrency_proof.sh
+
+      - name: Prepare disposable synthetic Supabase project
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .ci/hybrid-partner
+          mkdir -p .ci/hybrid-partner
+          cd .ci/hybrid-partner
+          supabase init
+          mkdir -p supabase/migrations
+          cp ../../supabase/tests/fixtures/hybrid_partner_minimal_baseline.sql supabase/migrations/20260811080000_hybrid_partner_minimal_baseline.sql
+          cp ../../supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql
+
+      - name: Start disposable Supabase and apply migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd .ci/hybrid-partner
+          if supabase start > supabase-start-full.log 2>&1; then status=started; else status=failed; fi
+          grep -Ei 'started|stopped|error|warn|local development' supabase-start-full.log \
+            | grep -viE 'key|secret|token|jwt|password|url|s3' \
+            > ../../artifacts/hybrid-partner-proof/start-sanitized.txt || true
+          echo "supabase_start=$status" >> ../../artifacts/hybrid-partner-proof/start-sanitized.txt
+          test "$status" = started
+
+      - name: Execute behavioral SQL proof
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/hybrid_partner_lifecycle_proof.sql \
+            2>&1 | tee artifacts/hybrid-partner-proof/behavioral-proof.txt
+
+      - name: Prove migration re-apply and rerun behavioral proof
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql \
+            2>&1 | tee artifacts/hybrid-partner-proof/idempotency-reapply.txt
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/hybrid_partner_lifecycle_proof.sql \
+            > artifacts/hybrid-partner-proof/behavioral-proof-after-reapply.txt 2>&1
+          echo 'behavioral_proof_after_reapply=pass' | tee -a artifacts/hybrid-partner-proof/idempotency-reapply.txt
+
+      - name: Execute genuine two-session concurrency proof
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          bash scripts/hybrid_partner_concurrency_proof.sh \
+            2>&1 | tee artifacts/hybrid-partner-proof/concurrency-proof.txt
+
+      - name: Build application
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          git diff --check
+
+      - name: Negative-control and evidence sensitivity scan
+        shell: bash
+        env:
+          SCAN: (eyJ[A-Za-z0-9_-]{20,}|[0-9a-f]{64}|sb_secret_|sb_publishable_|service_role_key|anon[ _]key|secret[ _]key|access[ _]key)
+        run: |
+          set -euo pipefail
+          d="$(mktemp -d)"
+          printf 'synthetic token %s\n' "$(printf 'ab%.0s' $(seq 1 32))" > "$d/token.txt"
+          grep -Eq "$SCAN" "$d/token.txt"
+          rm -rf "$d"
+          if grep -rInE "$SCAN" artifacts/hybrid-partner-proof; then
+            echo 'Sensitive token/credential-shaped material found in evidence.'
+            exit 1
+          fi
+          echo 'evidence_scan=clean' | tee artifacts/hybrid-partner-proof/evidence-scan.txt
+
+      - name: Upload sanitized successful evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hybrid-partner-proof-${{ github.sha }}
+          path: artifacts/hybrid-partner-proof
+          retention-days: 14
+
+      - name: Stop and destroy disposable Supabase
+        if: always()
+        shell: bash
+        run: |
+          if [ -d .ci/hybrid-partner ]; then cd .ci/hybrid-partner && supabase stop --no-backup || true; fi
