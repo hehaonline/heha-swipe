@@ -547,21 +547,54 @@ Evidence:
 - https://github.com/hehaonline/heha-swipe/blob/5282d4ae676dbda57b196fd92f756cca839ab99d/supabase/migrations/20260807160000_partner_claim_foundation_v2.sql
 - https://supabase.com/docs/guides/auth/auth-anonymous
 
-## Hybrid partner successor #120 exact-head review gate
+## Hybrid partner successor #120 exact-head review gate — revalidated 2026-08-12
 
-Open draft PR #120 at exact head `17f80c241ac11ef27d5896523511ee19210f9ac9` proposes the right high-level separation of claim, partnership, contract, and listing status, but its executable migration is not a safe successor to #72/#117 and must remain outside the release chain.
+Open draft PR #120 now stands at pushed head `cef9af2bc8785ea9732a1dca2de052b3995f1ca9`. It materially repairs the unsafe first draft: the executable chain now retains #117's `public.partner_claim_invites` source of truth and recipient/deletion guarantees, restores #72's consent-bearing `partner_interest_requests`, separates claim/partnership/contract/listing states, uses private single-use mutation capabilities, minimizes lifecycle receipts, and carries disposable SQL/RLS/concurrency/build evidence. It remains draft, unapplied, and outside the release chain.
 
-Confirmed blockers at that exact head:
+### Verified integration evidence
 
-1. `redeem_partner_claim` requires `auth.jwt()->>'email_verified'`. Supabase's current JWT claims reference does not define that claim; the standard authenticated-token claims include `email`, `is_anonymous`, `aal`, and `amr`, but not `email_verified`. With an ordinary Supabase JWT, `coalesce(..., false)` therefore rejects every claim before recipient matching. Evidence: https://supabase.com/docs/guides/auth/jwt-fields.
-2. Lock order is inverted across the two competing operations: `issue_partner_claim` locks Partner → invitation, while `redeem_partner_claim` locks invitation → Partner. That recreates the replace-vs-claim deadlock interleave that #117's current partner-first implementation and negative control were designed to catch. #120's shell script runs only claim-vs-claim, supplies no authenticated JWT context, and was syntax-checked but not executed.
-3. The SQL "invalid official state" proof uses `where false`, changes no row, and accepts both success and `check_violation`; it therefore cannot prove the constraint. It also omits callable RPC behavior, all seven table privileges, role/identity denials, token lifecycle, deletion behavior, audit invariants, and replacement/revocation races.
-4. Claim issuance and automatic replacement do not write lifecycle events or a revoking actor. The invitation table stores the full recipient email with no retention/anonymization contract. Its Partner FK cascades deletion while the lifecycle-event FK restricts it, leaving deletion behavior dependent on whether an event happens to exist rather than one explicit policy.
-5. #120's preflight says the exact remote donor heads and open-PR collision inventory were unavailable. They are now known: #120 and #117 both start at current `main@82ec41a27150847f3d461716bc58636e24babfe6`; #117 has the more complete current security/ACL/deletion/concurrency evidence; #72 and #82 remain stale historical donors. All four behaviorally overlap despite different filenames.
+Hybrid Partner Lifecycle Proof run #12 (`31644362989`) completed successfully on 2026-08-12:
 
-Recommended successor design: preserve #120's independent status dimensions, but rebuild the migration on current main using #117's recipient binding, deterministic ACL matrix, partner-first lock order, deletion/tombstone contract, adversarial lifecycle proofs, and evidence controls. Do not merge #117 unchanged either: its single `relationship_status` model must first be replaced with the approved independent dimensions. A new exact-head disposable replay must include baseline lineage, state mapping, Business A/B RLS, standard Supabase JWT fixtures, issue/replace/redeem/revoke races, deletion/reclaim, audit privacy, and negative controls.
+- disposable Supabase startup and ordered migration application;
+- 19 behavioral ACL/lifecycle assertions, including unverified/wrong/deleted-recipient denial, deletion tombstones, direct owner assignment denial, self-promotion denial, Business A/B request isolation, opt-out removal, and owner-deletion downgrade/recovery;
+- convergence-safe reapplication of corrective migrations `20260811090100` through `20260811090400`, followed by a second behavioral proof;
+- four scripted multi-session scenarios covering partner-lock order, replacement-vs-claim, revoke-vs-claim, and claim-wins-vs-revoke, with no `40P01`;
+- `npm ci`, production build, `git diff --check`, evidence sensitivity scan, and sanitized artifact upload.
 
-No migration was applied, no Auth user or Partner row was queried or changed, and no claim token, production database, deployment, or external system was touched.
+The job checked out GitHub's synthetic merge commit `9ae0a16fb2db192596ad08639b9435d9deecb06f`, whose parents are base `82ec41a27150847f3d461716bc58636e24babfe6` and pushed head `cef9af2bc8785ea9732a1dca2de052b3995f1ca9`. GitHub comparison reports zero changed files between the merge commit and the pushed head, so the tested file tree is identical. This is target-integration/merge-ref evidence, not a literal pushed-head checkout.
+
+Vercel and Snyk are green. PR #120 is open, draft, mergeable, and owns its ten exact filenames; #72, #82, and #117 remain behavioral donors/collisions and must not enter a parallel release chain.
+
+### Confirmed authorization blockers
+
+Two unresolved inline review findings remain valid at `cef9af2`. Green CI does not clear them because the proof suite does not exercise either exploit path.
+
+1. **Caller-spoofable `owner_release` bypass.** `app_private.gate_partner_lifecycle_capability` exempts the string context `owner_release` from its missing-capability rejection before returning early when no lifecycle field changes. `app_private.guard_partner_owner_self_service` also trusts that context and returns before applying its approved-field allowlist. An authenticated owner able to issue an owner-scoped UPDATE can therefore set the custom GUC and alter non-allowlisted partner data such as ratings, routing metadata, analytics, or media without a private capability.
+2. **Owner-authored claim-provenance erasure.** The `auth_reference_cleanup` predicate accepts a pure `claimed_by: UUID -> NULL` or `opted_out_by: UUID -> NULL` transition without proving that an Auth FK action caused it. It then sets the trusted `owner_release` context. A normal owner UPDATE can therefore leave a listing claimed while erasing protected provenance.
+
+These are code-level authorization defects in the draft migration, not evidence of a Production exploit. The migration remains unapplied.
+
+### Remaining proof gaps and required repair
+
+1. Do not treat a caller-visible GUC string as authorization. Require an inaccessible, transaction-scoped, single-use capability—or an equivalently narrow private mechanism—for owner release and Auth-reference cleanup.
+2. Preserve real account deletion without relying on a condition that an ordinary owner-authored UPDATE can satisfy. Prove deletion clears the intended references and records only deletion-safe audit data.
+3. Add adversarial regressions showing an ordinary authenticated owner cannot:
+   - spoof `owner_release` to alter a non-allowlisted field;
+   - directly null `claimed_by` or `opted_out_by`;
+   - update another owner's `partner_interest_requests` row.
+4. Add simultaneous redeem-vs-redeem proof: exactly one owner transition, one consumed invitation, one `claim_redeemed` event, a deterministic loser, and no `40P01`.
+5. Rerun the entire disposable migration, behavioral, corrective-reapply, concurrency, build, diff, and evidence workflow on the repaired head; preserve both pushed-head/tree identity and merge-ref integration evidence.
+6. Keep the branch draft and Production-frozen. Do not apply migrations, change Auth, activate claims, merge donor PRs, deploy, or mark ready without a separate exact approval.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/pull/120
+- https://github.com/hehaonline/heha-swipe/actions/runs/31644362989
+- https://github.com/hehaonline/heha-swipe/pull/120#discussion_r3770655341
+- https://github.com/hehaonline/heha-swipe/pull/120#discussion_r3770655342
+- https://github.com/hehaonline/heha-swipe/pull/120#issuecomment-5273305629
+
+No migration, database/Auth setting, user, Partner row, claim token, deployment, or Production system was changed by this audit update.
 
 ### Consent-evidence ownership handoff BOLA gate — confirmed 2026-08-12
 
