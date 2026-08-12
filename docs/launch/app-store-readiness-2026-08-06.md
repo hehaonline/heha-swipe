@@ -180,24 +180,26 @@ Evidence:
 - https://github.com/hehaonline/heha-swipe/pull/99#issuecomment-5226399388
 
 
-### Public SECURITY DEFINER scout mutation gate — confirmed 2026-08-12
+### SECURITY DEFINER scout ACL reproducibility gate — confirmed 2026-08-12
 
-Both current `main@82ec41a27150847f3d461716bc58636e24babfe6` and Swipe RC #113 at `885461f55f64ea56a9366e6573b6002769820f06` define `public.ensure_scout_event_artifact(uuid)` as a `SECURITY DEFINER` function. It accepts an arbitrary Scout lead UUID, reads that lead without a caller predicate, can copy its contact and event details into `event_applications`, and updates the source lead with the new artifact ID.
+Both current `main@82ec41a27150847f3d461716bc58636e24babfe6` and Swipe RC #113 at `885461f55f64ea56a9366e6573b6002769820f06` define `public.ensure_scout_event_artifact(uuid)` as a `SECURITY DEFINER` function. It accepts a Scout lead UUID, reads that lead without a caller predicate, can copy its contact and event details into `event_applications`, and updates the source lead with the new artifact ID.
 
-A full exact-tree scan of all 38 SQL files found no later `REVOKE` for this function and no caller, role, or `auth.uid()` check in its body. PostgreSQL grants function execution to `PUBLIC` by default; because the function is in the exposed `public` schema, repository state therefore defines a direct RPC-capable mutation path for callers who obtain a lead UUID. This is an authorization and data-integrity blocker even though the function returns no lead data. Whether this exact migration and grant state is active in production is unverified and must not be inferred from repository state alone.
+A full exact-tree scan of all 38 SQL files found no explicit `REVOKE` for this function and no caller, role, or `auth.uid()` check in its body. PostgreSQL grants function execution to `PUBLIC` by default, so a clean repository migration replay can create a direct RPC-capable privileged mutation unless another untracked step hardens the ACL.
 
-The adjacent `ensure_scout_pm_task(uuid)` function demonstrates the intended boundary by explicitly revoking execution from `PUBLIC`, `anon`, and `authenticated`; `ensure_scout_event_artifact(uuid)` lacks the equivalent protection. Existing trigger functions that call it do not justify a public direct-call surface.
+A metadata-only inspection of the connected **HEHA SWIPE** project on 2026-08-12 narrowed the current live risk: the function exists as `SECURITY DEFINER`, is owned by `postgres`, and has the explicit ACL `postgres=EXECUTE, service_role=EXECUTE`; `anon` and `authenticated` both report `EXECUTE=false`. The function was not invoked, and no lead or event data was queried. Therefore this audit found no evidence of a current anonymous/authenticated production exploit. The release blocker is unreconciled schema lineage: the secure live ACL is not reproduced by the committed migration that defines the function.
+
+The adjacent `ensure_scout_pm_task(uuid)` migration demonstrates the intended source-controlled boundary by explicitly revoking execution from `PUBLIC`, `anon`, and `authenticated`. The Scout event helper lacks equivalent repository evidence.
 
 Required fail-closed plan:
 
-1. **Recommended immediate release default:** keep the internal Scout/event lane out of soft-launch claims and do not invoke the RPC against live data. Inspect production function definition and ACL by name only through an approved read-only path; do not expose lead rows or personal data in evidence.
-2. Prepare a dedicated migration that revokes direct execution from `PUBLIC`, `anon`, and `authenticated` (and avoids an unnecessary direct `service_role` grant). Preserve the existing trigger path only.
-3. Prefer moving privileged trigger-only logic into a non-exposed private schema. If any direct invocation is truly required, replace it with a narrowly granted wrapper that checks the exact internal role and validates the target lead before mutation.
+1. **Recommended immediate release default:** preserve the current live ACL, do not invoke the RPC manually, and keep the internal Scout/event lane out of launch-readiness claims until repository lineage is reconciled.
+2. Prepare a dedicated migration that explicitly revokes direct execution from `PUBLIC`, `anon`, and `authenticated`. Preserve `service_role` execution only if an inventory proves a direct server caller requires it; existing trigger execution must remain independently verified.
+3. Prefer moving privileged trigger-only logic into a non-exposed private schema. If direct invocation is required, use a narrowly granted wrapper and validate the target lead and caller role before mutation.
 4. Add a migration proof that anonymous, ordinary authenticated, inactive-role, and wrong-role RPC calls fail; an authorized Scout insert still creates exactly one linked event artifact; retries remain idempotent; arbitrary/unknown UUIDs do not mutate state; and RLS/BOLA checks remain intact.
-5. Run lineage-faithful disposable migration replay, function-ACL inspection, database advisors, and adversarial multi-session tests before proposing production application.
-6. Roll back by restoring the prior function/ACL only in the disposable proof environment. Any production migration, ACL change, or data repair remains separately approval-gated.
+5. Run lineage-faithful disposable migration replay, function-ACL inspection, database advisors, and adversarial multi-session tests. Then compare the disposable ACL to the live metadata result before requesting any production migration.
+6. Because live `anon`/`authenticated` execution is already denied, no emergency production ACL change is recommended from this evidence. Any later production migration or grant change remains separately approval-gated and must include an exact rollback.
 
-No Supabase query, migration, role/grant change, lead record, event application, deployment, or production setting is changed or authorized by this audit.
+No function execution, migration, role/grant change, lead record, event application, deployment, or production setting was changed. The only live inspection was function metadata/ACL.
 
 Evidence:
 
