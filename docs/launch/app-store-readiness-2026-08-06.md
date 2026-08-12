@@ -208,6 +208,48 @@ Evidence:
 - https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/supabase/migrations/20260705001700_sync_scout_pillar_to_partner.sql
 
 
+### Public legacy pricing view exposure gate — confirmed 2026-08-12
+
+A metadata-only inspection of the connected **HEHA SWIPE** project found that the legacy `public.heha_pricing` view remains externally exposed:
+
+- the current Supabase security advisor reports `security_definer_view` at **ERROR** level and facing **EXTERNAL**;
+- the view is owned by `postgres` and has no `security_invoker` option;
+- both `anon` and `authenticated` have schema usage and `SELECT` on the view;
+- the ACL grants those browser roles broad view privileges, while the definition still publishes eight internal pricing, discount, pay, and allocation constants.
+
+Only catalog metadata, ACLs, advisor output, and the view definition were inspected. The view was not selected through a browser role, no business rows were read, and no function, migration, grant, pricing value, payment path, or production setting changed.
+
+Draft PR #70 at exact head `0118cee76f8298f75d36fb3eed8accc7b9bcd747` recognizes the exposure and proposes `security_invoker=true` plus browser-role revocation. Its one-file intent is directionally correct, but it is not safe to merge or apply unchanged:
+
+- it is based on stale `main@f0c9cd1b3571bafbe1038960b07a8103e04a3a66`, not current `main@82ec41a27150847f3d461716bc58636e24babfe6`;
+- it recreates the entire view body and therefore republishes the old constants to trusted backends instead of limiting itself to privileges;
+- it has no current consumer inventory, disposable replay, role-matrix proof, body-preservation proof, or rollback/forward-repair test;
+- exact-head hosted evidence is Vercel success only; no GitHub Actions/database proof or review thread exists.
+
+The live definition matching #70's old constants proves what is exposed today; it does not establish that those figures are approved, canonical, or safe for operational use.
+
+Required fail-closed plan:
+
+1. **Recommended soft-launch default:** treat all public pricing, fee, discount, driver-pay, allocation, and partner-launch claims as blocked until an approved canonical source exists; keep #70 outside the RC.
+2. Inventory code plus every Make, Wix, server, report, and other external consumer read-only. Do not assume repository non-use proves zero dependencies.
+3. Prepare a fresh current-base, privilege-only successor that changes the existing view to `security_invoker=true` without redefining its body, revokes `PUBLIC`/`anon`/`authenticated`, and grants only the minimum verified server role. Any canonical pricing replacement must be a separate financial approval.
+4. In a lineage-faithful disposable environment, prove the view definition is byte/semantic-equivalent before and after the privilege repair; anonymous and ordinary authenticated access fail; the approved server consumer succeeds; unrelated partner, supporter, and routing paths remain intact; and the migration re-applies safely.
+5. Prepare an exact rollback and operational fallback for a missed legacy consumer. Do not default to restoring public browser access; prefer a narrowly authenticated server-owned compatibility path.
+6. Apply no production migration until Geronimo approves the exact successor head, dependency inventory, validation packet, and rollback.
+
+Alternatives:
+
+- **Drop the view** only after proving there are no consumers; smallest permanent surface, highest compatibility risk.
+- **Keep the current public view** only as an explicitly accepted temporary risk; not recommended because internal financial constants remain externally readable and the advisor remains red.
+- **Merge #70 unchanged** is not recommended because it couples privilege hardening to a stale financial-body rewrite.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/pull/70
+- https://supabase.com/docs/guides/database/database-advisors?queryGroups=lint&lint=0010_security_definer_view
+- https://supabase.com/docs/guides/api/securing-your-api
+
+
 ### Client-side partner-review webhook recovery gate — revalidated 2026-08-09
 
 Swipe RC #113's partner registration flow has a separate client-side webhook boundary in `PartnerWizard.jsx`. After the authenticated `partners` insert succeeds, the component awaits `VITE_MAKE_PARTNER_APPROVAL_WEBHOOK` before it calls `setSubmittedListing(data)` and leaves the loading state.
