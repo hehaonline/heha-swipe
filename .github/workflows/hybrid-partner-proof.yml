@@ -78,21 +78,25 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/hybrid_partner_lifecycle_proof.sql \
             2>&1 | tee artifacts/hybrid-partner-proof/behavioral-proof.txt
 
-      - name: Prove migration re-apply and rerun behavioral proof
+      # The numbered forward migration is ledger-applied once. The follow-up
+      # corrective definitions are deliberately re-apply-safe and are replayed
+      # here to prove their policies, functions, triggers and ACLs converge.
+      - name: Prove corrective migration re-apply and rerun behavioral proof
         shell: bash
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: |
           set -euo pipefail
-          : > artifacts/hybrid-partner-proof/idempotency-reapply.txt
-          for migration in supabase/migrations/2026081109*.sql; do
-            echo "reapply=$migration" | tee -a artifacts/hybrid-partner-proof/idempotency-reapply.txt
+          : > artifacts/hybrid-partner-proof/corrective-idempotency-reapply.txt
+          for migration in supabase/migrations/20260811090[1-9]*.sql; do
+            echo "reapply=$migration" | tee -a artifacts/hybrid-partner-proof/corrective-idempotency-reapply.txt
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration" \
-              2>&1 | tee -a artifacts/hybrid-partner-proof/idempotency-reapply.txt
+              2>&1 | tee -a artifacts/hybrid-partner-proof/corrective-idempotency-reapply.txt
           done
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/hybrid_partner_lifecycle_proof.sql \
             > artifacts/hybrid-partner-proof/behavioral-proof-after-reapply.txt 2>&1
-          echo 'behavioral_proof_after_reapply=pass' | tee -a artifacts/hybrid-partner-proof/idempotency-reapply.txt
+          echo 'behavioral_proof_after_corrective_reapply=pass' \
+            | tee -a artifacts/hybrid-partner-proof/corrective-idempotency-reapply.txt
 
       - name: Execute genuine two-session concurrency proof
         shell: bash
