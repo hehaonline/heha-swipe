@@ -2,6 +2,7 @@
 begin;
 
 create temporary table hybrid_results(label text primary key, ok boolean not null, detail text not null) on commit drop;
+grant select,insert on table hybrid_results to authenticated;
 
 create or replace function pg_temp.set_auth(p_user uuid,p_role text default 'authenticated')
 returns void language plpgsql as $$
@@ -42,6 +43,7 @@ declare priv text; public_grants integer; begin
   assert to_regclass('public.partner_claim_invites') is not null;
   assert to_regclass('public.partner_interest_requests') is not null;
   assert to_regclass('public.partner_lifecycle_events') is not null;
+  assert to_regclass('app_private.partner_lifecycle_mutation_capabilities') is not null;
   assert to_regprocedure('public.create_partner_claim_invite(uuid,interval,text,uuid,text)') is not null;
   assert to_regprocedure('public.claim_partner_profile(text)') is not null;
   assert to_regprocedure('public.approve_heha_partnership(uuid)') is not null;
@@ -67,8 +69,13 @@ declare priv text; public_grants integer; begin
 
   assert not has_function_privilege('anon','public.claim_partner_profile(text)','execute');
   assert has_function_privilege('authenticated','public.claim_partner_profile(text)','execute');
+  assert not has_function_privilege('authenticated','app_private.authorize_partner_lifecycle_mutation(uuid,text)','execute');
+  assert not has_function_privilege('service_role','app_private.authorize_partner_lifecycle_mutation(uuid,text)','execute');
+  assert not has_table_privilege('authenticated','app_private.partner_lifecycle_mutation_capabilities','SELECT');
+  assert not has_table_privilege('authenticated','app_private.partner_lifecycle_mutation_capabilities','INSERT');
+  assert not has_table_privilege('service_role','app_private.partner_lifecycle_mutation_capabilities','INSERT');
   assert not exists(select 1 from information_schema.sequences where sequence_schema='public' and sequence_name like 'partner_lifecycle_events%');
-  insert into hybrid_results values('acl matrix',true,'PUBLIC/anon/authenticated/service_role seven-privilege matrix and no lifecycle identity sequence verified');
+  insert into hybrid_results values('acl matrix',true,'claim ACLs, private single-use capability boundary and no lifecycle identity sequence verified');
 end $$;
 
 -- Ambiguous legacy HEHA Partner evidence fails closed: under_review, not official.
@@ -129,9 +136,15 @@ do $$ declare p public.partners; begin
   insert into hybrid_results values('claim preserves canonical identity',true,'same partners.id, saves and swipes retained; claimed does not imply partnership');
 end $$;
 
--- Direct protected self-promotion is denied.
+-- Direct protected self-promotion is denied after the claim capability is consumed.
 select pg_temp.expect_state('owner self promotion denied','42501',
   $$update public.partners set partnership_status='official_partner',contract_status='signed',heha_partner=true where id='11111111-1111-4111-8111-111111111111'$$);
+
+-- A caller-supplied GUC is not a capability and cannot bypass the owner guard.
+select set_config('app.hybrid_partner_context','claim',true);
+select pg_temp.expect_state('spoofed lifecycle context denied','42501',
+  $$update public.partners set rating=5 where id='11111111-1111-4111-8111-111111111111'$$);
+select set_config('app.hybrid_partner_context','',true);
 
 -- Direct backend owner assignment outside the private verified-claim context is denied.
 reset role;
