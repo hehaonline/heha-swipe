@@ -522,6 +522,31 @@ Evidence:
 - https://github.com/hehaonline/heha-swipe/pull/69
 - https://github.com/hehaonline/heha-swipe/blob/82ec41a27150847f3d461716bc58636e24babfe6/docs/migration-lineage/live-ledger-2026-07-19.csv
 
+### Partner-claim proof and permanent-account gate — revalidated 2026-08-12
+
+Open draft PR #117 remains the strongest current claim-security proof at pushed head `5282d4ae676dbda57b196fd92f756cca839ab99d`, but two verification boundaries remain before it can enter a release chain.
+
+First, GitHub returned one Actions run associated with this head: Partner Claim SQL Proof run #29 (`31260802543`). It completed successfully with Supabase CLI `2.112.0`, PostgreSQL 16.14, disposable migration application, core/extended/ACL/lifecycle proofs, migration re-apply, two-session concurrency proofs, and an evidence-secret scan. Vercel and Snyk are also green. The checkout log, however, proves that the job executed GitHub's synthetic merge commit `42c849bbf91d4ef8a8b66a570def5c225a9386bb` (head `5282d4a…` merged into base `82ec41a…`), not the pushed head itself. That is useful target-integration evidence, but it does not satisfy the separate exact-pushed-head execution gate.
+
+Second, static control-flow review found an unproved permanent-account boundary. Email-address invitations resolve to a user ID only when `auth.users.email_confirmed_at is not null`; otherwise preview and claim fail closed until verification. But the explicit `p_intended_user_id` path selects only `auth.users.email`, binds the supplied UUID without checking `email_confirmed_at` or `is_anonymous`, and both preview and claim then authorize that branch using only `auth.uid()`. Therefore an invitation deliberately or mistakenly bound to an unverified user UUID—and, if anonymous sign-ins are enabled, an anonymous user's UUID—can reach the ownership mutation with no permanent-account check. This edge was not exercised by the green proof matrix. Supabase documents that anonymous users use the `authenticated` Postgres role and must be distinguished using the `is_anonymous` JWT claim: https://supabase.com/docs/guides/auth/auth-anonymous.
+
+Recommended fail-closed repair:
+
+1. Require every claim recipient, including direct UUID bindings, to be a permanent verified account before issuance and again immediately before preview/claim. Read the current `auth.users` record inside the definer function; do not invent an `email_verified` JWT claim.
+2. Reject `is_anonymous = true`, missing confirmation, deleted/tombstoned recipients, and a recipient that becomes ineligible after issuance.
+3. Add direct-UUID negative proofs for pre-existing unverified and anonymous users; assert 42501, unchanged ownership/status/invitation, and no successful-claim audit event. Add the corresponding positive proof after the same account becomes permanent and verified.
+4. Run the complete disposable proof on the exact pushed head as a distinct job/ref, then preserve the successful merge-ref run as target-integration evidence.
+5. Keep #117 outside the release chain until its separate relationship-model collision with #72/#120 and the SWP-016 lineage/ADR-001 gates are resolved.
+
+This is a review finding, not a claim that anonymous sign-ins are enabled in Production. Repository search found no `signInAnonymously` call or committed anonymous-auth setting; live Auth configuration was not inspected. No migration, Auth setting, user, invitation, Partner row, or deployment was changed.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/pull/117
+- https://github.com/hehaonline/heha-swipe/actions/runs/31260802543
+- https://github.com/hehaonline/heha-swipe/blob/5282d4ae676dbda57b196fd92f756cca839ab99d/supabase/migrations/20260807160000_partner_claim_foundation_v2.sql
+- https://supabase.com/docs/guides/auth/auth-anonymous
+
 ## Hybrid partner successor #120 exact-head review gate
 
 Open draft PR #120 at exact head `17f80c241ac11ef27d5896523511ee19210f9ac9` proposes the right high-level separation of claim, partnership, contract, and listing status, but its executable migration is not a safe successor to #72/#117 and must remain outside the release chain.
