@@ -47,7 +47,7 @@ declare priv text; public_grants integer; begin
   assert to_regprocedure('public.approve_heha_partnership(uuid)') is not null;
 
   select count(*) into public_grants
-  from pg_class c,cross join lateral aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a
+  from pg_class c cross join lateral aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a
   where c.oid='public.partner_claim_invites'::regclass and a.grantee=0;
   assert public_grants=0,'PUBLIC has claim-table privileges';
 
