@@ -563,6 +563,35 @@ Recommended successor design: preserve #120's independent status dimensions, but
 
 No migration was applied, no Auth user or Partner row was queried or changed, and no claim token, production database, deployment, or external system was touched.
 
+### Consent-evidence ownership handoff BOLA gate — confirmed 2026-08-12
+
+Swipe draft PR #118 at exact head `a83e41225b6c1b75d9f0132341c3c759f01018c9` correctly keeps publication-consent evidence in a private RLS table, but its owner-read policy uses the historical event owner as continuing access authority:
+
+- each `partner_publication_consent_events` row stores the partner's `owner_id` when the event is recorded;
+- the owner policy permits `SELECT` whenever `auth.uid() = event.owner_id`;
+- the policy does not also require that the caller remains the current `public.partners.owner_id`;
+- no trigger or ownership-release path revokes or rewrites the historical event owner.
+
+This collides with the approved release/reclaim direction in issue #119 and donor/successor PRs #117/#120, where a canonical Partner ID and its evidence survive owner release and verified reclaim. If the former owner's Auth account remains active, changing the Partner row to a new owner does not change old consent rows. The former owner can therefore continue reading private evidence after losing the business profile, including representative contact, name/title, evidence reference, exact profile snapshot, and recorder identifier. Conversely, the new owner is not automatically entitled to the old rows, so the current direct-table policy is neither a safe access boundary nor a complete handoff contract.
+
+Recommended fail-closed reconciliation:
+
+1. Keep historical actor/owner identifiers as immutable audit facts, but never use them alone as current authorization.
+2. Remove the owner-facing direct table policy and expose only a reviewed, redacted current-owner status RPC; keep full evidence limited to approved internal roles. If direct owner evidence access is retained, require a current-ownership join and explicitly allowlist returned columns.
+3. Prove immediate former-owner denial after release/transfer/reclaim; wrong-owner and Business A/B denial; deleted-account tombstones; current-owner status recovery; internal-role access; and evidence preservation without reassignment or destructive rewriting.
+4. Run those proofs on the same exact integrated migration lineage as the hybrid claim successor. Do not patch #118 and #120 independently into competing ownership contracts.
+5. Decide separately, with privacy/legal review, whether and which historical evidence a new owner may see. Default to redacted status, not full predecessor contact/evidence.
+
+This is a confirmed policy-integration defect in the proposed SQL, not evidence that Production currently has this table or that a live former owner accessed it. PR #118 remains draft and unapplied. No database, Auth user, Partner row, consent event, deployment, or external service was queried or changed.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/pull/118
+- https://github.com/hehaonline/heha-swipe/blob/a83e41225b6c1b75d9f0132341c3c759f01018c9/supabase/migrations/20260810072829_wave1_partner_publication_consent.sql
+- https://github.com/hehaonline/heha-swipe/issues/119
+- https://github.com/hehaonline/heha-swipe/pull/117
+- https://github.com/hehaonline/heha-swipe/pull/120
+
 ## Smallest approval package
 
 Before wrapper code starts, approve these exact decisions:
