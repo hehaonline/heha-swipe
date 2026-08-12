@@ -179,6 +179,33 @@ Evidence:
 - https://supabase.com/docs/guides/troubleshooting/why-is-my-supabase-api-call-not-returning-PGzXw0
 - https://github.com/hehaonline/heha-swipe/pull/99#issuecomment-5226399388
 
+
+### Public SECURITY DEFINER scout mutation gate — confirmed 2026-08-12
+
+Both current `main@82ec41a27150847f3d461716bc58636e24babfe6` and Swipe RC #113 at `885461f55f64ea56a9366e6573b6002769820f06` define `public.ensure_scout_event_artifact(uuid)` as a `SECURITY DEFINER` function. It accepts an arbitrary Scout lead UUID, reads that lead without a caller predicate, can copy its contact and event details into `event_applications`, and updates the source lead with the new artifact ID.
+
+A full exact-tree scan of all 38 SQL files found no later `REVOKE` for this function and no caller, role, or `auth.uid()` check in its body. PostgreSQL grants function execution to `PUBLIC` by default; because the function is in the exposed `public` schema, repository state therefore defines a direct RPC-capable mutation path for callers who obtain a lead UUID. This is an authorization and data-integrity blocker even though the function returns no lead data. Whether this exact migration and grant state is active in production is unverified and must not be inferred from repository state alone.
+
+The adjacent `ensure_scout_pm_task(uuid)` function demonstrates the intended boundary by explicitly revoking execution from `PUBLIC`, `anon`, and `authenticated`; `ensure_scout_event_artifact(uuid)` lacks the equivalent protection. Existing trigger functions that call it do not justify a public direct-call surface.
+
+Required fail-closed plan:
+
+1. **Recommended immediate release default:** keep the internal Scout/event lane out of soft-launch claims and do not invoke the RPC against live data. Inspect production function definition and ACL by name only through an approved read-only path; do not expose lead rows or personal data in evidence.
+2. Prepare a dedicated migration that revokes direct execution from `PUBLIC`, `anon`, and `authenticated` (and avoids an unnecessary direct `service_role` grant). Preserve the existing trigger path only.
+3. Prefer moving privileged trigger-only logic into a non-exposed private schema. If any direct invocation is truly required, replace it with a narrowly granted wrapper that checks the exact internal role and validates the target lead before mutation.
+4. Add a migration proof that anonymous, ordinary authenticated, inactive-role, and wrong-role RPC calls fail; an authorized Scout insert still creates exactly one linked event artifact; retries remain idempotent; arbitrary/unknown UUIDs do not mutate state; and RLS/BOLA checks remain intact.
+5. Run lineage-faithful disposable migration replay, function-ACL inspection, database advisors, and adversarial multi-session tests before proposing production application.
+6. Roll back by restoring the prior function/ACL only in the disposable proof environment. Any production migration, ACL change, or data repair remains separately approval-gated.
+
+No Supabase query, migration, role/grant change, lead record, event application, deployment, or production setting is changed or authorized by this audit.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/blob/82ec41a27150847f3d461716bc58636e24babfe6/supabase/migrations/20260705000400_scout_event_artifacts.sql
+- https://github.com/hehaonline/heha-swipe/blob/82ec41a27150847f3d461716bc58636e24babfe6/supabase/migrations/20260705000600_scout_pm_tasks.sql
+- https://github.com/hehaonline/heha-swipe/blob/885461f55f64ea56a9366e6573b6002769820f06/supabase/migrations/20260705001700_sync_scout_pillar_to_partner.sql
+
+
 ### Client-side partner-review webhook recovery gate — revalidated 2026-08-09
 
 Swipe RC #113's partner registration flow has a separate client-side webhook boundary in `PartnerWizard.jsx`. After the authenticated `partners` insert succeeds, the component awaits `VITE_MAKE_PARTNER_APPROVAL_WEBHOOK` before it calls `setSubmittedListing(data)` and leaves the loading state.
