@@ -496,15 +496,22 @@ Current repository `main@82ec41a27150847f3d461716bc58636e24babfe6` already conta
 
 The last-24-hour Edge Function log response contained no `stripe-webhook` or `create-supporter-checkout` entries and no matching processing-error entry. That does not prove the flow is unused or correct, and it cannot reconstruct older missed or partial events.
 
-Required approval-gated recovery plan:
+The current non-production HEHA staging project is not yet a valid target for that test plan. Metadata-only inspection found `profiles` but none of the six Stripe/subscription columns used by the repaired webhook, and found no `contributions`, `supporter_payments`, or `supporter_subscriptions` tables. Its migration history is empty. Deploying the repaired function there now would therefore prove only missing-schema failure, not retry safety or convergence.
 
-1. **Recommended safe default:** keep the supporter purchase/entitlement path out of the soft launch until the repaired exact source is proven in Stripe test mode and an exact deployment is approved.
-2. In a disposable/non-production Supabase target, send valid signed test events for checkout completion, subscription update, and subscription deletion.
-3. Force each critical persistence operation to fail independently and prove a non-2xx response, Stripe retry, and eventual convergence after recovery.
-4. Replay the same events and prove no duplicate contribution, payment, subscription, or entitlement state; test out-of-order and concurrent delivery.
-5. Verify signature denial, missing/invalid user linkage, test/live environment separation, delayed delivery, cancellation, refund/revocation requirements, and truthful pending UI.
-6. After exact approval, deploy only the reviewed function version and record its deployed version/hash. Reconcile Stripe event history against HEHA rows with a read-only report first; any replay, refund, entitlement correction, or production data mutation requires separate explicit approval.
-7. If rollout verification fails, keep purchase disabled and redeploy the last known bundle while diagnosing; do not acknowledge unpersisted test events as successful.
+Open draft PR #69 at exact head `6d799fa323ef92b3bf2fc5211c4d12f60ca4b5fa` is the existing recovery lane for one part of that prerequisite. It adds only the recovered `20260614102924_add_supporter_payments_subscriptions_vibe_settings.sql` source. An independent metadata-only comparison on 2026-08-12 found its three table definitions, defaults, constraints, indexes, update triggers, RLS enablement, and policies aligned with the corresponding current production objects. It is mergeable with current main, has no review threads, and is the only other open Swipe PR in this payment-schema domain.
+
+PR #69 is necessary lineage evidence but is not sufficient to make staging webhook-ready. The repository ledger still marks live migration `20260531204554 add_stripe_fields_to_profiles` untracked, and current main contains no source for the six production profile fields the webhook writes. The staging project also lacks `contributions`; the committed entitlement-hardening migration assumes that table already exists. Production does have the webhook's three required idempotency keys: unique `supporter_subscriptions(stripe_subscription_id)`, `supporter_payments(stripe_checkout_session_id)`, and `contributions(stripe_payment_id)`.
+
+Corrected approval-gated recovery plan:
+
+1. **Recommended safe default:** keep the supporter purchase/entitlement path out of the soft launch. Do not deploy the repaired webhook to the current staging project yet.
+2. Independently review and disposition PR #69 as source-lineage restoration only. Because production already records that migration, do not manually re-apply it there.
+3. Recover and review the remaining exact payment prerequisites: the missing profile Stripe-field migration, the source that creates `contributions`, and the later entitlement ACL/unique-key hardening chain. Do not infer production DDL from application code alone.
+4. Prove the complete canonical migration sequence in an approved disposable target and verify schema, defaults, constraints, grants/RLS, triggers, and the three conflict keys before deploying any function.
+5. Only then deploy the exact repaired webhook in Stripe test mode; send valid signed checkout-completion, subscription-update, and subscription-deletion events.
+6. Force each critical persistence operation to fail independently and prove non-2xx response, Stripe retry, eventual convergence, replay idempotency, out-of-order/concurrent delivery handling, signature denial, invalid linkage denial, and test/live separation.
+7. After separate exact approval, deploy only the reviewed function version and record its version/hash. Reconcile Stripe event history against HEHA rows with a read-only report first; any replay, refund, entitlement correction, or production data mutation requires separate explicit approval.
+8. If rollout verification fails, keep purchase disabled and redeploy the last known bundle while diagnosing; do not acknowledge unpersisted test events as successful.
 
 No Edge Function was deployed, no Stripe product/webhook was changed, no event was replayed, and no production row, entitlement, charge, refund, secret, or environment setting was touched.
 
@@ -512,6 +519,8 @@ Evidence:
 
 - https://github.com/hehaonline/heha-swipe/blob/82ec41a27150847f3d461716bc58636e24babfe6/supabase/functions/stripe-webhook/index.ts
 - https://github.com/hehaonline/heha-swipe/commit/138dd64cd8db39f9c3f7fcbe31a810e9a5165a93
+- https://github.com/hehaonline/heha-swipe/pull/69
+- https://github.com/hehaonline/heha-swipe/blob/82ec41a27150847f3d461716bc58636e24babfe6/docs/migration-lineage/live-ledger-2026-07-19.csv
 
 ## Smallest approval package
 
