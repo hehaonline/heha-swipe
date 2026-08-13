@@ -621,6 +621,62 @@ Evidence:
 No migration, agreement, Partner row, Auth user, lifecycle receipt, deployment, or Production system was changed by this documentation update.
 
 
+### Hybrid partner repair/proof reconciliation — revalidated 2026-08-13
+
+The preceding #120 sections preserve the exact review history at `cef9af2bc8785ea9732a1dca2de052b3995f1ca9`. They are now superseded for current-head status by remote head `cb15e6ab5106985b706498068b389d51d7e026d5`, which is one commit ahead and adds the agreement-evidence and context-authenticity repair package. PR #120 remains open, draft, mergeable, unapplied, and outside the release chain.
+
+The repair is materially present on GitHub now. The PR has twelve changed files, including:
+
+- `20260811090500_hybrid_partner_agreement_evidence.sql`;
+- `20260811090600_hybrid_partner_context_authenticity.sql`;
+- expanded lifecycle and multi-session proof sources;
+- the pinned disposable proof workflow and exact-head provenance gate.
+
+This closes the earlier “local-only repair commit” provenance mismatch, but it does **not** validate the repair.
+
+#### Exact-head workflow failure
+
+Hybrid Partner Lifecycle Proof run #13 (`31748869580`) failed before any migration or behavioral step. The workflow checked out GitHub's synthetic merge commit `8e7b6641513609144bd966151d4f46fee0cddbd7` at the default shallow depth, then fetched PR head `cb15e6ab5106985b706498068b389d51d7e026d5` at depth one. Both commits remained shallow boundaries, so `git merge-base --is-ancestor` could not traverse the merge parent and falsely reported that the merge tree did not contain the PR head.
+
+The job exited in “Install PostgreSQL client and pin the exact reviewed head.” Every later step was skipped:
+
+- disposable Supabase startup and migration application;
+- SQL/RLS/BOLA behavioral proof;
+- corrective-migration re-apply;
+- multi-session concurrency proof;
+- application build and diff check;
+- evidence sensitivity scan and artifact upload.
+
+Vercel and Snyk are green, but neither substitutes for the skipped database/security workflow. None of the new repair head's executable migration, authorization, agreement, concurrency, or rollback claims is validated yet.
+
+Required workflow repair:
+
+1. Check out `${{ github.event.pull_request.head.sha }}` directly, preferably without persisted credentials.
+2. Require literal `git rev-parse HEAD == PR_HEAD_SHA` before running the proof.
+3. If merge-ref integration evidence is also desired, execute it as a separate clearly labeled job or fetch sufficient history and prove ancestry plus tree identity.
+4. Add a provenance regression showing an ordinary pull-request merge ref passes and an unrelated SHA fails.
+5. Rerun the entire disposable workflow on the repaired pushed head and retain the sanitized exact-head receipt.
+
+#### Additional exact-head security findings
+
+Automated review of `cb15e6ab` identified three further fail-closed defects that remain unresolved until a repaired head and executing proof demonstrate otherwise:
+
+1. **Non-atomic trigger disabling.** The agreement-evidence corrective migration uses `DISABLE TRIGGER USER`, reconciliation UPDATEs, and `ENABLE TRIGGER USER` without an explicit transaction. The workflow replays the file with `psql -f` autocommit, creating a concurrent-write window and an interruption path that can leave user triggers disabled. The disable/reconcile/enable sequence must be atomic and must prove rollback restores trigger state.
+2. **Forged lifecycle provenance on owner INSERT.** Owner-created partner rows have lifecycle status fields normalized but can retain caller-supplied `partnership_requested_at`, `official_partner_since`, `contract_signed_at`, `opted_out_at`, and `opted_out_by`. Reset every protected provenance field on the owner INSERT path and add cross-user attribution/forged-timestamp proofs.
+3. **Caller-set JWT GUC used as privileged authority.** Agreement registration, retirement, evidence revocation, and partnership approval trust a service-role value read from caller-set `request.jwt.claims`. Under the direct-SQL authenticated-role threat model used by this proof package, an ordinary caller can set that custom GUC. Replace it with a non-forgeable database privilege/capability boundary and prove an authenticated owner cannot invoke any internal agreement/approval mutation even after setting every relevant JWT/GUC value.
+
+Required current-head acceptance is therefore cumulative: repair the workflow provenance gate; make trigger reconciliation atomic; clear owner-insert provenance; replace caller-supplied JWT authority; retain the prior owner-release/provenance and immutable agreement-evidence protections; execute the complete disposable migration/RLS/BOLA/concurrency/build suite; and obtain independent exact-head review.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/pull/120
+- https://github.com/hehaonline/heha-swipe/actions/runs/31748869580
+- https://github.com/hehaonline/heha-swipe/pull/120#pullrequestreview-4932239332
+- https://github.com/hehaonline/heha-swipe/pull/120#pullrequestreview-4931739215
+
+No migration, trigger, agreement, Partner row, Auth user, lifecycle receipt, deployment, or Production system was changed by this documentation update.
+
+
 ### Consent-evidence ownership handoff BOLA gate — confirmed 2026-08-12
 
 Swipe draft PR #118 at exact head `a83e41225b6c1b75d9f0132341c3c759f01018c9` correctly keeps publication-consent evidence in a private RLS table, but its owner-read policy uses the historical event owner as continuing access authority:
