@@ -26,20 +26,37 @@ jobs:
         with:
           version: 2.112.0
 
-      - name: Install PostgreSQL client and record revision
+      - name: Install PostgreSQL client and pin the exact reviewed head
         shell: bash
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
           if ! command -v psql >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y postgresql-client; fi
           mkdir -p artifacts/hybrid-partner-proof
+          checked_out_sha="$(git rev-parse HEAD)"
           {
-            echo "checked_out_sha=$(git rev-parse HEAD)"
+            echo "checked_out_sha=${checked_out_sha}"
             echo "github_sha=${GITHUB_SHA}"
-            echo "pr_head_sha=${{ github.event.pull_request.head.sha }}"
-            echo "pr_base_sha=${{ github.event.pull_request.base.sha }}"
+            echo "pr_head_sha=${PR_HEAD_SHA}"
+            echo "pr_base_sha=${PR_BASE_SHA}"
             echo "supabase_cli=$(supabase --version)"
             echo "psql=$(psql --version)"
           } | tee artifacts/hybrid-partner-proof/revision.txt
+          # Fail closed unless the evidence was produced by the exact PR head.
+          # actions/checkout resolves a pull_request event to the merge commit, so
+          # the head commit must be an ancestor of what was actually proved.
+          if [ -n "${PR_HEAD_SHA}" ]; then
+            git fetch --no-tags --depth=1 origin "${PR_HEAD_SHA}"
+            if [ "${checked_out_sha}" != "${PR_HEAD_SHA}" ] \
+               && ! git merge-base --is-ancestor "${PR_HEAD_SHA}" "${checked_out_sha}"; then
+              echo "exact_head_check=FAILED: proved tree does not contain ${PR_HEAD_SHA}" \
+                | tee -a artifacts/hybrid-partner-proof/revision.txt
+              exit 1
+            fi
+            echo "exact_head_check=pass" | tee -a artifacts/hybrid-partner-proof/revision.txt
+          fi
           bash -n scripts/hybrid_partner_concurrency_proof.sh
 
       - name: Prepare disposable synthetic Supabase project
@@ -81,6 +98,12 @@ jobs:
       # The numbered forward migration is ledger-applied once. The follow-up
       # corrective definitions are deliberately re-apply-safe and are replayed
       # here to prove their policies, functions, triggers and ACLs converge.
+      #
+      # Replay order is lexical and load-bearing: later corrective migrations
+      # supersede earlier definitions of the same functions, so the last file to
+      # touch a definition is the one that must win. The behavioral proof is
+      # rerun afterwards to prove the converged state, not just that each file
+      # replays without error.
       - name: Prove corrective migration re-apply and rerun behavioral proof
         shell: bash
         env:

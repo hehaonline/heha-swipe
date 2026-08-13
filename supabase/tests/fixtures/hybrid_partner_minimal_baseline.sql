@@ -74,8 +74,20 @@ create table public.partners (
 alter table public.partners enable row level security;
 grant select,insert,update on public.partners to authenticated;
 create policy partners_owner_read on public.partners for select to authenticated using(owner_id=auth.uid());
-create policy partners_owner_insert on public.partners for insert to authenticated with check(owner_id=auth.uid());
-create policy partners_owner_update on public.partners for update to authenticated using(owner_id=auth.uid()) with check(owner_id=auth.uid());
+create policy partners_owner_insert on public.partners for insert to authenticated with check(auth.uid()=owner_id);
+-- Mirrors current main's pre-approval owner UPDATE policy from
+-- 20260706093000_partner_owner_self_service_security.sql so the owner guard is
+-- exercised under the same predicate Production uses.
+create policy "Owners can update own preapproval partner profile" on public.partners
+for update to authenticated
+using (
+  auth.uid()=owner_id
+  and coalesce(status,'')=any(array['draft','submitted','pending','missing_info']::text[])
+)
+with check (
+  auth.uid()=owner_id
+  and coalesce(status,'')=any(array['draft','submitted','pending','missing_info']::text[])
+);
 create policy partners_public_read on public.partners for select to anon,authenticated using(status in ('approved','live'));
 
 create table public.saves(
@@ -120,6 +132,22 @@ returns integer language sql immutable set search_path=pg_catalog,public,pg_temp
 as $$ select 0; $$;
 revoke all on function app_private.partner_completion_pct(public.partners) from public,anon,authenticated;
 
+-- Current main installs the owner self-service guard trigger in
+-- 20260706093000_partner_owner_self_service_security.sql. The hybrid migration
+-- replaces the function body but not the trigger, so the fixture must carry the
+-- trigger for the proof to exercise the real owner-guard surface. This stub is
+-- overwritten by `create or replace` in the hybrid migration.
+create or replace function app_private.guard_partner_owner_self_service()
+returns trigger language plpgsql security definer
+set search_path=pg_catalog,public,app_private,auth,pg_temp
+as $$ begin return new; end $$;
+revoke all on function app_private.guard_partner_owner_self_service() from public,anon,authenticated;
+
+drop trigger if exists a_partner_owner_self_service_guard on public.partners;
+create trigger a_partner_owner_self_service_guard
+before insert or update on public.partners
+for each row execute function app_private.guard_partner_owner_self_service();
+
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,is_sso_user,is_anonymous,created_at,updated_at)
 values
 ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','authenticated','authenticated','owner-a@example.invalid',now(),'{"provider":"email","providers":["email"]}','{}',false,false,now(),now()),
@@ -137,7 +165,13 @@ values
 ('11111111-1111-4111-8111-111111111111',null,'Synthetic Business A','approved',false,true,false),
 ('22222222-2222-4222-8222-222222222222',null,'Synthetic Business B','approved',false,true,false),
 ('33333333-3333-4333-8333-333333333333','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Already Owned Business','approved',false,true,false),
-('44444444-4444-4444-8444-444444444444',null,'Ambiguous Legacy Partner','approved',true,true,false);
+('44444444-4444-4444-8444-444444444444',null,'Ambiguous Legacy Partner','approved',true,true,false),
+('55555555-5555-4555-8555-555555555555',null,'Redeem Race Business','approved',false,true,false);
+
+-- Pre-approval owned profile: the exact predicate the owner UPDATE policy allows,
+-- used to prove a caller-supplied lifecycle context cannot widen owner self-service.
+insert into public.partners(id,owner_id,name,status,heha_partner,swipe_eligible,is_test_record)
+values('66666666-6666-4666-8666-666666666666','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Preapproval Owned Business','pending',false,true,false);
 
 insert into public.saves(user_id,partner_id) values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','11111111-1111-4111-8111-111111111111');
 insert into public.swipes(user_id,partner_id,direction) values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','11111111-1111-4111-8111-111111111111','right');
