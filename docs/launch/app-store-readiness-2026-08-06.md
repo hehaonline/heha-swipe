@@ -596,6 +596,31 @@ Evidence:
 
 No migration, database/Auth setting, user, Partner row, claim token, deployment, or Production system was changed by this audit update.
 
+### Signed-contract evidence gate — confirmed 2026-08-13
+
+Swipe draft PR #120 at exact remote head `cef9af2bc8785ea9732a1dca2de052b3995f1ca9` carries a third independent launch blocker beyond its two unresolved authorization findings. The proposed `public.approve_heha_partnership(uuid)` function accepts only a Partner UUID and verifies only that the caller is service-role/super-admin and that the Partner is claimed and under review. The function itself then writes `contract_status = 'signed'`, invents `contract_signed_at = now()`, changes the relationship to `official_partner`, and enables the legacy public partner flag.
+
+Neither the function nor the proposed schema requires an agreement version, content hash, current owner/signer identity, acceptance/signature record, signing source, immutable evidence identifier, or completed/revoked state. The disposable proof follows the same evidence-free path—internal review followed by `approve_heha_partnership(partner_id)`—and asserts the resulting signed/official state. A privileged call can therefore manufacture a legally consequential “signed” receipt and public Official Partner badge without proving that an agreement was accepted.
+
+This is a defect in a draft, unapplied migration; it is not evidence that a Production contract or partner status was changed. It also does not decide what legally qualifies as a signature. That definition, evidence retention/anonymization, and any real agreement activation remain Geronimo/legal approval gates.
+
+Required fail-closed reconciliation:
+
+1. Create an immutable, access-controlled agreement-acceptance/evidence record containing at minimum the Partner, current owner/signer identity, agreement version and content hash/reference, acceptance/signing time, status/source, and audit actor.
+2. Require and lock that evidence identifier during approval; verify that it is completed, current, belongs to the exact Partner and current owner, matches the active agreement version, and is not revoked, terminated, or superseded before writing `signed` or `official_partner`.
+3. Reference the evidence identifier from the lifecycle receipt without copying sensitive agreement content into general audit JSON.
+4. Add negative proofs for missing evidence, wrong Partner, wrong/currently replaced owner, stale or mismatched agreement version, revoked/terminated evidence, and owner deletion/release. Add one positive exact-head proof using a valid immutable record.
+5. Keep contract and Official Partner activation frozen until the authorization blockers, this evidence gate, retention policy, legal definition, and complete disposable exact-head workflow all pass review.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/pull/120#pullrequestreview-4926596082
+- https://github.com/hehaonline/heha-swipe/blob/cef9af2bc8785ea9732a1dca2de052b3995f1ca9/supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql
+- https://github.com/hehaonline/heha-swipe/blob/cef9af2bc8785ea9732a1dca2de052b3995f1ca9/supabase/tests/hybrid_partner_lifecycle_proof.sql
+
+No migration, agreement, Partner row, Auth user, lifecycle receipt, deployment, or Production system was changed by this documentation update.
+
+
 ### Consent-evidence ownership handoff BOLA gate — confirmed 2026-08-12
 
 Swipe draft PR #118 at exact head `a83e41225b6c1b75d9f0132341c3c759f01018c9` correctly keeps publication-consent evidence in a private RLS table, but its owner-read policy uses the historical event owner as continuing access authority:
