@@ -625,6 +625,39 @@ Evidence:
 - https://github.com/hehaonline/heha-swipe/pull/117
 - https://github.com/hehaonline/heha-swipe/pull/120
 
+
+### Partner self-reauthorization bypass gate — confirmed 2026-08-13
+
+Swipe draft PR #118 at exact head `a83e41225b6c1b75d9f0132341c3c759f01018c9` separates owner consent from the staff-only `approve_partner(uuid)` activation call, but its public-view gate does not preserve that separation after the first activation.
+
+Exact proposed behavior:
+
+- `authorize_partner_profile_publication(...)` is executable by `authenticated` and requires current ownership, current preparation permission, and owner approval of the current profile hash.
+- `has_current_partner_publication_authorization(...)` treats the latest owner `publish_profile = granted` event as the complete exact-version visibility gate when its stored snapshot and hash match the current Partner row.
+- Editing a live profile temporarily hides it because the old authorization hash becomes stale, but the edit does not clear `status = live`, `swipe_eligible`, or `local_eligible`.
+- The owner can then call `authorize_partner_profile_publication(...)` for the changed hash. The public projections see matching owner authorization plus the still-live eligibility flags and expose the new content without another staff review.
+- The committed proof explicitly expects that owner exact-version reapproval restores both `public_swipe_partners` and `public_local_partners`.
+
+This means a partner can change public name, bio, media, website, offerings, or other projected content after initial approval and self-publish the changed version. The exact-version consent requirement is preserved, but the distinct HEHA content-review/activation boundary is not. This is a proposed-migration defect; PR #118 remains draft and unapplied, so it is not evidence of a live Production bypass.
+
+Required fail-closed reconciliation:
+
+1. Model owner publication consent and HEHA review as separate immutable events, or store a separate internally reviewed snapshot/hash.
+2. Require each public projection to match both the latest current owner authorization and an allowed internal review for the exact same Partner, destination, snapshot, and hash.
+3. Keep an edited profile hidden after owner reauthorization until an approved internal role reviews that exact version. Do not treat old `live` or eligibility flags as review evidence.
+4. Prove: edit hides; owner reauthorization remains hidden; exact-hash staff review restores visibility; a second edit defeats the stale review; wrong-role/BOLA denial; concurrent edit/consent/review ordering; and withdrawal wins immediately over either approval.
+5. Reconcile on one exact #117/#118/#120 consent and ownership lineage so a former owner, replacement owner, stale event, or competing donor migration cannot satisfy either half of the gate.
+
+Hosted metadata at review time showed Vercel and Snyk success but no GitHub Actions run for #118's exact head. The migration, SQL proof, browser flow, and Supabase/Auth behavior were not executed by this connector-only audit.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/pull/118#issuecomment-5275689087
+- https://github.com/hehaonline/heha-swipe/blob/a83e41225b6c1b75d9f0132341c3c759f01018c9/supabase/migrations/20260810072829_wave1_partner_publication_consent.sql
+- https://github.com/hehaonline/heha-swipe/blob/a83e41225b6c1b75d9f0132341c3c759f01018c9/supabase/tests/partner_publication_consent_proof.sql
+
+No migration, Partner row, consent event, Auth user, deployment, or Production system was changed by this documentation update.
+
 ## Smallest approval package
 
 Before wrapper code starts, approve these exact decisions:
