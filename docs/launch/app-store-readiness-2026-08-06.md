@@ -35,7 +35,7 @@ Alternatives:
 
 PR #226 is the current Local candidate at exact head `799b565ea3bda6197ce01fafe0a879650e6d110d`. Its final commit is evidence-only; the recorded application/browser-QA head remains `d8c5a19cde1852ccb8422008a54fea021dfb75e3`. The formerly missing verification receipt and Group Orders shared-cart contamination were repaired and should no longer be carried as open blockers against this exact head. PR #226 remains draft, mergeable, and not launch-ready.
 
-Three active drafts now divide the remaining web-launch work:
+Four active drafts now divide the remaining web-launch work:
 
 - **PR #232** at evidence head `dcff299bd1e6b9f8424b80cfd89792ac107719cc` (tested app head `b628f93a61e5e5becd2d6e3c34862b4f490094b4`) is stacked on #226. It restores catalog navigation and 44px targets, removes the false Community Pass waitlist/contact claim, parks order submission because no truthful customer-selected scheduling flow exists, and repairs the reviewed cart-editing semantics/targets. The committed packet reports 58/58 contained browser checks, including cart controls and 200% zoom; that packet was inspected in review but not independently executed. It remains a review-only stacked successor—not an independently deployable or production-validated release.
 - **PR #227** at `6c4a6cca6fb4ec284534878eac5fc3ca7952b050` owns Chef/Catering and remains based on older #226 ancestry (`7c47f118…`), not the current RC head. Its public reads and request RPC can stall indefinitely, error states lack bounded retry, and submission recovery does not yet prove whether a timed-out request was accepted. It needs reconciliation onto the selected RC lineage plus deterministic timeout/idempotency/recovery proof.
