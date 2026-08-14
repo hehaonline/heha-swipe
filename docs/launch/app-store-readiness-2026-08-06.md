@@ -6,10 +6,13 @@
 
 | Surface | Exact audited head | Current form |
 |---|---|---|
-| HEHA Local RC | `hehaonline/heha-order-hub@7c47f1188b344c5365d8eec548ba9b267be0a602` (PR #226; code head `eebc96c651acb8104b4f8c69223c73dac8eafb8e`) | Current combined React/Vite web candidate; draft and not launch-ready |
+| HEHA Local RC | `hehaonline/heha-order-hub@799b565ea3bda6197ce01fafe0a879650e6d110d` (PR #226; tested application head `d8c5a19cde1852ccb8422008a54fea021dfb75e3`, final commit evidence-only) | Current combined React/Vite web candidate; draft and not launch-ready |
 | Local RC parent | `hehaonline/heha-order-hub@4b69774ef86a8133c7d623b010ca92ce3876ce7a` (PR #217) | Ancestor of #226; preserved for source evidence, not the current candidate |
 | HEHA Swipe RC | `hehaonline/heha-swipe@885461f55f64ea56a9366e6573b6002769820f06` (PR #113) | React/Vite web app with a Web App Manifest and 192/512 icons |
 | Swipe refresh sibling | `hehaonline/heha-swipe@e58de647de1f60e6546b972de11f75bf5da76552` (PR #114) | Separate draft; not part of the audited RC |
+| Local RC successor | `hehaonline/heha-order-hub@74e5052946d72ddc572b31dabfe1674a248461a1` (PR #232, stacked on #226) | Review-only successor; scheduling submission parked and not launch-ready |
+| Local customer recovery | `hehaonline/heha-order-hub@6036fb0714e95ec9aca0463deb29fab07fc0ec27` (PR #230, based on main) | Independent draft; hosted build gates green, focused Vitest unexecuted |
+| Swipe hybrid-security successor | `hehaonline/heha-swipe@cb15e6ab5106985b706498068b389d51d7e026d5` (PR #120) | Deployment-frozen draft; proof workflow failing and repair not pushed |
 
 GitHub inspection found no Capacitor configuration, Xcode project, Android/Gradle app project, Expo configuration, Apple privacy manifest, Android Digital Asset Links file, native bundle/package identifier, or store-build script in either audited RC. Searches also found no service-worker registration. The existing manifests and icons are useful web-install foundations, but they are not App Store or Play Store packages.
 
@@ -27,23 +30,24 @@ Alternatives:
 
 ## Confirmed readiness and gaps
 
-### Current Local RC reconciliation — revalidated 2026-08-09
+### Current Local RC reconciliation — revalidated 2026-08-14
 
-PR #226 is the current Local candidate at exact head `7c47f1188b344c5365d8eec548ba9b267be0a602`. It is nine commits ahead of the previously audited #217 head and integrates #222, #224, and #225 plus focused tests and evidence. It remains draft and not launch-ready.
+PR #226 is the current Local candidate at exact head `799b565ea3bda6197ce01fafe0a879650e6d110d`. Its final commit is evidence-only; the recorded application/browser-QA head remains `d8c5a19cde1852ccb8422008a54fea021dfb75e3`. The formerly missing verification receipt and Group Orders shared-cart contamination were repaired and should no longer be carried as open blockers against this exact head. PR #226 remains draft, mergeable, and not launch-ready.
 
-The current candidate adds useful fail-closed Market/cart behavior, but exact-head review confirms three unresolved web-launch blockers that also block native packaging:
+Three active drafts now divide the remaining web-launch work:
 
-- **Group Orders contaminates the shared persisted cart.** The preview writes mock `pk-*` items without canonical catalog identity; the whole-cart safety guard then blocks those items and any later valid items until the customer manually removes the preview lines. The preview needs isolated local state and must not mutate the production cart.
-- **Chef/Catering is publicly deceptive and discards sensitive requests.** Public chef pages render mock chefs as approved/bookable with fabricated ratings, prices, badges, and quote actions. Chef Match collects location and health-adjacent details, then shows a mock success toast without persisting a request. These routes must fail closed until real approved inventory, consent/retention handling, and a receipt/recovery path exist.
-- **The exact-head evidence packet is incomplete.** Its SHA-256 manifest names `VERIFICATION-20260809.md`, but that file is absent. The committed browser evidence is synthetic and unauthenticated; authenticated order creation and recovery were not exercised.
+- **PR #232** at `74e5052946d72ddc572b31dabfe1674a248461a1` is stacked on #226. It restores catalog navigation and 44px targets, removes the false Community Pass waitlist/contact claim, and parks order submission because no truthful customer-selected scheduling flow exists. Its evidence reports broad synthetic browser QA, but it is still a review-only stacked successor—not an independently deployable or production-validated release.
+- **PR #227** at `6c4a6cca6fb4ec284534878eac5fc3ca7952b050` owns Chef/Catering and remains based on older #226 ancestry (`7c47f118…`), not the current RC head. Its public reads and request RPC can stall indefinitely, error states lack bounded retry, and submission recovery does not yet prove whether a timed-out request was accepted. It needs reconciliation onto the selected RC lineage plus deterministic timeout/idempotency/recovery proof.
+- **PR #230** at `6036fb0714e95ec9aca0463deb29fab07fc0ec27` independently repairs customer order-history query/Realtime recovery from current main. GitHub Actions run #371, Vercel, and Snyk succeeded, but the workflow does not execute Vitest; authenticated Supabase and browser/accessibility recovery remain unproved. It is not part of #226/#232.
 
-Do not package or submit #226. Repair these boundaries in isolated current-main drafts, rebuild a successor RC, and re-audit the exact corrected head before any wrapper work.
+Do not package or submit any Local candidate yet. The current integration contract is: select and reconcile one #226 → #232 line, resynchronize #227 without replaying stale parents, decide how #230 enters that line, then run exact combined-head tests plus authenticated non-production order/RLS/recovery proof. Order submission should remain parked until customer-selected scheduling and safe failure recovery are implemented and validated.
 
 Evidence:
 
-- https://github.com/hehaonline/heha-order-hub/pull/226#issuecomment-5230646994
-- https://github.com/hehaonline/heha-order-hub/pull/226#issuecomment-5230875595
-- https://github.com/hehaonline/heha-order-hub/pull/226#issuecomment-5232872836
+- https://github.com/hehaonline/heha-order-hub/pull/226
+- https://github.com/hehaonline/heha-order-hub/pull/232
+- https://github.com/hehaonline/heha-order-hub/pull/227
+- https://github.com/hehaonline/heha-order-hub/pull/230
 
 ### Web install foundation
 
@@ -108,6 +112,8 @@ Required fail-closed repair:
 5. Prove on an approved disposable Supabase target that anonymous and authenticated public reads cannot retrieve excluded columns or hidden rows, partner/admin private workflows remain intact, and the canonical migration chain replays cleanly.
 
 Do not patch or apply a migration from this documentation branch. The data/authorization domain overlaps the deployment-frozen claim work in #117 and the stale predecessor #82; rebuild the eventual repair from the approved canonical database baseline and review it separately.
+
+Active-lineage revalidation on 2026-08-14 confirms this blocker is still present and expanded in PR #120 at `cb15e6ab5106985b706498068b389d51d7e026d5`: its replacement anonymous view retains `owner_id` and routing fields and additionally projects `claim_status`, `partnership_status`, and `contract_status`. Review #4934056629 records the required public allowlist and executable column-contract proof. PR #120's security workflow #13 still fails before SQL/RLS/concurrency execution, so none of those database claims are validated release evidence.
 
 Evidence:
 
