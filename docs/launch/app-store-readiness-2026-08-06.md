@@ -81,6 +81,46 @@ No direct anonymous/authenticated RLS bypass was confirmed statically. That is n
 
 Release implication: #233 closes the release-stack composition question only. Keep it draft and review-only; do not mark ready, merge, apply its migration, deploy, publish partners, or package it into a native wrapper until the blockers above are repaired and the exact integrated head passes executable proof.
 
+### Local PR #233 complete repair order — reconciled 2026-08-16
+
+PR #233 remains the one-commit composition checkpoint at `b511056e394449cedfc1f65619e66baf911cfabb`, based directly on PR #232 head `3677407d6de2cbd1c8f900c31269b9a476d1bc7b`. It preserves the exact thirteen-file PR #227 Chef/Catering delta on the selected `#226 → #232 → #233` line. PR #227 remains the donor and must not merge separately. PR #233 is open, draft, mergeable, and unapplied; Vercel and Snyk report success, but there is no GitHub Actions run, migration execution, authenticated flow proof, browser QA, or assistive-technology evidence.
+
+Direct exact-head review confirms that this foundation is request-only, but not yet safe to open publicly:
+
+- one Local review RPC sets publication, request readiness, and `accepting_requests = true` together, so Local-publication consent is being treated as provider agreement to receive requests;
+- exact equal-sequence bridge replay refreshes `synced_at` and the mirrored freshness timestamps, allowing an old grant receipt to renew the 48-hour availability window without a new source event;
+- profile/content validation runs before the revoke branch, so malformed irrelevant profile fields can block a newer revocation from reaching the atomic delist path;
+- `partner_service_requests.customer_user_id` and `partner_profile_id` use `ON DELETE RESTRICT`, while verified contact, address, allergy notes, and free text have no approved retention/redaction lifecycle;
+- customers can answer a needs-information request but have no owner-scoped cancellation RPC; staff can mark a row cancelled, while providers have no authenticated acceptance/decline action;
+- staff matching writes `matched` immediately, with no provider confirmation, rematch/release contract, expected-version guard, or customer recovery when the provider later cannot accept;
+- every Supabase list/profile/submit/mutation call is unbounded. A timeout or connection loss can leave the client unsure whether a request or mutation committed;
+- the full sensitive draft is rewritten to `sessionStorage` on edits. Expiry is checked only when restoration is attempted, so the stored address/allergy/menu data can remain after the stated two hours and the rolling `savedAt` can extend that period;
+- several controls remain 40px (`h-10`/`min-h-10`) and async loading/error transitions lack complete named-status, retry, focus, and error-association evidence.
+
+Recommended safe default: keep Chef/Catering request submission and provider-facing claims closed. Public pages may remain preview-only with truthful “not accepting requests yet” behavior until the following repairs exist on the existing #233 branch and pass exact combined-head proof.
+
+Dependency-safe repair order:
+
+1. **Keep one source of truth and one release line.** Repair #233 in place on its current #232 base; retain the existing request tables/RPCs and canonical Swipe ID. Do not create a parallel request model, re-merge #227, or independently merge the overlapping #145/#156/#157/#158 routing/type work.
+2. **Separate three independent approvals.** Model exact-snapshot Local publication consent, HEHA internal publication review, and provider request-participation acceptance independently. `review_and_publish_partner_service_profile` may publish an eligible profile, but must not set `accepting_requests`. A separate current-owner/provider agreement—versioned, revocable, purpose-specific, and audited—must gate request readiness.
+3. **Make bridge ordering fail closed.** Authenticate/authorize the bridge, lock by canonical Swipe ID, and evaluate event identity/sequence before optional public-profile fields. Process a newer revocation with the minimum required identity/status data even when content is malformed. Equal-sequence exact replay must return the original result without changing freshness. If freshness needs renewal, use a distinct monotonic heartbeat/attestation event rather than replaying consent.
+4. **Define deletion and retention before storing real requests.** Replace account-blocking foreign-key behavior only through a reviewed migration. Preserve the minimum operational/audit fact while unlinking or pseudonymizing the deleted customer and clearing contact, exact address, allergy/health-adjacent notes, and free text according to approved retention periods. Revoke sessions and prove a pre-deletion JWT cannot read or mutate the request after deletion. Do not activate an automated purge until policy and rollback are approved.
+5. **Complete the request state machine.** Add an owner-scoped, idempotent customer cancellation path for eligible pre-acceptance states. Treat staff selection as `provider_proposed` or `awaiting_provider`, not provider acceptance. Require an authenticated current provider/authorized representative to accept or decline; support staff release/rematch; lock the request and require an expected version so stale tabs cannot overwrite newer decisions. Keep quote, acceptance-of-quote, checkout, payment, payout, and messaging frozen.
+6. **Bound every network operation and recover uncertainty.** Add explicit timeout/abort behavior for directory, targeted profile, history, queue, submit, response, match, and status operations. On submit/mutation timeout, say confirmation is unknown, preserve the same idempotency key, and reconcile from the server before enabling another action. Distinguish a confirmed absent/ineligible target from a transient lookup failure and provide retry without silently changing the requested partner/service.
+7. **Minimize and expire local drafts.** Use an absolute creation expiry that edits cannot extend; remove expired content on a timer as well as restore; clear on completion, explicit cancel, logout/account change, and source-route change. Prefer not persisting address, allergy, and free-text fields unless the user explicitly chooses a short-lived “save on this device” option with clear disclosure.
+8. **Repair responsive accessibility.** Raise every interactive target to at least 44×44 CSS pixels, including back links, chips, queue actions, response controls, and scope tabs. Add named polite loading/submitting statuses, associate field errors with inputs, announce unknown/failed/success states, restore focus after step/error/retry transitions, and prevent fixed CTA/BottomNav overlap.
+9. **Expand executable proof.** Add clean-apply/re-apply and negative grant/RLS/BOLA tests for guest, customer A/B, provider A/B, SOM, admin, inactive/wrong role, and stale JWT. Cover equal replay without freshness extension, malformed-profile revocation, newer grant/revoke races, customer cancellation races, provider accept/decline/rematch races, deletion/redaction, exact audit minimization, and failure rollback. Run focused Vitest plus authenticated browser tests; merely committing test files is not execution evidence.
+10. **Certify the integrated head only.** Test the exact pushed #233 repair atop #232 with the repository-pinned toolchain: install, lint, typecheck, focused/full tests, production build, migration/proof suite, diff/secret scan, and 320/375/390/430/768/1024/desktop plus 200% zoom, keyboard, NVDA/VoiceOver, offline, timeout, retry, duplicate-submit, and stale-action QA. Re-fetch checks, mergeability, ancestry, changed files, and review threads before any readiness decision.
+
+Rollback/pre-activation boundary: revert the review-only commits and disposable migrations. Do not apply the migration, publish a provider, enable request intake, contact a provider/customer, activate notifications or payments, mark ready, merge, deploy, or change Production without a later exact-scope approval.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-order-hub/pull/233
+- https://github.com/hehaonline/heha-order-hub/pull/232
+- https://github.com/hehaonline/heha-order-hub/pull/227
+- https://github.com/hehaonline/heha-order-hub/pull/229
+
 ### Web install foundation
 
 - Both RCs provide a manifest with `name`, `short_name`, `start_url`, standalone display, and 192/512 PNG icons.
