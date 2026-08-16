@@ -763,6 +763,43 @@ Evidence:
 
 No migration, agreement, Partner row, Auth user, deployment, or Production system was changed by this documentation update.
 
+### PR #120 complete same-branch repair order — reconciled 2026-08-16
+
+PR #120 remains at exact remote head `cb15e6ab5106985b706498068b389d51d7e026d5`, open, draft, mergeable, and unapplied. Its twelve changed files carry ten current unresolved review threads. Vercel and Snyk report success, but Hybrid Partner Lifecycle Proof run #13 stops in the shallow-checkout provenance gate before migrations, SQL/RLS/BOLA behavior, corrective replay, concurrency, build, or evidence scanning. The unpushed local summaries for `3f0f234…` and `8dca94f…` remain design notes only; neither is remote release evidence.
+
+The ten findings form one security boundary and should be repaired in this dependency order on the existing #120 branch only:
+
+1. **Lock the canonical lineage and public contract.** Retain #117's `public.partner_claim_invites` object and recipient/deletion/lock-order guarantees; retain #72's consent-bearing interest evidence; keep claim, partnership, contract, and listing state independent. Do not create a parallel claim table or merge #72, #82, #117, or #118 independently.
+2. **Replace forgeable authorization before changing lifecycle behavior.** Revoke every agreement/approval mutation from `PUBLIC`, `anon`, and `authenticated`; grant only the intended non-forgeable database role. Never authorize from caller-set `request.jwt.claims` or `app.hybrid_partner_context`. Require a private, transaction-scoped, single-use capability for the narrowly approved owner-release/Auth-cleanup path, consumed under a locked Partner row.
+3. **Separate Auth deletion from owner-authored updates.** A normal owner must not null `claimed_by` or `opted_out_by`, spoof `owner_release`, or alter non-allowlisted partner fields. The real deletion path must establish its private capability before FK cleanup and complete reference release, lifecycle downgrade, and sanitized receipt atomically.
+4. **Sanitize every owner-created row.** Normalize both lifecycle states and all protected provenance: partnership request time, official-partner time, contract evidence/signing fields, opt-out time/actor, routing/claim administration, and any cross-user attribution. An INSERT must not be a bypass around UPDATE guards.
+5. **Make agreement evidence authoritative without inventing a signature.** Keep immutable agreement/version/acceptance facts access-controlled. Approval must take and lock an evidence ID, then validate exact Partner, current owner/signer, active version/hash, accepted/current status, and absence of revocation, termination, supersession, or account deletion. The approval receipt may reference IDs and states, never agreement content or hashes. What legally qualifies as acceptance and its retention policy remain Geronimo/legal gates.
+6. **Close the complete evidence lifecycle.** Partnership termination must atomically clear the Partner reference and make the old acceptance non-authorizing. Signer deletion and agreement retirement/supersession must preserve history while releasing the live-evidence slot. Fresh eligible evidence must be recordable after reclaim or a new version. Enforce this under Partner-first locking so termination, deletion, retirement, acceptance, and approval races end deterministically without stale authorization or uniqueness dead ends.
+7. **Minimize the anonymous discovery surface.** Replace `public_swipe_partners` with an explicit reviewed allowlist. Exclude owner/Auth identifiers, routing notes/staff/timestamps, claim/partnership/contract states, internal analytics, and administrative fields. Exclude `contact` and `phone` by default until separate affirmative publication consent is approved. Keep owner/admin detail on protected surfaces.
+8. **Make corrective application fail closed.** Any trigger suspension, reconciliation, constraint/index replacement, and re-enable sequence must be one explicit transaction with error-stop behavior. Prove rollback leaves every guard enabled. Forward migration and clean replay must converge without rewriting accepted historical evidence or reopening old privileges.
+9. **Repair proof provenance before trusting results.** Check out the literal pull-request head with persisted credentials disabled and require `HEAD == PR_HEAD_SHA`. Run merge-ref integration separately if desired; do not substitute it for exact-head execution. Include a passing ordinary-merge-ref control and an unrelated-SHA negative control.
+10. **Execute and independently review the pushed head.** On a disposable environment, run clean ordered migrations, corrective re-apply, SQL/RLS/BOLA tests, true simultaneous concurrency, app build, diff/secret/evidence scans, and sanitized artifact upload. Re-fetch the exact remote SHA, full diff, checks, mergeability, and every thread before resolving anything.
+
+Minimum executable negative/transition matrix:
+
+- caller-set JWT/GUC values cannot create administrative authority;
+- owner-release spoof, direct provenance nulling, protected-field UPDATE, cross-owner interest UPDATE, and forged INSERT provenance all fail;
+- missing, wrong-Partner, wrong-owner, stale-version, revoked, terminated, superseded, deleted-signer, and retired-version evidence cannot approve;
+- termination → reapplication, signer deletion → reclaim, and agreement retirement → replacement all allow only fresh eligible evidence;
+- two simultaneous redeems produce exactly one owner transition, one consumed invite, one `claim_redeemed` event, a deterministic loser, and no `40P01`;
+- concurrent termination/deletion/retirement versus acceptance/approval never authorizes stale evidence or leaves a live-slot dead end;
+- anonymous discovery returns intended public fields and rows while every excluded column is absent; owner/admin paths retain only their approved access;
+- failed corrective replay rolls back completely with lifecycle/owner guards still enabled.
+
+Release gate: keep #120 draft and Production-frozen until the repaired implementation exists at a real remote SHA, the complete exact-head suite passes, all ten findings receive fresh independent review, donor/integration ancestry is reconciled, and Geronimo separately approves any migration or activation. No Production DDL, Auth/secret change, claim activation, agreement activation, partner publication, merge, ready transition, or deployment is authorized by this repair order.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/pull/120
+- https://github.com/hehaonline/heha-swipe/actions/runs/31748869580
+- https://github.com/hehaonline/heha-swipe/pull/117
+- https://github.com/hehaonline/heha-swipe/pull/118
+
 ### Consent-evidence ownership handoff BOLA gate — confirmed 2026-08-12
 
 Swipe draft PR #118 at exact head `a83e41225b6c1b75d9f0132341c3c759f01018c9` correctly keeps publication-consent evidence in a private RLS table, but its owner-read policy uses the historical event owner as continuing access authority:
