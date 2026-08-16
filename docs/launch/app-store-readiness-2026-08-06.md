@@ -739,6 +739,30 @@ Evidence:
 No migration, trigger, agreement, Partner row, Auth user, lifecycle receipt, deployment, or Production system was changed by this documentation update.
 
 
+### Contract-evidence termination and replacement gate — confirmed 2026-08-16
+
+Fresh review-thread reconciliation on Swipe PR #120 exact head `cb15e6ab5106985b706498068b389d51d7e026d5` found **10 unresolved threads**. The readiness audit already records the authorization, workflow, public-view, trigger, provenance, and contract-evidence gates. Two additional lifecycle defects must also remain explicit:
+
+1. Terminating an Official Partner changes Partner lifecycle statuses but leaves `contract_evidence_id` attached to an `accepted` agreement record. A restarted partnership can therefore reuse old accepted evidence when the agreement version is still current; the live-acceptance uniqueness rule can also block a legitimate replacement.
+2. Deleting the accepting Auth account or retiring the agreement version can leave the evidence row marked `accepted` even though its signer or agreement is no longer authorizing. The partial unique index still treats that row as live and can prevent the current owner from recording fresh evidence.
+
+Recommended fail-closed repair:
+
+- atomically terminalize the referenced acceptance and clear the Partner evidence link when a partnership terminates;
+- terminalize invalidated acceptances on account deletion and agreement retirement without deleting the audit fact;
+- define uniqueness over evidence that is both active and currently authorizing, not merely labeled `accepted`;
+- prove termination → reapplication, account deletion → reclaim, agreement retirement → replacement, wrong-owner/wrong-Partner denial, and concurrent termination/resubmission on the exact integrated head.
+
+This remains a defect in an unapplied draft, not evidence of a Production incident. PR #120 is draft, its Hybrid Partner Lifecycle Proof still fails before migration/security execution, and none of these migrations was applied by this audit.
+
+Evidence:
+
+- https://github.com/hehaonline/heha-swipe/pull/120
+- https://github.com/hehaonline/heha-swipe/blob/cb15e6ab5106985b706498068b389d51d7e026d5/supabase/migrations/20260811090200_hybrid_partner_private_mutation_capabilities.sql
+- https://github.com/hehaonline/heha-swipe/blob/cb15e6ab5106985b706498068b389d51d7e026d5/supabase/migrations/20260811090500_hybrid_partner_agreement_evidence.sql
+
+No migration, agreement, Partner row, Auth user, deployment, or Production system was changed by this documentation update.
+
 ### Consent-evidence ownership handoff BOLA gate — confirmed 2026-08-12
 
 Swipe draft PR #118 at exact head `a83e41225b6c1b75d9f0132341c3c759f01018c9` correctly keeps publication-consent evidence in a private RLS table, but its owner-read policy uses the historical event owner as continuing access authority:
