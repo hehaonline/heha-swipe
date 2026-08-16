@@ -10,7 +10,7 @@
 | Local RC parent | `hehaonline/heha-order-hub@4b69774ef86a8133c7d623b010ca92ce3876ce7a` (PR #217) | Ancestor of #226; preserved for source evidence, not the current candidate |
 | HEHA Swipe RC | `hehaonline/heha-swipe@885461f55f64ea56a9366e6573b6002769820f06` (PR #113) | React/Vite web app with a Web App Manifest and 192/512 icons |
 | Swipe refresh sibling | `hehaonline/heha-swipe@e58de647de1f60e6546b972de11f75bf5da76552` (PR #114) | Separate draft; not part of the audited RC |
-| Local RC successor | `hehaonline/heha-order-hub@2e3e2c5be64906cee0a4ec7a77e5b8fc6bfc69ab` (PR #232, stacked on #226; tested app head `f5a6da6ab34d638942626e03fdc3ebf163272817`, final commit evidence-only) | Review-only successor; cart, filtered-empty, and catalog-control accessibility/reflow repairs evidenced, scheduling submission parked, and not launch-ready |
+| Local RC successor | `hehaonline/heha-order-hub@3677407d6de2cbd1c8f900c31269b9a476d1bc7b` (PR #232, stacked on #226; tested app head `207b1876c347696a076013766b909ff9c7967830`, final commit evidence-only) | Review-only successor; cart, filtered-empty, and catalog-control accessibility/reflow repairs evidenced, scheduling submission parked, and not launch-ready |
 | Local customer recovery | `hehaonline/heha-order-hub@23fe5f9913b0e7b5595e43788e7eee6071f6d9f8` (PR #230, based on main) | Independent draft; announced retry and 44px recovery controls repaired, hosted lint/build gates green, focused Vitest/authenticated/browser/assistive-technology QA unexecuted |
 | Local driver recovery | `hehaonline/heha-order-hub@1648411d023a728a73f8bfb6162eb580adea31b1` (PR #231, based on main) | Independent Night Builder draft; timeout, Realtime-loss, stale-action false-success, and retry-target blockers unresolved |
 | Swipe hybrid-security successor | `hehaonline/heha-swipe@cb15e6ab5106985b706498068b389d51d7e026d5` (PR #120) | Deployment-frozen draft; proof workflow failing and repair not pushed |
@@ -31,13 +31,13 @@ Alternatives:
 
 ## Confirmed readiness and gaps
 
-### Current Local RC reconciliation — revalidated 2026-08-14
+### Current Local RC reconciliation — revalidated 2026-08-16
 
 PR #226 is the current Local candidate at exact head `799b565ea3bda6197ce01fafe0a879650e6d110d`. Its final commit is evidence-only; the recorded application/browser-QA head remains `d8c5a19cde1852ccb8422008a54fea021dfb75e3`. The formerly missing verification receipt and Group Orders shared-cart contamination were repaired and should no longer be carried as open blockers against this exact head. PR #226 remains draft, mergeable, and not launch-ready.
 
 Four active drafts now divide the remaining web-launch work:
 
-- **PR #232** at evidence head `2e3e2c5be64906cee0a4ec7a77e5b8fc6bfc69ab` (tested app head `f5a6da6ab34d638942626e03fdc3ebf163272817`) is stacked on #226. It restores catalog navigation and 44px targets, removes the false Community Pass waitlist/contact claim, parks order submission because no truthful customer-selected scheduling flow exists, and repairs the reviewed cart-editing, filtered-empty recovery, and ordinary catalog-control accessibility/reflow findings. The committed packet reports 93/93 contained browser checks, including cart controls, Market filtered-empty recovery, ordinary unfiltered Market controls, item-specific accessible names, keyboard operation, intentional category-scroller preservation, and zero document overflow at 200% zoom; that packet was inspected in review but not independently executed. A human NVDA/VoiceOver pass remains outstanding. It remains a review-only stacked successor—not an independently deployable or production-validated release.
+- **PR #232** at evidence head `3677407d6de2cbd1c8f900c31269b9a476d1bc7b` (tested app head `207b1876c347696a076013766b909ff9c7967830`) is stacked on #226. It restores catalog navigation and 44px targets, removes the false Community Pass waitlist/contact claim, parks order submission because no truthful customer-selected scheduling flow exists, repairs the reviewed cart-editing, filtered-empty recovery, and ordinary catalog-control accessibility/reflow findings, and parks misleading Profile support/order-help actions instead of routing them to a recommender. No support mailbox or outreach success is claimed. The committed packet reports 93/93 contained browser checks, including cart controls, Market filtered-empty recovery, ordinary unfiltered Market controls, item-specific accessible names, keyboard operation, intentional category-scroller preservation, and zero document overflow at 200% zoom; that packet was inspected in review but not independently executed. A human NVDA/VoiceOver pass remains outstanding. It remains a review-only stacked successor—not an independently deployable or production-validated release.
 - **PR #227** at `6c4a6cca6fb4ec284534878eac5fc3ca7952b050` owns Chef/Catering and remains based on older #226 ancestry (`7c47f118…`), not the current RC head. Its public reads and request RPC can stall indefinitely, error states lack bounded retry, and submission recovery does not yet prove whether a timed-out request was accepted. It needs reconciliation onto the selected RC lineage plus deterministic timeout/idempotency/recovery proof.
 - **PR #230** at `23fe5f9913b0e7b5595e43788e7eee6071f6d9f8` independently repairs customer order-history query/Realtime recovery from current main. The previously recorded 40px/36px recovery targets and silent retry spinner are cleared in source: **Try again** and **Browse current menu** use the local 44px minimum, and initial/retry loading exposes a polite named status with focused regressions for pending and repeated-failure transitions. GitHub Actions run #379, Vercel, and Snyk succeeded, but the workflow still does not execute Vitest; authenticated Supabase/Realtime behavior, browser reflow at 320–desktop and 200% zoom, keyboard focus, and screen-reader execution remain unproved. It is not part of #226/#232.
 - **PR #231** at `1648411d023a728a73f8bfb6162eb580adea31b1` independently adds driver demand loading/error/retry presentation from current main. GitHub Actions run #366 completed install, lint, and build successfully, and Vercel/Snyk succeeded, but Vitest and authenticated driver/Supabase execution were not run. Stalled reads have no timeout, Realtime loss is not surfaced, preserved stale cards remain actionable with false-success mutation risk, and the sole retry target is 36px. It is not part of #226/#232.
@@ -61,6 +61,30 @@ Evidence:
 - Both manifests use the same short name, `HEHA`, so installing both can be confusing.
 - Local presents itself as “HEHA Order Hub” and describes real-time orders, drivers, and payouts, while the public product is HEHA Local. Approve truthful public naming before promoting installation.
 - Each icon is declared as both `any maskable` using one asset. Maskable safe-zone appearance still needs visual validation.
+
+### HTTP response-hardening evidence gate — confirmed unknown 2026-08-16
+
+This is an **unverified web soft-launch gate**, not a finding that the deployed app is currently missing security headers.
+
+Repository evidence at Swipe RC #113 exact head `885461f55f64ea56a9366e6573b6002769820f06` establishes only that `vercel.json` contains the SPA rewrite and no repository-owned response-header policy. Production and exact-preview response headers, Vercel project-level settings, and browser network behavior were not inspected.
+
+A generic global policy is unsafe here:
+
+- `index.html` contains an inline tab/deep-link script and loads Google Fonts, while the app calls Supabase. A copied strict Content Security Policy can break routing, fonts, Auth, Realtime, or Data API traffic.
+- `main.jsx` intentionally exposes `/embed/partners` and `/embed/become-partner`. Global `X-Frame-Options: DENY` or `frame-ancestors 'none'` would break those Wix-facing embeds.
+- Until exact responses are captured, clickjacking protection on non-embed pages, MIME-sniffing protection, referrer leakage, browser capability restrictions, transport policy, cache policy, and manifest/service-worker content types remain unknown. Vercel readiness alone does not prove them.
+
+Safe evidence and implementation order:
+
+1. Capture production and exact-RC-preview response headers for `/`, both embed routes, representative JS/CSS, `manifest.json`, icons, and `sw.js`. Record status, content type, caching, CSP/XFO, HSTS, `X-Content-Type-Options`, `Referrer-Policy`, and `Permissions-Policy`.
+2. Inventory the approved Wix origins and every observed font/Supabase/Auth/Realtime/network destination. Do not guess an allowlist.
+3. Prepare a repository-owned, route-aware policy. Start CSP in report-only mode; preserve the inline script with a reviewed hash/nonce or move it into bundled code. Keep non-embed pages fail-closed while allowing only the approved embed origins.
+4. Re-run auth, partner embeds, deep links, manifest/icon/service-worker fetches, error routes, and responsive/browser QA before requesting separate approval for the exact header change.
+5. Roll back by reverting the header configuration and retain before/after header receipts.
+
+Alternative: explicitly accept the unknown for the first web pilot and leave headers unchanged. HTML meta tags are not the recommended repair because they cannot establish HSTS or a reliable route-aware framing boundary.
+
+No header, Vercel, Wix, DNS, deployment, or Production setting was changed by this audit.
 
 ### Release toolchain and dependency-audit gate — revalidated 2026-08-11
 
