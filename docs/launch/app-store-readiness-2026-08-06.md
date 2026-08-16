@@ -11,6 +11,7 @@
 | HEHA Swipe RC | `hehaonline/heha-swipe@885461f55f64ea56a9366e6573b6002769820f06` (PR #113) | React/Vite web app with a Web App Manifest and 192/512 icons |
 | Swipe refresh sibling | `hehaonline/heha-swipe@e58de647de1f60e6546b972de11f75bf5da76552` (PR #114) | Separate draft; not part of the audited RC |
 | Local RC successor | `hehaonline/heha-order-hub@3677407d6de2cbd1c8f900c31269b9a476d1bc7b` (PR #232, stacked on #226; tested app head `207b1876c347696a076013766b909ff9c7967830`, final commit evidence-only) | Review-only successor; cart, filtered-empty, and catalog-control accessibility/reflow repairs evidenced, scheduling submission parked, and not launch-ready |
+| Local RFQ composition checkpoint | `hehaonline/heha-order-hub@b511056e394449cedfc1f65619e66baf911cfabb` (PR #233, stacked on #232) | Exact PR #227 Chef/Catering delta reconciled onto the current RC lineage; review-only, independently audited, and not launch-ready |
 | Local customer recovery | `hehaonline/heha-order-hub@23fe5f9913b0e7b5595e43788e7eee6071f6d9f8` (PR #230, based on main) | Independent draft; announced retry and 44px recovery controls repaired, hosted lint/build gates green, focused Vitest/authenticated/browser/assistive-technology QA unexecuted |
 | Local driver recovery | `hehaonline/heha-order-hub@1648411d023a728a73f8bfb6162eb580adea31b1` (PR #231, based on main) | Independent Night Builder draft; timeout, Realtime-loss, stale-action false-success, and retry-target blockers unresolved |
 | Swipe hybrid-security successor | `hehaonline/heha-swipe@cb15e6ab5106985b706498068b389d51d7e026d5` (PR #120) | Deployment-frozen draft; proof workflow failing and repair not pushed |
@@ -35,21 +36,50 @@ Alternatives:
 
 PR #226 is the current Local candidate at exact head `799b565ea3bda6197ce01fafe0a879650e6d110d`. Its final commit is evidence-only; the recorded application/browser-QA head remains `d8c5a19cde1852ccb8422008a54fea021dfb75e3`. The formerly missing verification receipt and Group Orders shared-cart contamination were repaired and should no longer be carried as open blockers against this exact head. PR #226 remains draft, mergeable, and not launch-ready.
 
-Four active drafts now divide the remaining web-launch work:
+Five active drafts now divide the remaining web-launch work:
 
 - **PR #232** at evidence head `3677407d6de2cbd1c8f900c31269b9a476d1bc7b` (tested app head `207b1876c347696a076013766b909ff9c7967830`) is stacked on #226. It restores catalog navigation and 44px targets, removes the false Community Pass waitlist/contact claim, parks order submission because no truthful customer-selected scheduling flow exists, repairs the reviewed cart-editing, filtered-empty recovery, and ordinary catalog-control accessibility/reflow findings, and parks misleading Profile support/order-help actions instead of routing them to a recommender. No support mailbox or outreach success is claimed. The committed packet reports 93/93 contained browser checks, including cart controls, Market filtered-empty recovery, ordinary unfiltered Market controls, item-specific accessible names, keyboard operation, intentional category-scroller preservation, and zero document overflow at 200% zoom; that packet was inspected in review but not independently executed. A human NVDA/VoiceOver pass remains outstanding. It remains a review-only stacked successor—not an independently deployable or production-validated release.
-- **PR #227** at `6c4a6cca6fb4ec284534878eac5fc3ca7952b050` owns Chef/Catering and remains based on older #226 ancestry (`7c47f118…`), not the current RC head. Its public reads and request RPC can stall indefinitely, error states lack bounded retry, and submission recovery does not yet prove whether a timed-out request was accepted. It needs reconciliation onto the selected RC lineage plus deterministic timeout/idempotency/recovery proof.
+- **PR #233** at `b511056e394449cedfc1f65619e66baf911cfabb` is stacked directly on #232 and composes the exact 13-file #227 Chef/Catering delta without replaying #227's stale parent. The composition is exact, but the inherited request foundation remains launch-blocked by account-deletion/PII-retention, publication-consent/request-acceptance conflation, equal-sequence grant replay, revocation ordering, missing customer cancellation and provider acceptance, unbounded network operations, sensitive-draft expiry, staff-match recovery, and mobile/accessibility gaps. Vercel and Snyk succeeded; no Actions run, migration execution, local test/build, authenticated flow, browser, or assistive-technology proof exists for this head.
+- **PR #227** remains the reviewed donor at `6c4a6cca6fb4ec284534878eac5fc3ca7952b050` on older ancestry. Its exact delta is now represented by #233; do not merge or re-stack #227 separately into the selected RC line.
 - **PR #230** at `23fe5f9913b0e7b5595e43788e7eee6071f6d9f8` independently repairs customer order-history query/Realtime recovery from current main. The previously recorded 40px/36px recovery targets and silent retry spinner are cleared in source: **Try again** and **Browse current menu** use the local 44px minimum, and initial/retry loading exposes a polite named status with focused regressions for pending and repeated-failure transitions. GitHub Actions run #379, Vercel, and Snyk succeeded, but the workflow still does not execute Vitest; authenticated Supabase/Realtime behavior, browser reflow at 320–desktop and 200% zoom, keyboard focus, and screen-reader execution remain unproved. It is not part of #226/#232.
 - **PR #231** at `1648411d023a728a73f8bfb6162eb580adea31b1` independently adds driver demand loading/error/retry presentation from current main. GitHub Actions run #366 completed install, lint, and build successfully, and Vercel/Snyk succeeded, but Vitest and authenticated driver/Supabase execution were not run. Stalled reads have no timeout, Realtime loss is not surfaced, preserved stale cards remain actionable with false-success mutation risk, and the sole retry target is 36px. It is not part of #226/#232.
 
-Do not package or submit any Local candidate yet. The current integration contract is: select and reconcile one #226 → #232 line, resynchronize #227 without replaying stale parents, decide how #230 and #231 enter that line, then run exact combined-head tests plus authenticated non-production customer/driver/order/RLS/recovery proof. Order submission should remain parked until customer-selected scheduling and safe failure recovery are implemented and validated.
+Do not package or submit any Local candidate yet. The explicitly coordinated integration line is now #226 → #232 → #233. Do not merge #227 separately. Repair #233's privacy, consent, cancellation, provider-acceptance, timeout/recovery, and accessibility blockers; decide how #230 and #231 enter the selected line; then run exact combined-head tests plus authenticated non-production customer/driver/order/RLS/recovery proof. Order submission should remain parked until customer-selected scheduling and safe failure recovery are implemented and validated.
 
 Evidence:
 
 - https://github.com/hehaonline/heha-order-hub/pull/226
 - https://github.com/hehaonline/heha-order-hub/pull/232
 - https://github.com/hehaonline/heha-order-hub/pull/227
+- https://github.com/hehaonline/heha-order-hub/pull/233
 - https://github.com/hehaonline/heha-order-hub/pull/230
+
+### Local Chef/Catering PR-A composition checkpoint — confirmed 2026-08-16
+
+Local PR #233 is the explicitly coordinated composition checkpoint for issue #228. It is open, draft, mergeable, based on PR #232 exact head `3677407d6de2cbd1c8f900c31269b9a476d1bc7b`, and has exact head `b511056e394449cedfc1f65619e66baf911cfabb`.
+
+Composition proof:
+
+- one commit ahead and zero behind #232;
+- exactly the same 13 filenames, statuses, additions, and deletions as #227's reviewed delta;
+- all twelve retained file blobs match #227 exactly and the mock-chef file is absent;
+- seven replaced/deleted paths were unchanged between #227's old base and #232; all six added paths were absent on #232;
+- no dependency, lockfile, workflow, environment, secret, or unrelated file changed;
+- Vercel and Snyk succeeded; the PR has no unresolved review thread and no GitHub Actions run.
+
+The exact composition does not make the inherited implementation safe. Independent connector-only static review confirmed:
+
+1. `partner_service_requests.customer_user_id` uses `ON DELETE RESTRICT`, while request address, verified contact, allergy notes, and free text have no deletion-safe retention/redaction path.
+2. Local-publication consent is also used to set `accepting_requests = true`; separate provider agreement to receive requests is not evidenced.
+3. Replaying the same old granted consent event refreshes the 48-hour freshness window, and malformed profile fields can block a newer revocation before revocation handling.
+4. Customers cannot cancel or withdraw requests; staff matching is consequential and lacks confirmation or UI recovery; explicit provider acceptance is absent.
+5. Directory, profile, targeted-link, tracking, and submission operations lack timeout/abort recovery; transient failures can label valid official links invalid.
+6. Sensitive drafts can remain in `sessionStorage` beyond the stated two hours, Catering's empty-result fallback starts a private-chef request, and multiple controls miss 44px/focus/error-association requirements.
+7. The SQL proof omits account deletion/erasure, customer cancellation, expired equal-sequence replay, ordinary-user privilege rejection, and separate admin/SOM role cases.
+
+No direct anonymous/authenticated RLS bypass was confirmed statically. That is not executable proof. The migration, SQL proof, local tests/build, authenticated Supabase flows, browser/reflow, keyboard, screen-reader, and Production behavior were not run.
+
+Release implication: #233 closes the release-stack composition question only. Keep it draft and review-only; do not mark ready, merge, apply its migration, deploy, publish partners, or package it into a native wrapper until the blockers above are repaired and the exact integrated head passes executable proof.
 
 ### Web install foundation
 
