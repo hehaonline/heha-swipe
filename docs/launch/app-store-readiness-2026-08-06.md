@@ -968,6 +968,25 @@ Recommended defaults:
 9. Produce store metadata, privacy/data-safety answers, review notes, support path, release notes, and rollback receipt.
 10. Submit only to TestFlight/Play internal testing after an exact approval. Public submission remains a separate approval.
 
+## Current release-stack reconciliation — 2026-08-17
+
+This section supersedes the older current-state statements for Swipe PRs #118, #120, #123, and #124 above while preserving those sections as dated review history.
+
+- **Hybrid lifecycle/claim backend — PR #120:** exact remote head is now `8a5ebee906fdf3b146974bb7e6031d214e888fa5` with 14 changed files. Exact-head Hybrid Partner Lifecycle Proof run [#32048239152](https://github.com/hehaonline/heha-swipe/actions/runs/32048239152) completed successfully, including migration application, behavioral SQL/RLS checks, corrective re-apply, concurrency proof, build, and negative controls. Vercel and Snyk also report success. This replaces the obsolete `cb15e6ab…` / failing-workflow status above. The repaired migrations close the previously documented authorization, agreement-evidence, recipient-eligibility, owner-release/provenance, and transaction-stable expiry defects at source and proof level. GitHub still reports 11 unresolved review threads, so none is treated as dispositioned.
+- **Consent gate — PR #118:** exact head remains `a83e41225b6c1b75d9f0132341c3c759f01018c9`. It owns the publication-consent model and public-view behavior. It has Vercel/Snyk success but no associated Actions run. Its exact-version review finding remains active until an integrated successor proves immutable owner consent and matching internal review for the same published snapshot.
+- **Sanitized public projection — PR #124:** exact head `5c57e7766c4586e0bc479058e80be7dff7de5d08` adds a fail-closed 33-column public allowlist plus persona, filtering, idempotence, and negative-control proofs. Exact-head Public Partner Projection Privacy Proof run [#32044381220](https://github.com/hehaonline/heha-swipe/actions/runs/32044381220) and Vercel succeeded; zero review threads are present. This closes the raw anonymous partner-column exposure inside its own draft, but #120 can replace the same public view, so independent success is not release composition evidence.
+- **Claim frontend — PR #123:** exact head `3789eaf21db06cdb4914cf835e480f0e03f91e13` remains stacked on RC #113 head `885461f55f64ea56a9366e6573b6002769820f06`. Independent source review confirms all eight stable `HEHA_CLAIM_*` details from #120 are mapped, recipient mismatch has an account-switch path, post-claim confirmation is user-bound/short-lived/one-time, and the browser does not write ownership, entitlement, approval, publication, certification, or ordering state. Vercel succeeded; no Actions run or executed browser claim proof exists. The inherited #113 account/session race remains outside the seven-file delta and blocks composition.
+
+### Required composition and proof order
+
+1. Keep #118, #120, #124, and #123 draft and unapplied; do not deploy any one as the final boundary.
+2. Build one reviewable integration successor from the accepted RC base. Reconcile #118's exact-snapshot consent rules into #120's lifecycle model, then make #124's sanitized projection the final public-view definition.
+3. Replay the complete migration lineage from zero and re-apply it in a disposable environment. Execute the union of consent, lifecycle/claim, ACL/BOLA, projection-column, idempotence, concurrency, and negative-control proofs against the exact pushed integration head.
+4. Compose #123 only onto the repaired #113 successor after principal-generation/account-switch guards are proven. Exercise password, email-link, verified/permanent-recipient, wrong-account, expired/revoked/used, blocked-storage, retry, refresh, and post-claim recovery paths without Production data.
+5. Preserve the existing web-first recommendation. Native packaging remains blocked by account-deletion fulfillment, approved privacy/support URLs, store data inventories, billing strategy, signing/account ownership, device QA, and rollback evidence.
+
+Evidence limits: this reconciliation is connector-only. It inspected exact GitHub heads, changed-file ownership, review-thread counts, combined statuses, workflow metadata, current SQL/frontend source, and prior independent reviews. It did not run local tests/builds, apply migrations, inspect live Supabase, redeem a claim, perform browser/device/accessibility QA, create native projects, sign, submit, deploy, or change Production.
+
 ## Rollback
 
 This audit changes documentation only. Reverting its documentation commits removes the document. No application code, dependency, manifest, deployment, native project, signing material, store record, Supabase state, or external service is changed.
