@@ -1,0 +1,104 @@
+name: Public Partner Projection Privacy Proof
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/public-partner-projection-privacy-proof.yml
+      - src/components/embed/PartnerDirectoryEmbed.jsx
+      - src/lib/publicPartnerDirectoryContract.js
+      - src/lib/publicPartnerDirectoryContract.test.js
+      - supabase/migrations/20260817154845_harden_public_partner_projection_privacy.sql
+      - supabase/tests/public_partner_projection_privacy_proof.sql
+      - supabase/tests/fixtures/public_partner_projection_minimal_baseline.sql
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  privacy-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Verify exact source revision
+        shell: bash
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          checked_out_sha="$(git rev-parse HEAD)"
+          echo "checked_out_sha=${checked_out_sha}"
+          if [ -n "${PR_HEAD_SHA}" ] && [ "${checked_out_sha}" != "${PR_HEAD_SHA}" ]; then
+            echo "Expected exact PR head ${PR_HEAD_SHA}."
+            exit 1
+          fi
+          psql --version
+
+      - name: Apply vulnerable fixture and privacy migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/fixtures/public_partner_projection_minimal_baseline.sql
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20260817154845_harden_public_partner_projection_privacy.sql
+
+      - name: Run exact ACL, persona, row-filter and column proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/public_partner_projection_privacy_proof.sql
+
+      - name: Prove migration re-apply converges
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20260817154845_harden_public_partner_projection_privacy.sql
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/public_partner_projection_privacy_proof.sql
+
+      - name: Prove the SQL proof detects raw anon exposure
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -c 'grant select on table public.partners to anon'
+          if psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/public_partner_projection_privacy_proof.sql \
+            > negative-control.log 2>&1; then
+            echo 'Negative control unexpectedly passed.'
+            exit 1
+          fi
+          grep -q 'anon must not have raw SELECT on public.partners' negative-control.log
+
+      - name: Test directory contract and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          node --test src/lib/publicPartnerDirectoryContract.test.js
+          npm run build
+          git diff --check
