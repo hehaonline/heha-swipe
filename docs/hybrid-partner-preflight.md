@@ -124,6 +124,15 @@ outlive the evidence that produced it.
 signature, and the retention / anonymization policy for terminal evidence. This
 migration models and enforces the evidence chain; it does not decide those.
 
+The combined partner-publication RC also stores append-only HEHA publication
+review events. Each event retains immutable snapshots of the current partner
+owner UUID and the approving/rejecting `super_admin` or `pm_admin` UUID, alongside
+the exact reviewed public-profile snapshot and SHA-256 hash. Those identifiers
+are private and never enter a public view, but their legal retention and any
+future anonymization procedure remain an explicit release-approval gate. They
+must not be erased ad hoc because doing so would destroy the evidence chain that
+keeps owner consent separate from HEHA staff publication review.
+
 ## Caller-supplied context is never authorization
 
 Two review findings against head `cef9af2bc8785ea9732a1dca2de052b3995f1ca9` were

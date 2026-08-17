@@ -1,15 +1,10 @@
--- Wave 1 partner publication consent proof.
---
--- Run only after applying 20260810072829_wave1_partner_publication_consent.sql
--- to a disposable database, a confirmed Supabase development branch, or a
--- transactionally isolated live-schema clone. Never run this against Production.
+-- Partner publication consent security proof for the composed integration RC.
+-- Apply the complete RC migration set to a disposable database first. Never
+-- run this proof against Production. All fixture changes are rolled back.
 --
 -- Required psql variables:
 --   wave1_partner_id    - an owned Catering or PrivateChef row safe to mutate
---   super_admin_user_id - an active HEHA super_admin user
---
--- Exact invocation:
---   psql -X -v ON_ERROR_STOP=1 -v wave1_partner_id=<uuid> -v super_admin_user_id=<uuid> -f supabase/tests/partner_publication_consent_proof.sql <connection-uri>
+--   super_admin_user_id - an active super_admin distinct from the owner
 
 \set ON_ERROR_STOP on
 
@@ -21,13 +16,8 @@ create temporary table partner_publication_consent_proof_inputs (
   owner_id uuid not null
 ) on commit drop;
 
--- psql substitutes variables here because this statement is not inside a
--- dollar-quoted PL/pgSQL body.
 insert into partner_publication_consent_proof_inputs(partner_id, super_admin_id, owner_id)
-select
-  :'wave1_partner_id'::uuid,
-  :'super_admin_user_id'::uuid,
-  p.owner_id
+select :'wave1_partner_id'::uuid, :'super_admin_user_id'::uuid, p.owner_id
 from public.partners p
 where p.id = :'wave1_partner_id'::uuid
   and p.owner_id is not null
@@ -37,6 +27,12 @@ do $$
 begin
   if (select count(*) from pg_temp.partner_publication_consent_proof_inputs) <> 1 then
     raise exception 'proof partner must be an owned Catering or PrivateChef row';
+  end if;
+  if exists (
+    select 1 from pg_temp.partner_publication_consent_proof_inputs
+    where owner_id = super_admin_id
+  ) then
+    raise exception 'super_admin_user_id must differ from the proof owner';
   end if;
 end;
 $$;
@@ -55,7 +51,8 @@ create temporary table partner_publication_consent_results (
 create or replace function pg_temp.set_auth_context(
   p_role text,
   p_sub uuid default null,
-  p_email text default null
+  p_email text default null,
+  p_is_anonymous boolean default false
 )
 returns void
 language plpgsql
@@ -65,10 +62,11 @@ declare
 begin
   perform set_config(
     'request.jwt.claims',
-    pg_catalog.jsonb_build_object(
+    jsonb_build_object(
       'sub', v_sub,
       'role', p_role,
-      'email', coalesce(p_email, 'proof@heha.example')
+      'email', coalesce(p_email, 'proof@heha.example'),
+      'is_anonymous', p_is_anonymous
     )::text,
     true
   );
@@ -93,128 +91,85 @@ as $$
   );
 $$;
 
+-- Static private-ledger, grants, search-path, and authority contract.
 do $$
 declare
-  v_forbidden text[] := array[
-    'owner_id', 'contact', 'phone', 'location', 'complete_pct', 'contribution',
-    'total_swipes', 'total_saves', 'total_profile_views', 'google_place_id',
-    'product_price_policy', 'service_fee_type', 'service_fee_amount',
-    'pricing_notes', 'routing_status', 'routing_notes', 'routing_updated_by',
-    'routing_updated_at', 'is_test_record'
-  ];
-  v_view text;
-  v_column text;
-  v_options text[];
-  v_view_owner oid;
-  v_partner_owner oid;
+  v_function regprocedure;
+  v_config text[];
+  v_definition text;
 begin
   if not (
     select c.relrowsecurity
     from pg_catalog.pg_class c
     where c.oid = 'public.partner_publication_consent_events'::regclass
   ) then
-    raise exception 'partner_publication_consent_events must have RLS enabled';
+    raise exception 'consent ledger must have RLS enabled';
   end if;
-
+  if exists (
+    select 1
+    from pg_catalog.pg_constraint constraint_row
+    where constraint_row.conrelid = 'public.partner_publication_consent_events'::regclass
+      and constraint_row.contype = 'f'
+      and constraint_row.confrelid = 'auth.users'::regclass
+  ) then
+    raise exception 'immutable owner/recorder identity snapshots must not be Auth deletion FKs';
+  end if;
+  if not exists (
+    select 1
+    from pg_catalog.pg_trigger trigger_row
+    where trigger_row.tgrelid = 'public.partner_publication_consent_events'::regclass
+      and trigger_row.tgname = 'partner_publication_consent_events_immutable'
+      and not trigger_row.tgisinternal
+      and trigger_row.tgenabled <> 'D'
+  ) then
+    raise exception 'consent ledger needs an enabled structural UPDATE/DELETE deny trigger';
+  end if;
   if pg_catalog.has_table_privilege('anon', 'public.partner_publication_consent_events', 'SELECT')
+     or pg_catalog.has_table_privilege('authenticated', 'public.partner_publication_consent_events', 'SELECT')
      or pg_catalog.has_table_privilege('anon', 'public.partner_publication_consent_events', 'INSERT')
      or pg_catalog.has_table_privilege('authenticated', 'public.partner_publication_consent_events', 'INSERT')
      or pg_catalog.has_table_privilege('authenticated', 'public.partner_publication_consent_events', 'UPDATE')
      or pg_catalog.has_table_privilege('authenticated', 'public.partner_publication_consent_events', 'DELETE')
+     or pg_catalog.has_table_privilege('authenticated', 'public.partner_publication_consent_events', 'TRUNCATE')
      or pg_catalog.has_table_privilege('service_role', 'public.partner_publication_consent_events', 'INSERT')
      or pg_catalog.has_table_privilege('service_role', 'public.partner_publication_consent_events', 'UPDATE')
-     or pg_catalog.has_table_privilege('service_role', 'public.partner_publication_consent_events', 'DELETE') then
-    raise exception 'append-only consent evidence has broader direct privileges than intended';
+     or pg_catalog.has_table_privilege('service_role', 'public.partner_publication_consent_events', 'DELETE')
+     or pg_catalog.has_table_privilege('service_role', 'public.partner_publication_consent_events', 'TRUNCATE') then
+    raise exception 'private append-only ledger has broader direct privileges than intended';
   end if;
   if pg_catalog.has_sequence_privilege(
-       'service_role',
-       'public.partner_publication_consent_events_event_sequence_seq',
-       'USAGE'
-     )
-     or pg_catalog.has_sequence_privilege(
        'authenticated',
        'public.partner_publication_consent_events_event_sequence_seq',
        'USAGE'
+     ) or pg_catalog.has_sequence_privilege(
+       'service_role',
+       'public.partner_publication_consent_events_event_sequence_seq',
+       'USAGE'
      ) then
-    raise exception 'browser/service roles must not directly advance the consent event sequence';
+    raise exception 'browser/service roles must not directly advance the event sequence';
   end if;
-  if pg_catalog.has_table_privilege(
-    'anon',
-    'app_private.partner_publication_projection',
-    'SELECT'
-  ) or pg_catalog.has_table_privilege(
-    'authenticated',
-    'app_private.partner_publication_projection',
-    'SELECT'
-  ) then
-    raise exception 'private consent projection must not be browser-readable';
+  if pg_catalog.has_function_privilege(
+       'authenticated', 'app_private.is_service_role_request()', 'EXECUTE'
+     ) or pg_catalog.has_function_privilege(
+       'service_role', 'app_private.is_service_role_request()', 'EXECUTE'
+     ) then
+    raise exception 'private service-role authority helper must not be client-executable';
   end if;
-
-  if not pg_catalog.has_table_privilege(
-    'authenticated',
-    'public.partner_publication_consent_events',
-    'SELECT'
-  ) then
-    raise exception 'authenticated owners/internal users need RLS-scoped ledger SELECT';
-  end if;
-  if pg_catalog.has_table_privilege('anon', 'public.partners', 'SELECT') then
-    raise exception 'anon must not read raw partner rows';
+  if pg_catalog.has_function_privilege(
+       'authenticated', 'app_private.guard_partner_publication_consent_immutability()', 'EXECUTE'
+     ) or pg_catalog.has_function_privilege(
+       'service_role', 'app_private.guard_partner_publication_consent_immutability()', 'EXECUTE'
+     ) then
+    raise exception 'consent immutability trigger helper must not be client-executable';
   end if;
 
-  select c.relowner into v_partner_owner
-  from pg_catalog.pg_class c
-  where c.oid = 'public.partners'::regclass;
-
-  foreach v_view in array array[
-    'public_partner_directory', 'public_swipe_partners', 'public_local_partners'
-  ] loop
-    select c.reloptions, c.relowner into v_options, v_view_owner
-    from pg_catalog.pg_class c
-    where c.oid = format('public.%I', v_view)::regclass;
-
-    if not ('security_barrier=true' = any (coalesce(v_options, array[]::text[])))
-       or 'security_invoker=true' = any (coalesce(v_options, array[]::text[]))
-       or v_view_owner is distinct from v_partner_owner then
-      raise exception '% must be a same-owner security-barrier definer projection', v_view;
-    end if;
-    if not pg_catalog.has_table_privilege('anon', format('public.%I', v_view), 'SELECT') then
-      raise exception 'anon needs SELECT on safe public view %', v_view;
-    end if;
-
-    foreach v_column in array v_forbidden loop
-      if exists (
-        select 1
-        from information_schema.columns
-        where table_schema = 'public'
-          and table_name = v_view
-          and column_name = v_column
-      ) then
-        raise exception '% exposes forbidden column %', v_view, v_column;
-      end if;
-    end loop;
-  end loop;
-
-  insert into pg_temp.partner_publication_consent_results(label, ok, detail)
-  values (
-    'private/public boundary',
-    true,
-    'RLS, append-only ACLs, raw-table denial, safe view ownership/mode/grants, and forbidden columns verified'
-  );
-end;
-$$;
-
-do $$
-declare
-  v_function regprocedure;
-  v_config text[];
-begin
   foreach v_function in array array[
     'public.submit_partner_registration_with_consent(uuid,text,text[],text,text,text,text,text[],text,text,text,text,text,text,text[],jsonb,text,text,text[],text,text,boolean,boolean,text)'::regprocedure,
     'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,uuid,text)'::regprocedure,
     'public.authorize_partner_profile_publication(uuid,text[],text,text,uuid,text,text)'::regprocedure,
+    'public.withdraw_partner_publication_authorization(uuid,text[],text,text,uuid,text)'::regprocedure,
     'public.get_my_partner_publication_status(uuid)'::regprocedure,
-    'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,text[])'::regprocedure,
-    'public.approve_partner(uuid)'::regprocedure
+    'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,text[])'::regprocedure
   ] loop
     select p.proconfig into v_config from pg_catalog.pg_proc p where p.oid = v_function;
     if not ('search_path=""' = any (coalesce(v_config, array[]::text[]))) then
@@ -230,496 +185,173 @@ begin
     'public.submit_partner_registration_with_consent(uuid,text,text[],text,text,text,text,text[],text,text,text,text,text,text,text[],jsonb,text,text,text[],text,text,boolean,boolean,text)'::regprocedure,
     'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,uuid,text)'::regprocedure,
     'public.authorize_partner_profile_publication(uuid,text[],text,text,uuid,text,text)'::regprocedure,
+    'public.withdraw_partner_publication_authorization(uuid,text[],text,text,uuid,text)'::regprocedure,
     'public.get_my_partner_publication_status(uuid)'::regprocedure
   ] loop
-    if pg_catalog.has_function_privilege('service_role', v_function, 'EXECUTE') then
-      raise exception 'owner-only RPC unexpectedly grants service_role execution: %', v_function;
+    if not pg_catalog.has_function_privilege('authenticated', v_function, 'EXECUTE')
+       or pg_catalog.has_function_privilege('service_role', v_function, 'EXECUTE') then
+      raise exception 'owner-only RPC has wrong grants: %', v_function;
     end if;
   end loop;
 
-  if not pg_catalog.has_function_privilege(
-    'authenticated',
-    'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,uuid,text)',
-    'EXECUTE'
-  ) or pg_catalog.has_function_privilege(
-    'service_role',
-    'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,uuid,text)',
-    'EXECUTE'
-  ) then
-    raise exception 'existing-profile preparation RPC has the wrong role grants';
+  v_function := 'public.withdraw_partner_publication_authorization(uuid,text[],text,text,uuid,text)'::regprocedure;
+  select lower(pg_get_functiondef(v_function)) into v_definition;
+  if position('app_private.authorize_partner_lifecycle_mutation' in v_definition) = 0 then
+    raise exception 'owner withdrawal must mint the private listing-change capability before updating the partner';
   end if;
 
-  if not pg_catalog.has_function_privilege(
-    'authenticated',
-    'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,text[])',
-    'EXECUTE'
-  ) or not pg_catalog.has_function_privilege(
-    'service_role',
-    'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,text[])',
-    'EXECUTE'
-  ) then
-    raise exception 'verified-consent RPC needs authenticated role-gated and service-role execution';
+  v_function := 'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,text[])'::regprocedure;
+  if not pg_catalog.has_function_privilege('authenticated', v_function, 'EXECUTE')
+     or not pg_catalog.has_function_privilege('service_role', v_function, 'EXECUTE') then
+    raise exception 'verified-consent RPC needs authenticated + service_role execution';
+  end if;
+  select lower(pg_get_functiondef(v_function)) into v_definition;
+  if position('app_private.is_service_role_request()' in v_definition) = 0
+     or position('request.jwt' in v_definition) > 0
+     or position('app_private.authorize_partner_lifecycle_mutation' in v_definition) = 0 then
+    raise exception 'verified-consent RPC must use non-forgeable service authority and a private capability for routing withdrawal';
+  end if;
+  v_function := pg_catalog.to_regprocedure('public.approve_partner(uuid)');
+  if v_function is not null and (
+       pg_catalog.has_function_privilege('authenticated', v_function, 'EXECUTE')
+       or pg_catalog.has_function_privilege('service_role', v_function, 'EXECUTE')
+     ) then
+    raise exception 'legacy one-step approve_partner must remain retired';
   end if;
 
-  insert into pg_temp.partner_publication_consent_results(label, ok, detail)
-  values (
-    'rpc grants and search paths',
-    true,
-    'PUBLIC/anon revoked; owner/admin RPC role grants and empty search paths verified'
+  insert into pg_temp.partner_publication_consent_results values (
+    'private ledger and RPC authority', true,
+    'structural append-only ledger with durable identity snapshots; browser access denied; owner RPCs scoped; service helper non-forgeable; legacy approval retired'
   );
 end;
 $$;
 
+-- Unsupported group-order URL is denied; only the exact future exporter shape
+-- is recognized internally. The final public projection still disables Local.
 do $$
 declare
   v_partner_id uuid := current_setting('heha.proof_partner_id')::uuid;
-  v_other_partner_id uuid := gen_random_uuid();
-  v_partner public.partners;
 begin
-  if public.suggest_partner_local_lane('PrivateChef', null, null, null, array[]::text[]) <> 'chef' then
-    raise exception 'PrivateChef must route to the chef lane';
-  end if;
-  if public.suggest_partner_local_lane('Catering', null, null, null, array[]::text[]) <> 'group_orders' then
-    raise exception 'Catering must route to the group_orders lane';
-  end if;
-  select p into v_partner from public.partners p where p.id = v_partner_id;
-  v_partner.category := 'Restaurant';
-  v_partner.categories := array['Restaurant', 'Catering', 'PrivateChef']::text[];
-  if app_private.wave1_local_lane(v_partner) <> 'group_orders' then
-    raise exception 'ordered multi-category routing must use the first applicable category';
-  end if;
-  v_partner.categories := array['Restaurant', 'PrivateChef', 'Catering']::text[];
-  if app_private.wave1_local_lane(v_partner) <> 'chef' then
-    raise exception 'ordered multi-category routing must remain deterministic';
-  end if;
-  if app_private.is_specific_local_partner_path('/chef') then
-    raise exception 'generic /chef must not be treated as partner-specific';
+  if app_private.is_specific_local_partner_path('/group-orders/' || v_partner_id::text)
+     or app_private.is_specific_wave1_local_partner_path(
+       '/group-orders/' || v_partner_id::text, v_partner_id, 'group_orders'
+     ) then
+    raise exception 'unsupported /group-orders route was accepted';
   end if;
   if not app_private.is_specific_wave1_local_partner_path(
-    '/chef/match?swipePartnerId=' || v_partner_id::text || '&service=private_chef',
+    '/chef/match?swipePartnerId=' || v_partner_id::text || '&service=catering',
     v_partner_id,
-    'chef'
+    'group_orders'
   ) then
-    raise exception 'exact chef request route must match its Swipe partner';
+    raise exception 'exact future catering exporter contract was not recognized';
   end if;
-  if app_private.is_specific_wave1_local_partner_path(
-    '/chef/' || v_other_partner_id::text,
-    v_partner_id,
-    'chef'
-  ) then
-    raise exception 'a chef route must not point at a different partner';
+  if app_private.is_specific_local_partner_path('/chef') then
+    raise exception 'generic /chef path was accepted';
   end if;
-  if app_private.is_specific_wave1_local_partner_path(
-    '/group-orders/' || v_partner_id::text,
-    v_partner_id,
-    'chef'
-  ) then
-    raise exception 'a chef consent must not activate a catering route';
-  end if;
-
-  insert into pg_temp.partner_publication_consent_results(label, ok, detail)
-  values (
-    'wave1 routing',
-    true,
-    'PrivateChef -> chef, Catering -> group_orders, and generic/wrong-partner/wrong-lane Local routes fail closed'
+  insert into pg_temp.partner_publication_consent_results values (
+    'Local route boundary', true,
+    'unsupported group-order/generic paths denied; exact future catering match shape recognized only internally'
   );
 end;
 $$;
 
--- Exercise actual anonymous privileges, not just JWT-shaped session settings.
-set local role anon;
-do $$
-begin
-  begin
-    perform 1 from public.partners limit 1;
-    raise exception 'anon unexpectedly read raw partners';
-  exception when insufficient_privilege then null;
-  end;
-  begin
-    perform 1 from public.partner_publication_consent_events limit 1;
-    raise exception 'anon unexpectedly read private consent evidence';
-  exception when insufficient_privilege then null;
-  end;
-  perform 1 from public.public_swipe_partners limit 1;
-  perform 1 from public.public_local_partners limit 1;
-  begin
-    perform public.get_my_partner_publication_status(
-      current_setting('heha.proof_partner_id')::uuid
-    );
-    raise exception 'anon unexpectedly executed owner status RPC';
-  exception when insufficient_privilege then null;
-  end;
-end;
-$$;
-reset role;
+-- Evidence is append-only. Do not delete any pre-existing consent or staff
+-- review row: the new owner consent events below receive later sequences, so an
+-- earlier review stays bound to its earlier consent event and cannot authorize
+-- the new exact owner consent.
+update public.partners
+set status = 'live',
+    website_eligible = false,
+    swipe_eligible = true,
+    local_eligible = true,
+    local_lane = app_private.wave1_local_lane(partners),
+    primary_cta_destination = 'local',
+    primary_cta_label = 'Request a quote',
+    primary_cta_path = '/group-orders/' || id::text,
+    routing_status = 'approved',
+    is_test_record = false
+where id = current_setting('heha.proof_partner_id')::uuid;
 
-insert into partner_publication_consent_results(label, ok, detail)
-values ('anon persona', true, 'anon can read only safe views; raw rows, ledger, and owner RPC are denied');
-
-do $$
-declare
-  v_partner_id uuid := current_setting('heha.proof_partner_id')::uuid;
-  v_super_admin uuid := current_setting('heha.proof_super_admin_id')::uuid;
-  v_lane text;
-  v_service text;
-  v_specific_path text;
-  v_prepare_swipe uuid := gen_random_uuid();
-  v_prepare_local uuid := gen_random_uuid();
-  v_publish_swipe uuid := gen_random_uuid();
-  v_publish_local uuid := gen_random_uuid();
-  v_publish_local_event uuid;
-  v_retry_event uuid;
-  v_profile_hash text;
-  v_changed_profile_hash text;
-  v_original_category text;
-  v_original_categories text[];
-  v_wrong_lane text;
-  v_wrong_service text;
-begin
-  perform pg_temp.set_auth_context('authenticated', v_super_admin, 'proof@heha.example');
-
-  select app_private.wave1_local_lane(p), p.category, p.categories
-  into v_lane, v_original_category, v_original_categories
-  from public.partners p where p.id = v_partner_id;
-  v_service := case v_lane when 'chef' then 'private_chef' else 'catering' end;
-  v_wrong_lane := case v_lane when 'chef' then 'group_orders' else 'chef' end;
-  v_wrong_service := case v_wrong_lane when 'chef' then 'private_chef' else 'catering' end;
-  v_specific_path := '/chef/match?swipePartnerId=' || v_partner_id::text || '&service=' || v_service;
-
-  -- A Wave 1 category is consent-managed even before its first evidence event.
-  -- This proof is transactionally isolated and rolls the temporary deletion back.
-  delete from public.partner_publication_consent_events where partner_id = v_partner_id;
-  update public.partners
-  set status = 'live',
-      website_eligible = true,
-      swipe_eligible = true,
-      local_eligible = true,
-      local_lane = v_lane,
-      primary_cta_destination = 'local',
-      primary_cta_path = v_specific_path,
-      is_test_record = false
-  where id = v_partner_id;
-  if exists (select 1 from public.public_partner_directory where id = v_partner_id)
-     or exists (select 1 from public.public_swipe_partners where id = v_partner_id)
-     or exists (select 1 from public.public_local_partners where id = v_partner_id) then
-    raise exception 'zero-history Wave 1 profile bypassed the consent gate';
-  end if;
-  begin
-    perform public.approve_partner(v_partner_id);
-    raise exception 'zero-history Wave 1 profile was approved without permission';
-  exception when check_violation then null;
-  end;
-
-  begin
-    perform public.record_verified_partner_publication_consent(
-      v_partner_id, 'heha_swipe', 'prepare_profile', 'granted',
-      'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-prepare-without-media-rights',
-      gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, false, false, array['Tampa Bay']::text[]
-    );
-    raise exception 'prepare grant unexpectedly succeeded without current media permission';
-  exception when check_violation then null;
-  end;
-
-  -- Latest revoke events establish a deterministic no-consent starting point.
-  perform public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_swipe', 'prepare_profile', 'revoked',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-start-revoke-prepare-swipe',
-    gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, true, false, array['Tampa Bay']::text[]
-  );
-  perform public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_swipe', 'publish_profile', 'revoked',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-start-revoke-publish-swipe',
-    gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, true, false, array['Tampa Bay']::text[]
-  );
-  perform public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_local', 'prepare_profile', 'revoked',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-start-revoke-prepare-local',
-    gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, true, true, array['Tampa Bay']::text[]
-  );
-  perform public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_local', 'publish_profile', 'revoked',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-start-revoke-publish-local',
-    gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, true, true, array['Tampa Bay']::text[]
-  );
-
-  -- Even direct routing-field tampering cannot bypass the view-level gate.
-  update public.partners
-  set status = 'live',
-      swipe_eligible = true,
-      local_eligible = true,
-      local_lane = v_lane,
-      primary_cta_destination = 'local',
-      primary_cta_path = v_specific_path,
-      routing_status = 'approved',
-      is_test_record = false
-  where id = v_partner_id;
-  select app_private.partner_public_profile_hash(p) into v_profile_hash
-  from public.partners p where p.id = v_partner_id;
-  if exists (select 1 from public.public_swipe_partners where id = v_partner_id)
-     or exists (select 1 from public.public_local_partners where id = v_partner_id)
-     or exists (select 1 from public.public_partner_directory where id = v_partner_id) then
-    raise exception 'Wave 1 partner became public without current destination consent';
-  end if;
-
-  begin
-    perform public.record_verified_partner_publication_consent(
-      v_partner_id, 'heha_local', 'publish_profile', 'granted',
-      'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-publish-before-prepare',
-      gen_random_uuid(), 'wave1-profile-consent-2026-08-10', v_profile_hash, true, true, array['Tampa Bay']::text[]
-    );
-    raise exception 'publish grant unexpectedly succeeded without current prepare grant';
-  exception when check_violation then null;
-  end;
-
-  -- Consent-managed profiles cannot escape into a legacy public surface by
-  -- mutating from a Wave 1 food category to an unconsented category.
-  update public.partners
-  set category = 'Wellness',
-      categories = array['Wellness']::text[],
-      status = 'live',
-      website_eligible = true,
-      swipe_eligible = true,
-      local_eligible = true
-  where id = v_partner_id;
-  if exists (select 1 from public.public_partner_directory where id = v_partner_id)
-     or exists (select 1 from public.public_swipe_partners where id = v_partner_id)
-     or exists (select 1 from public.public_local_partners where id = v_partner_id) then
-    raise exception 'category mutation escaped the consent-managed publication gate';
-  end if;
-  update public.partners
-  set category = v_original_category,
-      categories = v_original_categories
-  where id = v_partner_id;
-
-  perform public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_swipe', 'prepare_profile', 'granted',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-prepare-swipe',
-    v_prepare_swipe, 'wave1-profile-consent-2026-08-10', null, true, false, array['Tampa Bay']::text[]
-  );
-  perform public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_local', 'prepare_profile', 'granted',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-prepare-local',
-    v_prepare_local, 'wave1-profile-consent-2026-08-10', null, true, true, array['Tampa Bay']::text[]
-  );
-
-  update public.partners
-  set category = case v_lane when 'chef' then 'Catering' else 'PrivateChef' end,
-      categories = array[case v_lane when 'chef' then 'Catering' else 'PrivateChef' end]::text[]
-  where id = v_partner_id;
-  select app_private.partner_public_profile_hash(p) into v_changed_profile_hash
-  from public.partners p where p.id = v_partner_id;
-  begin
-    perform public.record_verified_partner_publication_consent(
-      v_partner_id, 'heha_local', 'publish_profile', 'granted',
-      'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-publish-after-lane-change',
-      gen_random_uuid(), 'wave1-profile-consent-2026-08-10', v_changed_profile_hash, true, true, array['Tampa Bay']::text[]
-    );
-    raise exception 'publication unexpectedly reused preparation permission from a different Local lane';
-  exception when check_violation then null;
-  end;
-  update public.partners
-  set category = v_original_category,
-      categories = v_original_categories,
-      local_lane = v_lane,
-      primary_cta_path = v_specific_path
-  where id = v_partner_id;
-
-  perform public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_swipe', 'publish_profile', 'granted',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-publish-swipe',
-    v_publish_swipe, 'wave1-profile-consent-2026-08-10', v_profile_hash, true, false, array['Tampa Bay']::text[]
-  );
-  v_publish_local_event := public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_local', 'publish_profile', 'granted',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-publish-local',
-    v_publish_local, 'wave1-profile-consent-2026-08-10', v_profile_hash, true, true, array['Tampa Bay']::text[]
-  );
-
-  -- Same key + same client payload remains idempotent.
-  v_retry_event := public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_local', 'publish_profile', 'granted',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-publish-local',
-    v_publish_local, 'wave1-profile-consent-2026-08-10', v_profile_hash, true, true, array['Tampa Bay']::text[]
-  );
-  if v_retry_event is distinct from v_publish_local_event then
-    raise exception 'idempotent publish retry returned a different event';
-  end if;
-
-  update public.partners set primary_cta_path = v_specific_path where id = v_partner_id;
-  perform public.approve_partner(v_partner_id);
-  if not exists (
-    select 1 from public.partners
-    where id = v_partner_id
-      and status = 'live'
-      and swipe_eligible is true
-      and local_eligible is true
-      and website_eligible is false
-      and primary_cta_path = v_specific_path
-  ) then
-    raise exception 'approval did not honor current consent and partner-specific Local route';
-  end if;
-  if not exists (select 1 from public.public_swipe_partners where id = v_partner_id)
-     or not exists (select 1 from public.public_local_partners where id = v_partner_id)
-     or exists (select 1 from public.public_partner_directory where id = v_partner_id) then
-    raise exception 'destination-specific public projections do not match granted consent';
-  end if;
-  if exists (
-    select 1 from public.public_swipe_partners
-    where id = v_partner_id and (items <> '[]'::jsonb or price_range is not null)
-  ) then
-    raise exception 'Wave 1 public profile exposed deferred menu/per-portion pricing';
-  end if;
-
-  update public.partners
-  set local_lane = v_wrong_lane,
-      primary_cta_path = '/chef/match?swipePartnerId=' || v_partner_id::text || '&service=' || v_wrong_service
-  where id = v_partner_id;
-  if exists (select 1 from public.public_local_partners where id = v_partner_id)
-     or not exists (select 1 from public.public_swipe_partners where id = v_partner_id) then
-    raise exception 'wrong-lane route tampering did not fail closed only on HEHA Local';
-  end if;
-  if exists (
-    select 1
-    from public.public_swipe_partners
-    where id = v_partner_id
-      and (
-        local_eligible is true
-        or local_lane is not null
-        or primary_cta_destination is distinct from 'swipe'
-        or primary_cta_label is distinct from 'Discover Partner'
-        or primary_cta_path is distinct from '/?partner=' || v_partner_id::text
-      )
-  ) then
-    raise exception 'Swipe projection exposed a tampered or unconsented HEHA Local CTA';
-  end if;
-  update public.partners
-  set local_lane = v_lane,
-      primary_cta_path = v_specific_path
-  where id = v_partner_id;
-  if not exists (select 1 from public.public_local_partners where id = v_partner_id) then
-    raise exception 'restoring the consent-derived lane and exact route did not restore HEHA Local';
-  end if;
-
-  -- Revoking preparation fails closed at Local even if routing flags remain true.
-  perform public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_local', 'prepare_profile', 'revoked',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-revoke-prepare-local',
-    gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, true, true, array['Tampa Bay']::text[]
-  );
-  if exists (select 1 from public.public_local_partners where id = v_partner_id)
-     or not exists (select 1 from public.public_swipe_partners where id = v_partner_id) then
-    raise exception 'prepare revocation did not remove only the affected destination';
-  end if;
-
-  -- A retry of the original publish request still returns its original event.
-  v_retry_event := public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_local', 'publish_profile', 'granted',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-publish-local',
-    v_publish_local, 'wave1-profile-consent-2026-08-10', v_profile_hash, true, true, array['Tampa Bay']::text[]
-  );
-  if v_retry_event is distinct from v_publish_local_event then
-    raise exception 'idempotent retry became state-dependent after prepare revocation';
-  end if;
-
-  perform public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_local', 'prepare_profile', 'granted',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-regrant-prepare-local',
-    gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, true, true, array['Tampa Bay']::text[]
-  );
-  if not exists (select 1 from public.public_local_partners where id = v_partner_id) then
-    raise exception 'current prepare regrant did not restore still-current publication consent';
-  end if;
-
-  perform public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_local', 'publish_profile', 'revoked',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-revoke-publish-local',
-    gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, true, true, array['Tampa Bay']::text[]
-  );
-  if exists (select 1 from public.public_local_partners where id = v_partner_id)
-     or exists (select 1 from public.partners where id = v_partner_id and local_eligible) then
-    raise exception 'publish revocation did not delist and disable Local';
-  end if;
-
-  perform public.record_verified_partner_publication_consent(
-    v_partner_id, 'heha_local', 'publish_profile', 'granted',
-    'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-regrant-publish-local',
-    gen_random_uuid(), 'wave1-profile-consent-2026-08-10', v_profile_hash, true, true, array['Tampa Bay']::text[]
-  );
-  update public.partners set primary_cta_path = v_specific_path where id = v_partner_id;
-  perform public.approve_partner(v_partner_id);
-
-  -- Profile drift immediately removes both destinations, even after flag tampering.
-  update public.partners
-  set tagline = coalesce(tagline, '') || ' stale-proof',
-      swipe_eligible = true,
-      local_eligible = true
-  where id = v_partner_id;
-  if exists (select 1 from public.public_swipe_partners where id = v_partner_id)
-     or exists (select 1 from public.public_local_partners where id = v_partner_id) then
-    raise exception 'stale exact-version consent remained public';
-  end if;
-  begin
-    perform public.approve_partner(v_partner_id);
-    raise exception 'stale profile approval unexpectedly succeeded';
-  exception when check_violation then null;
-  end;
-  begin
-    perform public.record_verified_partner_publication_consent(
-      v_partner_id, 'heha_local', 'publish_profile', 'granted',
-      'Wave One Proof', 'Owner', 'proof@heha.example', 'proof-stale-profile-hash',
-      gen_random_uuid(), 'wave1-profile-consent-2026-08-10', v_profile_hash, true, true, array['Tampa Bay']::text[]
-    );
-    raise exception 'verified evidence authorized a profile version the representative did not review';
-  exception when check_violation then null;
-  end;
-
-  insert into pg_temp.partner_publication_consent_results(label, ok, detail)
-  values (
-    'consent lifecycle',
-    true,
-    'zero-history/no-consent tamper, prepare-before-publish, media permission, lane-change rejection, exact reviewed hash, grants, exact route/lane, idempotency, revocations, regrants, category mutation, pricing suppression, and profile drift verified'
-  );
-end;
-$$;
-
--- Exercise an unrelated authenticated user with actual Postgres role + RLS.
-select pg_temp.set_auth_context('authenticated', gen_random_uuid(), 'unrelated@heha.example');
+-- JWT/GUC service-role forgery under the authenticated database role fails.
+select pg_temp.set_auth_context('service_role', gen_random_uuid(), 'forged@heha.example');
 set local role authenticated;
 do $$
 declare
   v_partner_id uuid := current_setting('heha.proof_partner_id')::uuid;
 begin
-  if exists (
-    select 1 from public.partner_publication_consent_events
-    where partner_id = v_partner_id
-  ) then
-    raise exception 'unrelated authenticated user read private consent evidence';
-  end if;
-  if exists (select 1 from public.partners where id = v_partner_id) then
-    raise exception 'unrelated authenticated user read raw partner row';
-  end if;
   begin
-    perform public.approve_partner(v_partner_id);
-    raise exception 'ordinary authenticated user unexpectedly approved partner';
+    perform public.record_verified_partner_publication_consent(
+      v_partner_id, 'heha_swipe', 'prepare_profile', 'revoked',
+      'Forged Service', 'Attacker', 'attacker@heha.example', 'forged-service-role',
+      gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, false, false,
+      array['Tampa Bay']::text[]
+    );
+    raise exception 'forged service JWT recorded consent';
   exception when insufficient_privilege then null;
   end;
   begin
-    perform public.record_verified_partner_publication_consent(
-      v_partner_id, 'heha_swipe', 'prepare_profile', 'granted',
-      'Wrong User', 'Viewer', 'wrong@heha.example', 'unauthorized-proof',
-      gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, true, false, array['Tampa Bay']::text[]
-    );
-    raise exception 'ordinary authenticated user unexpectedly recorded verified consent';
+    perform 1 from public.partner_publication_consent_events where partner_id = v_partner_id;
+    raise exception 'authenticated caller read private consent ledger';
   exception when insufficient_privilege then null;
   end;
 end;
 $$;
 reset role;
+insert into partner_publication_consent_results values (
+  'forged service authority', true,
+  'service_role JWT/GUC forgery denied under authenticated database role'
+);
 
-insert into partner_publication_consent_results(label, ok, detail)
-values ('unrelated authenticated persona', true, 'RLS hides owner data and role-gated admin RPCs deny ordinary users');
+-- Positive authority uses actual database service_role with an ordinary JWT.
+select pg_temp.set_auth_context(
+  'authenticated',
+  current_setting('heha.proof_super_admin_id')::uuid,
+  'service-proof@heha.example'
+);
+set local role service_role;
+do $$
+declare
+  v_partner_id uuid := current_setting('heha.proof_partner_id')::uuid;
+  v_key uuid := gen_random_uuid();
+  v_event uuid;
+begin
+  v_event := public.record_verified_partner_publication_consent(
+    v_partner_id, 'heha_swipe', 'publish_profile', 'revoked',
+    'Wave One Proof', 'Operations', 'proof@heha.example', 'real-service-revocation',
+    v_key, 'wave1-profile-consent-2026-08-10', null, false, false,
+    array['Tampa Bay']::text[]
+  );
+  if v_event is null or public.record_verified_partner_publication_consent(
+    v_partner_id, 'heha_swipe', 'publish_profile', 'revoked',
+    'Wave One Proof', 'Operations', 'proof@heha.example', 'real-service-revocation',
+    v_key, 'wave1-profile-consent-2026-08-10', null, false, false,
+    array['Tampa Bay']::text[]
+  ) is distinct from v_event then
+    raise exception 'real service role failed idempotent evidence recording';
+  end if;
+  begin
+    perform public.record_verified_partner_publication_consent(
+      v_partner_id, 'invalid_destination', 'publish_profile', 'revoked',
+      'Wave One Proof', 'Operations', 'proof@heha.example', 'invalid-destination',
+      gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, false, false,
+      array['Tampa Bay']::text[]
+    );
+    raise exception 'invalid destination was accepted';
+  exception when check_violation then null;
+  end;
+  -- Satisfy the separate listing-review gate so the later owner-consent-only
+  -- invisibility assertion isolates the missing staff publication review.
+  perform public.set_partner_listing_status(v_partner_id, 'listed');
+end;
+$$;
+reset role;
+insert into partner_publication_consent_results values (
+  'real service authority', true,
+  'actual service_role succeeds and stays idempotent; invalid destination fails closed'
+);
 
--- Exercise the actual owner role against raw-row and consent-ledger RLS.
+-- Owner grants remain consent only, never staff review. Then withdraw just the
+-- Local destination and prove Swipe consent remains current.
 select pg_temp.set_auth_context(
   'authenticated',
   current_setting('heha.proof_owner_id')::uuid,
@@ -729,59 +361,295 @@ set local role authenticated;
 do $$
 declare
   v_partner_id uuid := current_setting('heha.proof_partner_id')::uuid;
+  v_prepare_key uuid := gen_random_uuid();
+  v_publish_key uuid := gen_random_uuid();
+  v_withdraw_key uuid := gen_random_uuid();
   v_status jsonb;
+  v_first jsonb;
 begin
-  if not exists (select 1 from public.partners where id = v_partner_id) then
-    raise exception 'partner owner cannot read own raw profile';
-  end if;
-  if not exists (
-    select 1 from public.partner_publication_consent_events
-    where partner_id = v_partner_id
-  ) then
-    raise exception 'partner owner cannot read own consent evidence';
-  end if;
-  v_status := public.get_my_partner_publication_status(v_partner_id);
-  if v_status ->> 'partner_id' is distinct from v_partner_id::text then
-    raise exception 'owner status RPC returned the wrong partner';
-  end if;
+  begin
+    perform 1 from public.partner_publication_consent_events where partner_id = v_partner_id;
+    raise exception 'current owner read private consent history directly';
+  exception when insufficient_privilege then null;
+  end;
 
   perform public.authorize_existing_partner_profile_preparation(
-    v_partner_id,
-    array['heha_swipe', 'heha_local']::text[],
-    'Wave One Owner',
-    'Owner',
-    true,
-    true,
-    gen_random_uuid(),
+    v_partner_id, array['heha_swipe', 'heha_local']::text[],
+    'Wave One Owner', 'Owner', true, true, v_prepare_key,
     'wave1-profile-consent-2026-08-10'
   );
+  perform public.authorize_existing_partner_profile_preparation(
+    v_partner_id, array['heha_swipe', 'heha_local']::text[],
+    'Wave One Owner', 'Owner', true, true, v_prepare_key,
+    'wave1-profile-consent-2026-08-10'
+  );
+  v_status := public.get_my_partner_publication_status(v_partner_id);
   perform public.authorize_partner_profile_publication(
-    v_partner_id,
-    array['heha_swipe', 'heha_local']::text[],
-    'Wave One Owner',
-    'Owner',
-    gen_random_uuid(),
-    'wave1-profile-consent-2026-08-10',
-    v_status ->> 'profile_snapshot_hash'
+    v_partner_id, array['heha_swipe', 'heha_local']::text[],
+    'Wave One Owner', 'Owner', v_publish_key,
+    'wave1-profile-consent-2026-08-10', v_status ->> 'profile_snapshot_hash'
+  );
+  perform public.authorize_partner_profile_publication(
+    v_partner_id, array['heha_swipe', 'heha_local']::text[],
+    'Wave One Owner', 'Owner', v_publish_key,
+    'wave1-profile-consent-2026-08-10', v_status ->> 'profile_snapshot_hash'
   );
   v_status := public.get_my_partner_publication_status(v_partner_id);
   if v_status -> 'publication_destinations' <> '["heha_swipe", "heha_local"]'::jsonb
      and v_status -> 'publication_destinations' <> '["heha_local", "heha_swipe"]'::jsonb then
-    raise exception 'signed-in owner flow did not approve the exact current version for both destinations';
+    raise exception 'owner exact-hash consent did not cover both destinations';
   end if;
-  if not exists (select 1 from public.public_swipe_partners where id = v_partner_id)
-     or not exists (select 1 from public.public_local_partners where id = v_partner_id) then
-    raise exception 'owner exact-version reapproval did not restore current authorized projections';
+  if exists (select 1 from public.public_swipe_partners where id = v_partner_id)
+     or exists (select 1 from public.public_local_partners where id = v_partner_id) then
+    raise exception 'owner consent alone became staff review or enabled Local export';
   end if;
+
+  v_first := public.withdraw_partner_publication_authorization(
+    v_partner_id, array['heha_local']::text[],
+    'Wave One Owner', 'Owner', v_withdraw_key,
+    'wave1-profile-consent-2026-08-10'
+  );
+  if public.withdraw_partner_publication_authorization(
+    v_partner_id, array['heha_local']::text[],
+    'Wave One Owner', 'Owner', v_withdraw_key,
+    'wave1-profile-consent-2026-08-10'
+  ) is distinct from v_first then
+    raise exception 'withdrawal retry returned a different response';
+  end if;
+  begin
+    perform public.withdraw_partner_publication_authorization(
+      v_partner_id, array['heha_swipe']::text[],
+      'Wave One Owner', 'Owner', v_withdraw_key,
+      'wave1-profile-consent-2026-08-10'
+    );
+    raise exception 'withdrawal key was reused for a different destination';
+  exception when unique_violation then null;
+  end;
+  begin
+    perform public.withdraw_partner_publication_authorization(
+      v_partner_id, array['not_a_destination']::text[],
+      'Wave One Owner', 'Owner', gen_random_uuid(),
+      'wave1-profile-consent-2026-08-10'
+    );
+    raise exception 'invalid withdrawal destination was accepted';
+  exception when check_violation then null;
+  end;
+  v_status := public.get_my_partner_publication_status(v_partner_id);
+  if v_status -> 'publication_destinations' <> '["heha_swipe"]'::jsonb then
+    raise exception 'Local-only withdrawal did not preserve Swipe consent';
+  end if;
+  if exists (select 1 from public.public_local_partners where id = v_partner_id) then
+    raise exception 'Local export or CTA became public';
+  end if;
+
+  perform set_config('heha.proof_prepare_key', v_prepare_key::text, true);
+  perform set_config('heha.proof_publish_key', v_publish_key::text, true);
+  perform set_config('heha.proof_withdraw_key', v_withdraw_key::text, true);
 end;
 $$;
 reset role;
 
-insert into partner_publication_consent_results(label, ok, detail)
-values (
-  'owner persona',
-  true,
-  'owner RLS plus existing-profile preparation, exact-version approval, status, and visibility restoration succeed'
+do $$
+declare
+  v_partner_id uuid := current_setting('heha.proof_partner_id')::uuid;
+  v_owner_id uuid := current_setting('heha.proof_owner_id')::uuid;
+begin
+  begin
+    update public.partner_publication_consent_events
+    set owner_id = gen_random_uuid()
+    where request_key = current_setting('heha.proof_withdraw_key')::uuid;
+    raise exception 'consent evidence UPDATE bypassed the structural append-only trigger';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    delete from public.partner_publication_consent_events
+    where request_key = current_setting('heha.proof_withdraw_key')::uuid;
+    raise exception 'consent evidence DELETE bypassed the structural append-only trigger';
+  exception when insufficient_privilege then null;
+  end;
+  if (select count(*) from public.partner_publication_consent_events
+      where request_key = current_setting('heha.proof_prepare_key')::uuid) <> 2
+     or (select count(*) from public.partner_publication_consent_events
+      where request_key = current_setting('heha.proof_publish_key')::uuid) <> 2 then
+    raise exception 'owner grant idempotency created duplicate destination events';
+  end if;
+  if (select count(*) from public.partner_publication_consent_events
+      where request_key = current_setting('heha.proof_withdraw_key')::uuid
+        and partner_id = v_partner_id
+        and owner_id = v_owner_id
+        and destination = 'heha_local'
+        and action = 'publish_profile'
+        and state = 'revoked') <> 1 then
+    raise exception 'owner withdrawal did not append one owner-scoped Local revocation';
+  end if;
+  if not app_private.has_current_partner_publication_authorization(
+       (select p from public.partners p where p.id = v_partner_id), 'heha_swipe'
+     ) or app_private.has_current_partner_publication_authorization(
+       (select p from public.partners p where p.id = v_partner_id), 'heha_local'
+     ) then
+    raise exception 'withdrawal did not preserve only current Swipe consent';
+  end if;
+  if exists (select 1 from public.partners
+             where id = v_partner_id and (local_eligible or local_lane is not null)) then
+    raise exception 'Local withdrawal did not clear raw Local eligibility';
+  end if;
+  insert into pg_temp.partner_publication_consent_results values (
+    'owner consent and withdrawal', true,
+    'redacted status only; consent alone non-public; Local withdrawal append-only/idempotent and Swipe-preserving'
+  );
+end;
+$$;
+
+-- Deleting an Auth account must not rewrite immutable owner/recorder evidence.
+do $$
+declare
+  v_partner_id uuid := current_setting('heha.proof_partner_id')::uuid;
+  v_deleted_user_id uuid := gen_random_uuid();
+  v_evidence_key uuid := gen_random_uuid();
+  v_partner public.partners;
+begin
+  insert into auth.users (
+    id, aud, role, email, email_confirmed_at, raw_app_meta_data,
+    raw_user_meta_data, is_sso_user, is_anonymous, created_at, updated_at
+  ) values (
+    v_deleted_user_id,
+    'authenticated',
+    'authenticated',
+    'deleted-consent-' || v_deleted_user_id::text || '@example.invalid',
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{}'::jsonb,
+    false,
+    false,
+    now(),
+    now()
+  );
+
+  select p into v_partner from public.partners p where p.id = v_partner_id;
+  insert into public.partner_publication_consent_events (
+    partner_id, owner_id, destination, action, state,
+    authorized_representative_name, authorized_representative_title,
+    authorized_account_contact, consent_statement_version, evidence_channel,
+    evidence_reference, service_areas, local_lane, media_permission_confirmed,
+    service_area_attested, profile_snapshot, profile_snapshot_hash, request_key,
+    request_payload_hash, recorded_by
+  ) values (
+    v_partner_id, v_deleted_user_id, 'heha_local', 'prepare_profile', 'revoked',
+    'Deleted Account Proof', 'Former Owner',
+    'deleted-consent@example.invalid', 'wave1-profile-consent-2026-08-10',
+    'admin_record', 'account-deletion-durability', array['Tampa Bay']::text[],
+    app_private.wave1_local_lane(v_partner), false, false,
+    app_private.partner_public_profile_snapshot(v_partner),
+    app_private.partner_public_profile_hash(v_partner), v_evidence_key,
+    repeat('b', 64), v_deleted_user_id
+  );
+
+  delete from auth.users where id = v_deleted_user_id;
+  if exists (select 1 from auth.users where id = v_deleted_user_id)
+     or not exists (
+       select 1
+       from public.partner_publication_consent_events
+       where request_key = v_evidence_key
+         and owner_id = v_deleted_user_id
+         and recorded_by = v_deleted_user_id
+     ) then
+    raise exception 'Auth deletion erased or rewrote immutable consent identity snapshots';
+  end if;
+
+  insert into pg_temp.partner_publication_consent_results values (
+    'account deletion durability', true,
+    'deleting an Auth user preserves immutable owner_id and recorded_by UUID evidence snapshots'
+  );
+end;
+$$;
+
+-- BOLA: unrelated authenticated user cannot inspect or narrow this partner.
+select pg_temp.set_auth_context('authenticated', gen_random_uuid(), 'unrelated@heha.example');
+set local role authenticated;
+do $$
+declare
+  v_partner_id uuid := current_setting('heha.proof_partner_id')::uuid;
+begin
+  begin
+    perform public.get_my_partner_publication_status(v_partner_id);
+    raise exception 'unrelated user read owner status';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.withdraw_partner_publication_authorization(
+      v_partner_id, array['heha_swipe']::text[],
+      'Wrong User', 'Viewer', gen_random_uuid(),
+      'wave1-profile-consent-2026-08-10'
+    );
+    raise exception 'unrelated user withdrew owner consent';
+  exception when insufficient_privilege then null;
+  end;
+end;
+$$;
+reset role;
+insert into partner_publication_consent_results values (
+  'owner BOLA denial', true,
+  'unrelated authenticated users cannot inspect status or withdraw another owner destination'
+);
+
+-- A historical event owner_id must not grant a former owner any access after
+-- the partner has a different current owner.
+insert into public.partner_publication_consent_events (
+  partner_id, owner_id, destination, action, state,
+  authorized_representative_name, authorized_representative_title,
+  authorized_account_contact, consent_statement_version, evidence_channel,
+  evidence_reference, service_areas, local_lane, media_permission_confirmed,
+  service_area_attested, profile_snapshot, profile_snapshot_hash, request_key,
+  request_payload_hash, recorded_by
+)
+select
+  p.id, current_setting('heha.proof_super_admin_id')::uuid,
+  'heha_swipe', 'prepare_profile', 'revoked',
+  'Former Owner Proof', 'Former Owner', 'former-owner@heha.example',
+  'wave1-profile-consent-2026-08-10', 'admin_record',
+  'historical-former-owner-evidence', array['Tampa Bay']::text[], null,
+  false, false, app_private.partner_public_profile_snapshot(p),
+  app_private.partner_public_profile_hash(p), gen_random_uuid(), repeat('a', 64),
+  current_setting('heha.proof_super_admin_id')::uuid
+from public.partners p
+where p.id = current_setting('heha.proof_partner_id')::uuid;
+
+select pg_temp.set_auth_context(
+  'authenticated',
+  current_setting('heha.proof_super_admin_id')::uuid,
+  'former-owner@heha.example'
+);
+set local role authenticated;
+do $$
+declare
+  v_partner_id uuid := current_setting('heha.proof_partner_id')::uuid;
+begin
+  begin
+    perform 1 from public.partner_publication_consent_events
+    where partner_id = v_partner_id and owner_id = auth.uid();
+    raise exception 'historical owner_id granted ledger access';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.get_my_partner_publication_status(v_partner_id);
+    raise exception 'former owner read current status';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.withdraw_partner_publication_authorization(
+      v_partner_id, array['heha_swipe']::text[],
+      'Former Owner Proof', 'Former Owner', gen_random_uuid(),
+      'wave1-profile-consent-2026-08-10'
+    );
+    raise exception 'former owner withdrew current authorization';
+  exception when insufficient_privilege then null;
+  end;
+end;
+$$;
+reset role;
+insert into partner_publication_consent_results values (
+  'former owner denial', true,
+  'historical owner_id grants neither ledger, current status, nor withdrawal access'
 );
 
 select label, ok, detail

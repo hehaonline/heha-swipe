@@ -14,7 +14,6 @@ import {
   submitPartnerRegistrationWithConsent,
 } from "../services/partnerPublicationConsentRepository";
 import PartnerPublicationPreview from "./PartnerPublicationPreview";
-import { hasSpecificHehaLocalDestination } from "../lib/hehaLocalRouting";
 
 const CATEGORIES = [
   { value: "Restaurant", label: "Restaurants", emoji: "🥗" },
@@ -41,8 +40,6 @@ const STEPS = [
 ];
 
 const ICONS = ["🥗", "🍜", "☕", "🥤", "🧃", "🍱", "👨‍🍳", "🏋️", "🧘", "💆", "🌿", "🏪", "🛍️", "🏆", "💪", "🌱", "🥦", "🫙", "🧴", "🎉"];
-const PUBLIC_STATUSES = ["approved", "live"];
-
 const DAY_OPTIONS = [
   { value: "Mon", label: "Mon" },
   { value: "Tue", label: "Tue" },
@@ -757,7 +754,6 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
 
 function PartnerSubmissionStatus({ listing, loading, error, authorization, onRefresh, onContinue }) {
   const status = String(listing?.status || "pending").toLowerCase();
-  const baseVisible = PUBLIC_STATUSES.includes(status);
   const certified = listing?.heha_partner === true;
   const listingCategories = Array.isArray(listing?.categories) && listing.categories.length
     ? listing.categories
@@ -772,6 +768,8 @@ function PartnerSubmissionStatus({ listing, loading, error, authorization, onRef
   const [publicationStatus, setPublicationStatus] = useState({
     prepare_destinations: authorization.destinations,
     publication_destinations: [],
+    staff_review_destinations: [],
+    public_destinations: [],
     profile_snapshot: listing.public_profile_snapshot,
     profile_snapshot_hash: listing.public_profile_snapshot_hash,
   });
@@ -780,20 +778,10 @@ function PartnerSubmissionStatus({ listing, loading, error, authorization, onRef
     publicationStatus.profile_snapshot
     && publicationStatus.profile_snapshot_hash
   );
-  const activePublicationDestinations = new Set(
-    publicationStatus.publication_destinations || []
-  );
-  const visible = baseVisible && (
-    (
-      listing?.swipe_eligible === true
-      && activePublicationDestinations.has(PARTNER_DESTINATIONS.swipe)
-    )
-    || (
-      listing?.local_eligible === true
-      && activePublicationDestinations.has(PARTNER_DESTINATIONS.local)
-      && hasSpecificHehaLocalDestination(listing)
-    )
-  );
+  // This array is resolved from the final public database views. Owner consent
+  // alone is deliberately not enough to report a listing as live.
+  const visible = Array.isArray(publicationStatus.public_destinations)
+    && publicationStatus.public_destinations.length > 0;
 
   const approvePublication = async () => {
     if (!approvalConfirmed || publicationApproved || !previewReady) return;

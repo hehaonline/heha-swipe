@@ -1,40 +1,19 @@
-import {
-  PARTNER_DESTINATIONS,
-  supportsHehaLocal,
-} from "./partnerPublicationConsent.js";
-import { hasSpecificHehaLocalDestination } from "./hehaLocalRouting.js";
-
-const PUBLIC_LISTING_STATUSES = new Set(["approved", "live"]);
-
-function partnerCategories(partner) {
-  if (Array.isArray(partner?.categories) && partner.categories.length) {
-    return partner.categories;
-  }
-  return partner?.category ? [partner.category] : [];
-}
+import { PARTNER_DESTINATIONS } from "./partnerPublicationConsent.js";
 
 export function partnerSurfaceVisibility(partner, publicationStatus) {
-  const status = String(partner?.status || "").toLowerCase();
-  const baseVisible = PUBLIC_LISTING_STATUSES.has(status);
-  const wave1FoodPartner = supportsHehaLocal(partnerCategories(partner));
-  const publicationDestinations = new Set(
-    Array.isArray(publicationStatus?.publication_destinations)
-      ? publicationStatus.publication_destinations
+  // The server resolves owner consent, exact staff review, listing state, and
+  // each final public view. Never reconstruct that security decision from a
+  // raw partner row or owner consent alone: doing so could tell an owner that a
+  // profile is live while the reviewed public projection correctly hides it.
+  void partner;
+  const publicDestinations = new Set(
+    Array.isArray(publicationStatus?.public_destinations)
+      ? publicationStatus.public_destinations
       : []
   );
 
-  const swipeVisible = baseVisible
-    && partner?.swipe_eligible === true
-    && (
-      !wave1FoodPartner
-      || publicationDestinations.has(PARTNER_DESTINATIONS.swipe)
-    );
-
-  const localVisible = baseVisible
-    && wave1FoodPartner
-    && partner?.local_eligible === true
-    && publicationDestinations.has(PARTNER_DESTINATIONS.local)
-    && hasSpecificHehaLocalDestination(partner);
-
-  return { swipeVisible, localVisible };
+  return {
+    swipeVisible: publicDestinations.has(PARTNER_DESTINATIONS.swipe),
+    localVisible: publicDestinations.has(PARTNER_DESTINATIONS.local),
+  };
 }

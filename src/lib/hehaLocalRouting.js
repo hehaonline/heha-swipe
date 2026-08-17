@@ -29,7 +29,7 @@ const GENERIC_HEHA_LOCAL_LISTING_PATHS = new Set([
   "/group-orders/",
 ]);
 
-const SPECIFIC_LOCAL_PROFILE_PATH = /^\/(restaurants|vendors|market|chef|group-orders)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/i;
+const SPECIFIC_LOCAL_PROFILE_PATH = /^\/(restaurants|vendors|market|chef)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/i;
 const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function localOrigin() {
@@ -76,8 +76,7 @@ export function hasSpecificHehaLocalDestination(partner) {
         || configuredPath === `/chef/match?swipePartnerId=${partnerId}&service=private_chef`;
     }
     if (lane === "group_orders") {
-      return configuredPath.split("?", 1)[0] === `/group-orders/${partnerId}`
-        || configuredPath === `/chef/match?swipePartnerId=${partnerId}&service=catering`;
+      return configuredPath === `/chef/match?swipePartnerId=${partnerId}&service=catering`;
     }
     return false;
   }

@@ -929,26 +929,96 @@ grant execute on function public.set_partner_listing_status(uuid,text) to authen
 grant execute on function public.opt_out_partner_listing(uuid) to authenticated,service_role;
 
 -- ---------------------------------------------------------------------------
--- 9. Current public projection: listing_status is an additional fail-closed gate;
--- heha_partner is projected from partnership_status so claimed/under_review rows
--- can never render as Official Partners.
+-- 9. Public-projection handoff for the combined publication RC.
+--
+-- The earlier publication-consent migration owns an established 33-column
+-- public contract at this point in lexical migration order. PostgreSQL cannot
+-- CREATE OR REPLACE that view with the lifecycle donor's reordered 59-column
+-- shape, and exposing that wider shape would leak owner, contact, routing and
+-- lifecycle data. Keep the consent-aware projection intact here. The final
+-- 20260817171238 integration migration is the sole owner of the converged
+-- private projection and all three public views.
 -- ---------------------------------------------------------------------------
-create or replace view public.public_swipe_partners with (security_invoker=true) as
-select
-  id,created_at,updated_at,owner_id,name,category,location,contact,instagram,website,bio,tags,rating,review_count,
-  distance_text,color,photo_emoji,(partnership_status='official_partner') as heha_partner,status,complete_pct,contribution,
-  total_swipes,total_saves,total_profile_views,hours,google_place_id,business_type,offerings,neighborhood,tagline,items,phone,
-  image_url,price_range,gallery_urls,partner_type,product_price_policy,service_fee_type,service_fee_amount,delivery_days,pricing_notes,
-  heha_pillar,website_eligible,swipe_eligible,local_eligible,local_lane,primary_cta_destination,primary_cta_label,primary_cta_path,
-  routing_status,routing_notes,routing_updated_by,routing_updated_at,is_test_record,categories,
-  claim_status,partnership_status,contract_status,listing_status
-from public.partners
-where status=any(array['approved'::text,'live'::text])
-  and listing_status='listed'
-  and coalesce(swipe_eligible,false)=true
-  and is_test_record=false;
-revoke all on public.public_swipe_partners from anon,authenticated;
-grant select on public.public_swipe_partners to anon,authenticated;
+do $publication_projection_handoff$
+declare
+  expected_columns constant text[] := array[
+    'id','created_at','name','category','categories','instagram','website','bio',
+    'tags','rating','review_count','distance_text','color','photo_emoji',
+    'heha_partner','status','hours','business_type','offerings','neighborhood',
+    'tagline','items','image_url','price_range','gallery_urls','partner_type',
+    'delivery_days','heha_pillar','local_eligible','local_lane',
+    'primary_cta_destination','primary_cta_label','primary_cta_path'
+  ]::text[];
+  actual_columns text[];
+  view_name text;
+  view_options text[];
+  view_owner oid;
+  partner_owner oid;
+begin
+  if pg_catalog.to_regclass('app_private.partner_publication_projection') is null
+     or pg_catalog.to_regclass('public.partner_publication_consent_events') is null then
+    raise exception using
+      errcode='55000',
+      message='Publication-consent donor objects are required before the hybrid lifecycle migration.';
+  end if;
+
+  if pg_catalog.has_table_privilege('anon','public.partners','SELECT') then
+    raise exception using
+      errcode='55000',
+      message='anon must not retain raw partner access during the publication handoff.';
+  end if;
+
+  select relowner into partner_owner
+  from pg_catalog.pg_class
+  where oid='public.partners'::regclass;
+
+  foreach view_name in array array[
+    'public_partner_directory',
+    'public_swipe_partners',
+    'public_local_partners'
+  ]::text[] loop
+    if pg_catalog.to_regclass(pg_catalog.format('public.%I',view_name)) is null then
+      raise exception using
+        errcode='55000',
+        message=pg_catalog.format('Required consent-aware view public.%I is missing.',view_name);
+    end if;
+
+    select pg_catalog.array_agg(column_name order by ordinal_position)
+    into actual_columns
+    from information_schema.columns
+    where table_schema='public' and table_name=view_name;
+
+    if actual_columns is distinct from expected_columns then
+      raise exception using
+        errcode='55000',
+        message=pg_catalog.format(
+          'Unsafe public.%I column contract before integration handoff: expected %s, found %s',
+          view_name,
+          expected_columns,
+          actual_columns
+        );
+    end if;
+
+    select reloptions,relowner into view_options,view_owner
+    from pg_catalog.pg_class
+    where oid=pg_catalog.to_regclass(pg_catalog.format('public.%I',view_name));
+
+    if not ('security_barrier=true'=any(coalesce(view_options,array[]::text[])))
+       or 'security_invoker=true'=any(coalesce(view_options,array[]::text[]))
+       or view_owner is distinct from partner_owner
+       or not pg_catalog.has_table_privilege(
+         'anon',pg_catalog.format('public.%I',view_name),'SELECT'
+       ) then
+      raise exception using
+        errcode='55000',
+        message=pg_catalog.format(
+          'Unsafe consent-aware security/owner/ACL contract for public.%I.',
+          view_name
+        );
+    end if;
+  end loop;
+end;
+$publication_projection_handoff$;
 
 comment on column public.partners.claim_status is 'Profile-control state only: unclaimed, claim_invited, claimed.';
 comment on column public.partners.partnership_status is 'HEHA relationship state only; claiming a profile does not imply official partnership.';

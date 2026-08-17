@@ -286,6 +286,11 @@ where partner_id='55555555-5555-4555-8555-555555555555'
 select pg_sleep(1.1);
 select pg_temp.set_auth('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 select pg_temp.expect_state_detail(
+  'wall-clock preview expiry crossed inside long transaction',
+  'P0002','HEHA_CLAIM_EXPIRED',
+  format('select * from public.preview_partner_claim(%L)',:'wall_expired_token')
+);
+select pg_temp.expect_state_detail(
   'wall-clock expiry crossed inside long transaction',
   'P0002','HEHA_CLAIM_EXPIRED',
   format('select * from public.claim_partner_profile(%L)',:'wall_expired_token')

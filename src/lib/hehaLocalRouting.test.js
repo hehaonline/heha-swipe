@@ -55,7 +55,7 @@ test("chef and catering routes fail closed for the wrong partner or lane", () =>
     id: partnerId,
     local_lane: "group_orders",
     primary_cta_path: `/group-orders/${partnerId}`,
-  }), true);
+  }), false);
 });
 
 test("attributable chef and catering routes use request-specific conversion copy", () => {

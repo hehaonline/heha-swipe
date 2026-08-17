@@ -84,6 +84,26 @@ export async function authorizePartnerProfilePublication({
   return data;
 }
 
+export async function withdrawPartnerProfilePublication({
+  partnerId,
+  destinations,
+  representativeName,
+  representativeTitle,
+  requestKey,
+}) {
+  const { data, error } = await supabase.rpc("withdraw_partner_publication_authorization", {
+    p_partner_id: partnerId,
+    p_destinations: destinations,
+    p_authorized_representative_name: representativeName.trim(),
+    p_authorized_representative_title: representativeTitle.trim(),
+    p_request_key: requestKey,
+    p_consent_statement_version: PARTNER_PROFILE_CONSENT_VERSION,
+  });
+
+  if (error) throw error;
+  return data;
+}
+
 export async function getMyPartnerPublicationStatus(partnerId) {
   const { data, error } = await supabase.rpc("get_my_partner_publication_status", {
     p_partner_id: partnerId,

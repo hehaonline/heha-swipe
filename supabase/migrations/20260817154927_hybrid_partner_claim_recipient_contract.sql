@@ -265,7 +265,9 @@ begin
       message='This claim link is no longer active.',
       detail='HEHA_CLAIM_REVOKED';
   end if;
-  if i.expires_at <= now() then
+  -- statement_timestamp() reflects when this preview call began, unlike now(),
+  -- which is fixed at the start of a caller-controlled SQL transaction.
+  if i.expires_at <= statement_timestamp() then
     raise exception using
       errcode='P0002',
       message='This claim link has expired.',
