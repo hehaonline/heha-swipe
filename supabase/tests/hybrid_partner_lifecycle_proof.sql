@@ -268,6 +268,52 @@ select pg_temp.expect_state_detail(
   format('select * from public.preview_partner_claim(%L)',:'expired_token')
 );
 
+-- This entire proof runs in one explicit transaction, so now() remains fixed at
+-- the transaction start. Move a fresh invite's deadline just beyond the current
+-- wall clock, wait across it, and prove redemption uses the real post-lock time.
+-- The old transaction-stable timestamp would incorrectly accept this claim.
+select pg_temp.set_auth('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+select raw_token as wall_expired_token
+from public.create_partner_claim_invite(
+  '55555555-5555-4555-8555-555555555555',interval '1 day','wall-clock-expiry-proof',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',null
+) \gset
+reset role;
+update public.partner_claim_invites
+set expires_at=clock_timestamp()+interval '1 second'
+where partner_id='55555555-5555-4555-8555-555555555555'
+  and consumed_at is null and revoked_at is null;
+select pg_sleep(1.1);
+select pg_temp.set_auth('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+select pg_temp.expect_state_detail(
+  'wall-clock expiry crossed inside long transaction',
+  'P0002','HEHA_CLAIM_EXPIRED',
+  format('select * from public.claim_partner_profile(%L)',:'wall_expired_token')
+);
+reset role;
+do $$ declare i public.partner_claim_invites; begin
+  select * into i
+  from public.partner_claim_invites
+  where partner_id='55555555-5555-4555-8555-555555555555'
+    and consumed_at is null and revoked_at is null;
+  assert now() < i.expires_at,
+    'fixture no longer distinguishes transaction time from wall-clock time';
+  assert clock_timestamp() >= i.expires_at,
+    'fixture did not cross the real invite expiry';
+  assert (select owner_id is null from public.partners where id=i.partner_id),
+    'expired long-transaction claim changed owner';
+  assert i.consumed_at is null and i.consumed_by is null,
+    'expired long-transaction claim consumed invite';
+  assert not exists(
+    select 1 from public.partner_lifecycle_events
+    where partner_id=i.partner_id and event_type='claim_redeemed'
+  ), 'expired long-transaction claim wrote success audit';
+  insert into hybrid_results values(
+    'wall-clock claim expiry',true,
+    'claim expiry and provenance use one post-lock wall-clock timestamp'
+  );
+end $$;
+
 select pg_temp.set_auth('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
 select invite_id as revoked_invite, raw_token as revoked_token
 from public.create_partner_claim_invite(

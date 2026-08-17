@@ -329,7 +329,7 @@ declare
   actor_email text;
   i public.partner_claim_invites%rowtype;
   p public.partners%rowtype;
-  claim_time timestamptz := now();
+  claim_time timestamptz;
 begin
   if actor is null then
     raise exception using errcode='28000', message='Authentication required.';
@@ -382,6 +382,12 @@ begin
       message='This claim link is not recognized.',
       detail='HEHA_CLAIM_NOT_RECOGNIZED';
   end if;
+
+  -- now() is fixed at transaction start. Capture the real wall-clock time only
+  -- after both rows are locked so a transaction opened before expiry cannot
+  -- redeem the invite after its actual deadline or backdate claim provenance.
+  claim_time := clock_timestamp();
+
   if i.consumed_at is not null then
     raise exception using
       errcode='P0002',
