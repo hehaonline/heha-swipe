@@ -234,18 +234,25 @@ alter table public.partners
 
 -- Fail closed before the constraints are validated: any pre-existing `signed`
 -- state carried in by the forward-only mapping has, by definition, no evidence
--- record, so it is demoted rather than grandfathered. User triggers are disabled
--- only for this reconciliation statement; RI triggers stay active.
-alter table public.partners disable trigger user;
-update public.partners
-set partnership_status = case when partnership_status = 'official_partner' then 'under_review' else partnership_status end,
-    contract_status = 'not_signed',
-    contract_signed_at = null,
-    official_partner_since = null,
-    heha_partner = false
-where contract_status = 'signed'
-  and contract_evidence_id is null;
-alter table public.partners enable trigger user;
+-- record, so it is demoted rather than grandfathered. The disable/update/enable
+-- sequence is one DO statement, and therefore one atomic transaction unit even
+-- when this corrective file is replayed directly with psql. If the UPDATE fails,
+-- PostgreSQL rolls the trigger state back with the statement. RI triggers remain
+-- active throughout.
+do $reconcile_unsigned_contracts$
+begin
+  execute 'alter table public.partners disable trigger user';
+  update public.partners
+  set partnership_status = case when partnership_status = 'official_partner' then 'under_review' else partnership_status end,
+      contract_status = 'not_signed',
+      contract_signed_at = null,
+      official_partner_since = null,
+      heha_partner = false
+  where contract_status = 'signed'
+    and contract_evidence_id is null;
+  execute 'alter table public.partners enable trigger user';
+end;
+$reconcile_unsigned_contracts$;
 
 do $$ begin
   if not exists (

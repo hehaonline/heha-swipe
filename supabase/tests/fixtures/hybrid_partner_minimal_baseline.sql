@@ -154,7 +154,9 @@ values
 ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','authenticated','authenticated','owner-b@example.invalid',now(),'{"provider":"email","providers":["email"]}','{}',false,false,now(),now()),
 ('cccccccc-cccc-4ccc-8ccc-cccccccccccc','authenticated','authenticated','admin@example.invalid',now(),'{"provider":"email","providers":["email"]}','{}',false,false,now(),now()),
 ('dddddddd-dddd-4ddd-8ddd-dddddddddddd','authenticated','authenticated','super@example.invalid',now(),'{"provider":"email","providers":["email"]}','{}',false,false,now(),now()),
-('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','authenticated','authenticated','unverified@example.invalid',null,'{"provider":"email","providers":["email"]}','{}',false,false,now(),now());
+('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','authenticated','authenticated','unverified@example.invalid',null,'{"provider":"email","providers":["email"]}','{}',false,false,now(),now()),
+('ffffffff-ffff-4fff-8fff-ffffffffffff','authenticated','authenticated','anonymous@example.invalid',now(),'{"provider":"anonymous","providers":["anonymous"]}','{}',false,true,now(),now()),
+('99999999-9999-4999-8999-999999999999','authenticated','authenticated',null,now(),'{"provider":"email","providers":["email"]}','{}',false,false,now(),now());
 
 insert into public.user_roles(user_id,role,active) values
 ('cccccccc-cccc-4ccc-8ccc-cccccccccccc','developer_admin',true),

@@ -6,6 +6,8 @@ on:
     paths:
       - .github/workflows/hybrid-partner-proof.yml
       - supabase/migrations/2026081109*.sql
+      - supabase/migrations/20260817154529_hybrid_partner_security_reconciliation.sql
+      - supabase/migrations/20260817154927_hybrid_partner_claim_recipient_contract.sql
       - supabase/tests/hybrid_partner_lifecycle_proof.sql
       - supabase/tests/fixtures/hybrid_partner_minimal_baseline.sql
       - scripts/hybrid_partner_concurrency_proof.sh
@@ -20,6 +22,13 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          # A pull_request event normally checks out GitHub's synthetic merge
+          # ref. The security evidence must instead come from the literal PR
+          # head that reviewers can identify and reproduce.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Install Supabase CLI (pinned)
         uses: supabase/setup-cli@v1
@@ -45,13 +54,9 @@ jobs:
             echo "psql=$(psql --version)"
           } | tee artifacts/hybrid-partner-proof/revision.txt
           # Fail closed unless the evidence was produced by the exact PR head.
-          # actions/checkout resolves a pull_request event to the merge commit, so
-          # the head commit must be an ancestor of what was actually proved.
           if [ -n "${PR_HEAD_SHA}" ]; then
-            git fetch --no-tags --depth=1 origin "${PR_HEAD_SHA}"
-            if [ "${checked_out_sha}" != "${PR_HEAD_SHA}" ] \
-               && ! git merge-base --is-ancestor "${PR_HEAD_SHA}" "${checked_out_sha}"; then
-              echo "exact_head_check=FAILED: proved tree does not contain ${PR_HEAD_SHA}" \
+            if [ "${checked_out_sha}" != "${PR_HEAD_SHA}" ]; then
+              echo "exact_head_check=FAILED: checked out ${checked_out_sha}, expected ${PR_HEAD_SHA}" \
                 | tee -a artifacts/hybrid-partner-proof/revision.txt
               exit 1
             fi
@@ -71,6 +76,10 @@ jobs:
           cp ../../supabase/tests/fixtures/hybrid_partner_minimal_baseline.sql \
             supabase/migrations/20260811080000_hybrid_partner_minimal_baseline.sql
           cp ../../supabase/migrations/2026081109*.sql supabase/migrations/
+          cp ../../supabase/migrations/20260817154529_hybrid_partner_security_reconciliation.sql \
+            supabase/migrations/
+          cp ../../supabase/migrations/20260817154927_hybrid_partner_claim_recipient_contract.sql \
+            supabase/migrations/
           find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' \
             | sort | tee ../../artifacts/hybrid-partner-proof/migration-order.txt
 
@@ -111,11 +120,79 @@ jobs:
         run: |
           set -euo pipefail
           : > artifacts/hybrid-partner-proof/corrective-idempotency-reapply.txt
-          for migration in supabase/migrations/20260811090[1-9]*.sql; do
+          # Inject the exact pre-correction shape that can exist after the old
+          # Auth SET NULL behavior: live evidence whose signer differs from the
+          # immutable owner snapshot, with a signed partner pointing at it.
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          begin;
+          alter table public.partner_agreement_acceptances
+            drop constraint partner_agreement_acceptances_live_signer_check;
+          insert into public.partner_agreement_versions(
+            id,version,document_sha256,created_by
+          ) values (
+            '13131313-1313-4313-8313-131313131313',
+            'LEGACY-SIGNER-MISMATCH',
+            extensions.digest('legacy-signer-mismatch-version','sha256'),
+            'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+          );
+          insert into public.partner_agreement_acceptances(
+            id,partner_id,agreement_version_id,accepted_owner_id,accepted_by,
+            signature_source,evidence_sha256
+          ) values (
+            '14141414-1414-4414-8414-141414141414',
+            '33333333-3333-4333-8333-333333333333',
+            '13131313-1313-4313-8313-131313131313',
+            'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'recorded_offline',
+            extensions.digest('legacy-signer-mismatch-acceptance','sha256')
+          );
+          select app_private.authorize_partner_lifecycle_mutation(
+            '33333333-3333-4333-8333-333333333333','partnership_review'
+          );
+          update public.partners
+          set partnership_status='official_partner',
+              contract_status='signed',
+              contract_evidence_id='14141414-1414-4414-8414-141414141414',
+              contract_signed_at=now(),
+              official_partner_since=now(),
+              heha_partner=true
+          where id='33333333-3333-4333-8333-333333333333';
+          commit;
+          SQL
+          for migration in \
+            supabase/migrations/20260811090[1-9]*.sql \
+            supabase/migrations/20260817154529_hybrid_partner_security_reconciliation.sql \
+            supabase/migrations/20260817154927_hybrid_partner_claim_recipient_contract.sql; do
             echo "reapply=$migration" | tee -a artifacts/hybrid-partner-proof/corrective-idempotency-reapply.txt
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration" \
               2>&1 | tee -a artifacts/hybrid-partner-proof/corrective-idempotency-reapply.txt
           done
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL' \
+            2>&1 | tee -a artifacts/hybrid-partner-proof/corrective-idempotency-reapply.txt
+          do $proof$
+          begin
+            assert (
+              select partnership_status='under_review'
+                and contract_status='not_signed'
+                and contract_evidence_id is null
+                and heha_partner=false
+              from public.partners
+              where id='33333333-3333-4333-8333-333333333333'
+            ), 'legacy mismatched evidence did not unwind signed partner state';
+            assert (
+              select acceptance_status='terminated' and revoked_at is not null
+              from public.partner_agreement_acceptances
+              where id='14141414-1414-4414-8414-141414141414'
+            ), 'legacy mismatched evidence did not become terminal';
+            assert exists (
+              select 1 from pg_constraint
+              where conname='partner_agreement_acceptances_live_signer_check'
+                and convalidated
+            ), 'live signer-owner constraint is not validated';
+          end;
+          $proof$;
+          SQL
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/hybrid_partner_lifecycle_proof.sql \
             > artifacts/hybrid-partner-proof/behavioral-proof-after-reapply.txt 2>&1
           echo 'behavioral_proof_after_corrective_reapply=pass' \

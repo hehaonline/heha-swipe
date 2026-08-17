@@ -59,7 +59,7 @@ wait_lock s1_claim_marker
 echo commit\; >&6; exec 6>&-
 wait "$P1A"; wait "$P1B" || true
 no_deadlock "$WORKDIR/s1a"; no_deadlock "$WORKDIR/s1b"
-grep -q 'This claim link is not valid' "$WORKDIR/s1b" || { redact <"$WORKDIR/s1b" >&2; exit 1; }
+grep -q 'HEHA_CLAIM_REVOKED' "$WORKDIR/s1b" || { redact <"$WORKDIR/s1b" >&2; exit 1; }
 "${PSQL[@]}" -c "do \$\$ begin
  if (select count(*) from public.partner_claim_invites where partner_id='$PARTNER_A' and consumed_at is null and revoked_at is null)<>1 then raise exception 'expected one active invite'; end if;
  if exists(select 1 from public.partners where id='$PARTNER_A' and owner_id is not null) then raise exception 'replace race changed owner'; end if;
@@ -82,7 +82,7 @@ wait_lock s2_claim_marker
 echo commit\; >&7; exec 7>&-
 wait "$P2A"; wait "$P2B" || true
 no_deadlock "$WORKDIR/s2a"; no_deadlock "$WORKDIR/s2b"
-grep -q 'This claim link is not valid' "$WORKDIR/s2b" || { redact <"$WORKDIR/s2b" >&2; exit 1; }
+grep -q 'HEHA_CLAIM_REVOKED' "$WORKDIR/s2b" || { redact <"$WORKDIR/s2b" >&2; exit 1; }
 "${PSQL[@]}" -c "do \$\$ begin
  if exists(select 1 from public.partner_claim_invites where partner_id='$PARTNER_A' and consumed_at is null and revoked_at is null) then raise exception 'active invite remains'; end if;
  if exists(select 1 from public.partners where id='$PARTNER_A' and owner_id is not null) then raise exception 'revoke race changed owner'; end if;
@@ -132,7 +132,7 @@ wait "$P4A"; wait "$P4B" || true
 no_deadlock "$WORKDIR/s4a"; no_deadlock "$WORKDIR/s4b"
 grep -q 's4_redeem_first' "$WORKDIR/s4a" || { echo 'FAIL first redeem did not succeed' >&2; redact <"$WORKDIR/s4a" >&2; exit 1; }
 grep -q 's4_redeem_second|' "$WORKDIR/s4b" && { echo 'FAIL second redeem also succeeded' >&2; redact <"$WORKDIR/s4b" >&2; exit 1; }
-grep -q 'This claim link is not valid' "$WORKDIR/s4b" || { redact <"$WORKDIR/s4b" >&2; exit 1; }
+grep -q 'HEHA_CLAIM_ALREADY_USED' "$WORKDIR/s4b" || { redact <"$WORKDIR/s4b" >&2; exit 1; }
 "${PSQL[@]}" -c "do \$\$ begin
  if (select count(*) from public.partner_lifecycle_events where partner_id='$PARTNER_R' and event_type='claim_redeemed')<>1 then raise exception 'expected exactly one claim audit event'; end if;
  if (select count(*) from public.partner_claim_invites where partner_id='$PARTNER_R' and consumed_at is not null)<>1 then raise exception 'expected exactly one consumed invite'; end if;

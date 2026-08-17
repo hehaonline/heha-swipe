@@ -355,9 +355,14 @@ begin
     new.claimed_at := now();
     new.claimed_by := actor_id;
     new.partnership_status := 'not_requested';
+    new.partnership_requested_at := null;
+    new.official_partner_since := null;
     new.contract_status := 'not_required';
     new.contract_evidence_id := null;
+    new.contract_signed_at := null;
     new.listing_status := 'hidden';
+    new.opted_out_at := null;
+    new.opted_out_by := null;
     return new;
   end if;
 
@@ -410,6 +415,18 @@ begin
     new.claim_status := 'unclaimed';
     new.claimed_at := null;
     new.claimed_by := null;
+    -- The live signer FK is terminalized separately by the acceptance evidence
+    -- guard during Auth deletion. The partner row must stop relying on that
+    -- evidence in the same deletion transaction, regardless of FK action order.
+    if old.contract_evidence_id is not null or old.contract_status='signed' then
+      new.contract_evidence_id := null;
+      new.contract_signed_at := null;
+      new.official_partner_since := null;
+      new.contract_status := case
+        when old.partnership_status='terminated' then 'terminated'
+        else 'not_signed'
+      end;
+    end if;
     if old.partnership_status = 'official_partner' then
       new.partnership_status := 'under_review';
       new.heha_partner := false;
