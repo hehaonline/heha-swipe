@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  CLAIM_ERROR_DETAILS,
   CLAIM_ERRORS,
   CLAIM_SUCCESS_KEY,
   clearClaimSuccess,
@@ -12,6 +13,30 @@ import {
   removeClaimSuccessParam,
   saveClaimSuccess,
 } from "../src/lib/partnerClaimUx.js";
+
+const detailCases = [
+  ["HEHA_CLAIM_NOT_RECOGNIZED", CLAIM_ERRORS.invalid],
+  ["HEHA_CLAIM_EXPIRED", CLAIM_ERRORS.expired],
+  ["HEHA_CLAIM_REVOKED", CLAIM_ERRORS.revoked],
+  ["HEHA_CLAIM_ALREADY_USED", CLAIM_ERRORS.used],
+  ["HEHA_CLAIM_ALREADY_CLAIMED", CLAIM_ERRORS.claimed],
+  ["HEHA_CLAIM_PROFILE_UNAVAILABLE", CLAIM_ERRORS.unavailable],
+  ["HEHA_CLAIM_RECIPIENT_MISMATCH", CLAIM_ERRORS.recipientMismatch],
+  ["HEHA_CLAIM_RECIPIENT_INELIGIBLE", CLAIM_ERRORS.recipientIneligible],
+];
+
+test("keeps the machine-readable claim contract complete", () => {
+  assert.deepEqual(Object.entries(CLAIM_ERROR_DETAILS), detailCases);
+});
+
+for (const [details, expected] of detailCases) {
+  test(`maps ${details} before mutable backend copy`, () => {
+    assert.equal(
+      friendlyClaimError({ details: `  ${details.toLowerCase()}  `, message: "unrelated human message" }),
+      expected,
+    );
+  });
+}
 
 const claimCases = [
   ["not recognized", "This claim link is not recognized.", CLAIM_ERRORS.invalid],
@@ -40,6 +65,17 @@ test("maps recipient mismatch to calm account-switch guidance", () => {
     friendlyClaimError({ message: "This one-time claim link belongs to a different account." }),
     CLAIM_ERRORS.recipientMismatch,
   );
+  assert.equal(
+    friendlyClaimError({ details: "HEHA_CLAIM_RECIPIENT_MISMATCH", message: "copy changed" }),
+    CLAIM_ERRORS.recipientMismatch,
+  );
+});
+
+test("recipient mismatch action follows the machine contract before legacy copy", async () => {
+  const { isClaimRecipientMismatch } = await import("../src/lib/partnerClaimUx.js");
+  assert.equal(isClaimRecipientMismatch({ details: "HEHA_CLAIM_RECIPIENT_MISMATCH", message: "copy changed" }), true);
+  assert.equal(isClaimRecipientMismatch({ details: "HEHA_CLAIM_EXPIRED", message: "belongs to a different account" }), false);
+  assert.equal(isClaimRecipientMismatch({ message: "This claim link belongs to a different account." }), true);
 });
 
 test("recipient mismatch help action uses the approved privacy-safe support destination", async () => {
@@ -53,6 +89,10 @@ test("recipient mismatch help action uses the approved privacy-safe support dest
 test("unknown auth and claim errors stay generic", () => {
   assert.equal(friendlyAuthError({ message: "sensitive backend detail" }, "signin").includes("sensitive"), false);
   assert.equal(friendlyClaimError({ message: "sensitive backend detail" }).includes("sensitive"), false);
+  assert.equal(
+    friendlyClaimError({ details: "HEHA_CLAIM_FUTURE_STATE", message: "This claim link has expired." }),
+    CLAIM_ERRORS.generic,
+  );
 });
 
 function memoryStorage(initial = {}) {

@@ -11,13 +11,35 @@ export const CLAIM_ERRORS = {
   claimed: "This business profile has already been claimed by another account. If that seems wrong, contact HEHA support so we can look into it.",
   unavailable: "This profile currently isn't available to claim. Contact HEHA support for help.",
   recipientMismatch: "This one-time claim link was sent to a different HEHA account. Use the invited account, or get help from HEHA.",
+  recipientIneligible: "This link needs a verified permanent HEHA account. Verify your email, or ask HEHA for a new secure claim link.",
+  generic: "HEHA could not verify this one-time claim link. Ask HEHA for a new secure claim link.",
 };
 
+export const CLAIM_ERROR_DETAILS = Object.freeze({
+  HEHA_CLAIM_NOT_RECOGNIZED: CLAIM_ERRORS.invalid,
+  HEHA_CLAIM_EXPIRED: CLAIM_ERRORS.expired,
+  HEHA_CLAIM_REVOKED: CLAIM_ERRORS.revoked,
+  HEHA_CLAIM_ALREADY_USED: CLAIM_ERRORS.used,
+  HEHA_CLAIM_ALREADY_CLAIMED: CLAIM_ERRORS.claimed,
+  HEHA_CLAIM_PROFILE_UNAVAILABLE: CLAIM_ERRORS.unavailable,
+  HEHA_CLAIM_RECIPIENT_MISMATCH: CLAIM_ERRORS.recipientMismatch,
+  HEHA_CLAIM_RECIPIENT_INELIGIBLE: CLAIM_ERRORS.recipientIneligible,
+});
+
+function claimErrorDetail(error) {
+  return typeof error?.details === "string" ? error.details.trim().toUpperCase() : "";
+}
+
 export function isClaimRecipientMismatch(error) {
+  const detail = claimErrorDetail(error);
+  if (detail) return detail === "HEHA_CLAIM_RECIPIENT_MISMATCH";
   return /belongs to a different account/i.test(String(error?.message || ""));
 }
 
 export function friendlyClaimError(error) {
+  const detail = claimErrorDetail(error);
+  if (detail) return CLAIM_ERROR_DETAILS[detail] || CLAIM_ERRORS.generic;
+
   const message = String(error?.message || "").toLowerCase();
   if (/not recognized|invalid|not found/.test(message)) return CLAIM_ERRORS.invalid;
   if (/expired/.test(message)) return CLAIM_ERRORS.expired;
@@ -27,7 +49,7 @@ export function friendlyClaimError(error) {
   if (/no longer claimable|isn't available to claim/.test(message)) return CLAIM_ERRORS.unavailable;
   if (/belongs to a different account/.test(message)) return CLAIM_ERRORS.recipientMismatch;
   if (/authentication required/.test(message)) return "Please sign in before claiming this business profile.";
-  return "HEHA could not verify this one-time claim link. Ask HEHA for a new secure claim link.";
+  return CLAIM_ERRORS.generic;
 }
 
 export function friendlyAuthError(error, mode) {
