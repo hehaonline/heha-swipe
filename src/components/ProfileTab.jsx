@@ -1,7 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
-
-const VISIBLE_LISTING_STATUSES = ["approved", "listed", "live"];
+import {
+  availablePartnerDestinations,
+  createPartnerConsentRequestKey,
+  publicationStatusLabel,
+  supportsHehaLocal,
+  validatePartnerDraftAuthorization,
+} from "../lib/partnerPublicationConsent";
+import {
+  authorizeExistingPartnerProfilePreparation,
+  authorizePartnerProfilePublication,
+  getMyPartnerPublicationStatus,
+} from "../services/partnerPublicationConsentRepository";
+import { partnerSurfaceVisibility } from "../lib/partnerVisibility";
+import PartnerPublicationPreview from "./PartnerPublicationPreview";
 
 function formatMonthYear(value) {
   if (!value) return "recently";
@@ -41,6 +53,31 @@ export default function ProfileTab({
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [ownedListing, setOwnedListing] = useState(listing);
+  const [publicationStatus, setPublicationStatus] = useState(null);
+  const [publicationStatusLoading, setPublicationStatusLoading] = useState(false);
+  const [publicationStatusError, setPublicationStatusError] = useState(null);
+  const [publicationStatusReload, setPublicationStatusReload] = useState(0);
+  const [publicationApproval, setPublicationApproval] = useState({
+    representativeName: "",
+    representativeTitle: "",
+    confirmed: false,
+  });
+  const [publicationApprovalErrors, setPublicationApprovalErrors] = useState({});
+  const [publicationRequestKey, setPublicationRequestKey] = useState(() => createPartnerConsentRequestKey());
+  const [preparationRequestKey, setPreparationRequestKey] = useState(() => createPartnerConsentRequestKey());
+  const [publicationWriteRecorded, setPublicationWriteRecorded] = useState(false);
+  const [preparationWriteRecorded, setPreparationWriteRecorded] = useState(false);
+  const [preparationErrors, setPreparationErrors] = useState({});
+  const permissionErrorPrefix = useId();
+  const [preparationAuthorization, setPreparationAuthorization] = useState({
+    destinations: [],
+    representativeName: "",
+    representativeTitle: "",
+    authorityConfirmed: false,
+    profileConfirmed: false,
+    mediaPermissionConfirmed: false,
+    tampaBayServiceConfirmed: false,
+  });
   const [form, setForm] = useState({
     full_name: "",
     phone: "",
@@ -73,7 +110,7 @@ export default function ProfileTab({
     const loadOwnedListing = async () => {
       const { data, error } = await supabase
         .from("partners")
-        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner")
+        .select("id, name, category, categories, status, created_at, updated_at, complete_pct, heha_partner, swipe_eligible, local_eligible, local_lane, primary_cta_destination, primary_cta_path")
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -95,6 +132,40 @@ export default function ProfileTab({
 
   const activeListing = ownedListing || listing;
 
+  useEffect(() => {
+    if (!isBusiness || !activeListing?.id) {
+      setPublicationStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadPublicationStatus = async () => {
+      setPublicationStatusLoading(true);
+      setPublicationStatusError(null);
+      try {
+        const nextStatus = await getMyPartnerPublicationStatus(activeListing.id);
+        if (!cancelled) {
+          setPublicationStatus(nextStatus);
+          setPublicationStatusError(null);
+          setPublicationWriteRecorded(false);
+          setPreparationWriteRecorded(false);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPublicationStatus(null);
+          setPublicationStatusError(error.message || "Profile permission is temporarily unavailable.");
+        }
+      } finally {
+        if (!cancelled) setPublicationStatusLoading(false);
+      }
+    };
+
+    loadPublicationStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeListing?.id, isBusiness, publicationStatusReload]);
+
   const certifiedCount = useMemo(
     () => partners.filter((partner) => partner.heha_partner).length,
     [partners]
@@ -115,7 +186,19 @@ export default function ProfileTab({
     activeListing?.created_at || profile?.created_at || user?.created_at
   );
   const listingStatus = String(activeListing?.status || "").toLowerCase();
-  const listingIsVisible = VISIBLE_LISTING_STATUSES.includes(listingStatus);
+  const {
+    swipeVisible: swipeListingVisible,
+    localVisible: localListingVisible,
+  } = partnerSurfaceVisibility(activeListing, publicationStatus);
+  const listingVisibilityCopy = swipeListingVisible && localListingVisible
+    ? "Your approved profile version is visible on HEHA Swipe and HEHA Local. HEHA Certified status is separate and remains admin-controlled."
+    : swipeListingVisible
+    ? "Your approved profile version is visible on HEHA Swipe. HEHA Local activation remains separate."
+    : localListingVisible
+    ? "Your approved profile version is visible on HEHA Local. HEHA Swipe activation remains separate."
+    : listingStatus === "pending"
+    ? "Your business has been submitted. HEHA reviews listings before they appear publicly."
+    : "Your business is not publicly visible right now. HEHA reviews permission and listing changes before activation.";
   const businessTitle = activeListing?.name || "Business partner";
   const businessCertified = activeListing?.heha_partner === true ? "Yes" : "Not certified yet";
 
@@ -214,6 +297,124 @@ export default function ProfileTab({
       await onRefresh?.();
     } catch (error) {
       setProfileError(error.message || "Could not save your profile yet.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const approveCurrentPartnerProfile = async () => {
+    const destinations = publicationStatus?.prepare_destinations || [];
+    const previewReady = Boolean(
+      publicationStatus?.profile_snapshot
+      && publicationStatus?.profile_snapshot_hash
+    );
+    if (!activeListing?.id || !destinations.length || !publicationApproval.confirmed || !previewReady) return;
+    const nextApprovalErrors = {};
+    if (publicationApproval.representativeName.trim().length < 2) {
+      nextApprovalErrors.representativeName = "Add the authorized representative’s full name.";
+    }
+    if (publicationApproval.representativeTitle.trim().length < 2) {
+      nextApprovalErrors.representativeTitle = "Add the representative’s role or title.";
+    }
+    if (Object.keys(nextApprovalErrors).length) {
+      setPublicationApprovalErrors(nextApprovalErrors);
+      setProfileError(Object.values(nextApprovalErrors)[0]);
+      return;
+    }
+
+    setBusy(true);
+    setProfileError(null);
+    setProfileMessage(null);
+    try {
+      await authorizePartnerProfilePublication({
+        partnerId: activeListing.id,
+        destinations,
+        representativeName: publicationApproval.representativeName,
+        representativeTitle: publicationApproval.representativeTitle,
+        requestKey: publicationRequestKey,
+        expectedProfileSnapshotHash: publicationStatus.profile_snapshot_hash,
+      });
+      setPublicationWriteRecorded(true);
+      setPublicationApprovalErrors({});
+      setPublicationApproval((current) => ({ ...current, confirmed: false }));
+      setPublicationRequestKey(createPartnerConsentRequestKey());
+      try {
+        const nextStatus = await getMyPartnerPublicationStatus(activeListing.id);
+        setPublicationStatus(nextStatus);
+        setPublicationStatusError(null);
+        setPublicationWriteRecorded(false);
+        setProfileMessage("This exact business profile version is approved for HEHA publication review.");
+      } catch {
+        setPublicationStatusError("Publication approval was saved, but its status could not refresh.");
+        setProfileMessage("Publication approval was saved. Use Retry status; do not approve again.");
+      }
+    } catch (error) {
+      setProfileError(error.message || "Could not record publication approval yet.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setPreparationField = (field, value) => {
+    setPreparationAuthorization((current) => ({ ...current, [field]: value }));
+    setPreparationErrors((current) => ({ ...current, [field]: null }));
+    setProfileError(null);
+  };
+
+  const togglePreparationDestination = (destination) => {
+    setPreparationAuthorization((current) => ({
+      ...current,
+      destinations: current.destinations.includes(destination)
+        ? current.destinations.filter((value) => value !== destination)
+        : [...current.destinations, destination],
+    }));
+    setPreparationErrors((current) => ({ ...current, destinations: null }));
+    setProfileError(null);
+  };
+
+  const prepareExistingPartnerProfile = async () => {
+    const categories = Array.isArray(activeListing?.categories) && activeListing.categories.length
+      ? activeListing.categories
+      : activeListing?.category
+      ? [activeListing.category]
+      : [];
+    const validation = validatePartnerDraftAuthorization({
+      categories,
+      ...preparationAuthorization,
+    });
+    if (!validation.valid || !activeListing?.id) {
+      setPreparationErrors(validation.errors);
+      setProfileError(Object.values(validation.errors)[0] || "Complete the profile permission fields.");
+      return;
+    }
+
+    setBusy(true);
+    setProfileError(null);
+    setProfileMessage(null);
+    try {
+      await authorizeExistingPartnerProfilePreparation({
+        partnerId: activeListing.id,
+        authorization: {
+          ...preparationAuthorization,
+          destinations: validation.destinations,
+        },
+        requestKey: preparationRequestKey,
+      });
+      setPreparationWriteRecorded(true);
+      setPreparationRequestKey(createPartnerConsentRequestKey());
+      setPreparationErrors({});
+      try {
+        const nextStatus = await getMyPartnerPublicationStatus(activeListing.id);
+        setPublicationStatus(nextStatus);
+        setPublicationStatusError(null);
+        setPreparationWriteRecorded(false);
+        setProfileMessage("Private profile preparation permission was recorded. Review the exact partner-authored version next.");
+      } catch {
+        setPublicationStatusError("Private profile permission was saved, but its status could not refresh.");
+        setProfileMessage("Private profile permission was saved. Use Retry status; do not submit it again.");
+      }
+    } catch (error) {
+      setProfileError(error.message || "Could not record profile preparation permission yet.");
     } finally {
       setBusy(false);
     }
@@ -416,14 +617,230 @@ export default function ProfileTab({
           <div className="profile-card card-like">
             <p className="eyebrow">Your business</p>
             <h3>Your business listing</h3>
-            <p>
-              {listingIsVisible
-                ? "Your business is visible on HEHA Swipe. HEHA Certified status is separate and remains admin-controlled."
-                : listingStatus === "pending"
-                ? "Your business has been submitted. HEHA reviews listings before they appear publicly."
-                : "Your business is not publicly visible right now. HEHA reviews listing changes before they appear publicly."}
-            </p>
+            <p>{listingVisibilityCopy}</p>
             <p className="fine-print">Approved/listed status is not the same as HEHA Certified.</p>
+
+            {publicationStatusLoading ? (
+              <p className="fine-print">Loading profile permission…</p>
+            ) : publicationStatusError ? (
+              <div className="wizard-note" role="status">
+                <p>{publicationStatusError} HEHA has not changed this listing’s public visibility.</p>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={publicationStatusLoading}
+                  onClick={() => setPublicationStatusReload((value) => value + 1)}
+                >
+                  {publicationStatusLoading ? "Retrying…" : "Retry status"}
+                </button>
+              </div>
+            ) : publicationStatus?.prepare_destinations?.length ? (
+              <div className="profile-publication-permission">
+                <p className="eyebrow">Profile permission</p>
+                <h3>{publicationStatusLabel(publicationStatus)}</h3>
+                <PartnerPublicationPreview snapshot={publicationStatus.profile_snapshot} compact />
+                {publicationStatus.needs_publication_approval ? (
+                  <>
+                    <p>HEHA has permission to prepare a private draft. Approve the exact current version before it can enter HEHA’s publication review.</p>
+                    <div className="profile-form">
+                      <label className="field-block">
+                        <span>Authorized representative</span>
+                        <input
+                          value={publicationApproval.representativeName}
+                          onChange={(event) => {
+                            setPublicationApproval((current) => ({
+                              ...current,
+                              representativeName: event.target.value,
+                            }));
+                            setPublicationApprovalErrors((current) => ({ ...current, representativeName: null }));
+                          }}
+                          placeholder="Full name"
+                          autoComplete="name"
+                          aria-invalid={publicationApprovalErrors.representativeName ? "true" : undefined}
+                          aria-describedby={publicationApprovalErrors.representativeName ? `${permissionErrorPrefix}-approval-name` : undefined}
+                        />
+                        {publicationApprovalErrors.representativeName && (
+                          <small className="wizard-error" id={`${permissionErrorPrefix}-approval-name`} role="alert">
+                            {publicationApprovalErrors.representativeName}
+                          </small>
+                        )}
+                      </label>
+                      <label className="field-block">
+                        <span>Role or title</span>
+                        <input
+                          value={publicationApproval.representativeTitle}
+                          onChange={(event) => {
+                            setPublicationApproval((current) => ({
+                              ...current,
+                              representativeTitle: event.target.value,
+                            }));
+                            setPublicationApprovalErrors((current) => ({ ...current, representativeTitle: null }));
+                          }}
+                          placeholder="Owner, founder, manager…"
+                          aria-invalid={publicationApprovalErrors.representativeTitle ? "true" : undefined}
+                          aria-describedby={publicationApprovalErrors.representativeTitle ? `${permissionErrorPrefix}-approval-title` : undefined}
+                        />
+                        {publicationApprovalErrors.representativeTitle && (
+                          <small className="wizard-error" id={`${permissionErrorPrefix}-approval-title`} role="alert">
+                            {publicationApprovalErrors.representativeTitle}
+                          </small>
+                        )}
+                      </label>
+                      <label className="wizard-check-row">
+                        <input
+                          type="checkbox"
+                          checked={publicationApproval.confirmed}
+                          onChange={(event) => setPublicationApproval((current) => ({
+                            ...current,
+                            confirmed: event.target.checked,
+                          }))}
+                        />
+                        <span>
+                          <strong>I approve this exact profile version for publication.</strong>
+                          <small>A later public-profile change requires new approval.</small>
+                        </span>
+                      </label>
+                      <button
+                        className="primary-button"
+                        onClick={approveCurrentPartnerProfile}
+                        disabled={
+                          busy
+                          || !publicationApproval.confirmed
+                          || !publicationStatus.profile_snapshot
+                          || !publicationStatus.profile_snapshot_hash
+                          || publicationWriteRecorded
+                        }
+                      >
+                        {busy ? "Recording approval…" : "Approve this version to publish"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="wizard-success-note" role="status">
+                    This exact version is approved for publication review. HEHA activation and HEHA Certified status remain separate.
+                  </div>
+                )}
+              </div>
+            ) : supportsHehaLocal(
+              Array.isArray(activeListing?.categories) && activeListing.categories.length
+                ? activeListing.categories
+                : [activeListing?.category]
+            ) ? (
+              <div className="profile-publication-permission">
+                <p className="eyebrow">Start profile permission</p>
+                <h3>Choose where HEHA may prepare this profile</h3>
+                <p>No destination is preselected. This saves a private draft only; publication requires a second exact-version approval.</p>
+
+                <div
+                  className="wizard-destination-list"
+                  role="group"
+                  aria-label="HEHA profile destinations"
+                  aria-describedby={preparationErrors.destinations ? `${permissionErrorPrefix}-destinations` : undefined}
+                >
+                  {availablePartnerDestinations(
+                    Array.isArray(activeListing?.categories) && activeListing.categories.length
+                      ? activeListing.categories
+                      : [activeListing?.category]
+                  ).map((destination) => (
+                    <label key={destination.value} className="wizard-check-row">
+                      <input
+                        type="checkbox"
+                        checked={preparationAuthorization.destinations.includes(destination.value)}
+                        onChange={() => togglePreparationDestination(destination.value)}
+                        aria-invalid={preparationErrors.destinations ? "true" : undefined}
+                      />
+                      <span>
+                        <strong>{destination.label}</strong>
+                        <small>{destination.description}</small>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {preparationErrors.destinations && (
+                  <div className="wizard-error" id={`${permissionErrorPrefix}-destinations`} role="alert">
+                    {preparationErrors.destinations}
+                  </div>
+                )}
+
+                <div className="profile-form">
+                  <label className="field-block">
+                    <span>Authorized representative</span>
+                    <input
+                      value={preparationAuthorization.representativeName}
+                      onChange={(event) => setPreparationField("representativeName", event.target.value)}
+                      placeholder="Full name"
+                      autoComplete="name"
+                      aria-invalid={preparationErrors.representativeName ? "true" : undefined}
+                      aria-describedby={preparationErrors.representativeName ? `${permissionErrorPrefix}-representativeName` : undefined}
+                    />
+                    {preparationErrors.representativeName && (
+                      <small className="wizard-error" id={`${permissionErrorPrefix}-representativeName`} role="alert">
+                        {preparationErrors.representativeName}
+                      </small>
+                    )}
+                  </label>
+                  <label className="field-block">
+                    <span>Role or title</span>
+                    <input
+                      value={preparationAuthorization.representativeTitle}
+                      onChange={(event) => setPreparationField("representativeTitle", event.target.value)}
+                      placeholder="Owner, founder, manager…"
+                      aria-invalid={preparationErrors.representativeTitle ? "true" : undefined}
+                      aria-describedby={preparationErrors.representativeTitle ? `${permissionErrorPrefix}-representativeTitle` : undefined}
+                    />
+                    {preparationErrors.representativeTitle && (
+                      <small className="wizard-error" id={`${permissionErrorPrefix}-representativeTitle`} role="alert">
+                        {preparationErrors.representativeTitle}
+                      </small>
+                    )}
+                  </label>
+                </div>
+
+                {[
+                  ["authorityConfirmed", "I am authorized to represent this business."],
+                  ["profileConfirmed", "HEHA may prepare a private draft for the destinations selected above."],
+                  ["mediaPermissionConfirmed", "I own or have permission to use business media supplied to HEHA."],
+                  ["tampaBayServiceConfirmed", "This business accepts chef or catering requests in Tampa Bay."],
+                ].map(([field, label]) => (
+                  <label className="wizard-check-row" key={field}>
+                    <input
+                      type="checkbox"
+                      checked={preparationAuthorization[field]}
+                      onChange={(event) => setPreparationField(field, event.target.checked)}
+                      aria-invalid={preparationErrors[field] ? "true" : undefined}
+                      aria-describedby={preparationErrors[field] ? `${permissionErrorPrefix}-${field}` : undefined}
+                    />
+                    <span><strong>{label}</strong></span>
+                  </label>
+                ))}
+                {[
+                  "authorityConfirmed",
+                  "profileConfirmed",
+                  "mediaPermissionConfirmed",
+                  "tampaBayServiceConfirmed",
+                ].map((field) => preparationErrors[field] ? (
+                  <div className="wizard-error" id={`${permissionErrorPrefix}-${field}`} role="alert" key={`${field}-error`}>
+                    {preparationErrors[field]}
+                  </div>
+                ) : null)}
+
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={prepareExistingPartnerProfile}
+                  disabled={busy || preparationWriteRecorded}
+                >
+                  {busy ? "Saving permission…" : "Prepare private profile"}
+                </button>
+                <p className="fine-print">
+                  HEHA review, activation, partner terms/privacy, and HEHA Certified status remain separate gates.
+                </p>
+              </div>
+            ) : (
+              <div className="wizard-note">
+                No destination-specific profile permission is recorded. This Wave 1 permission flow currently covers Tampa Bay chefs and caterers only.
+              </div>
+            )}
           </div>
         ) : (
           <div className="profile-card card-like">
@@ -458,8 +875,8 @@ export default function ProfileTab({
         <p>HEHA keeps the Freebird Fund mission connected to growth. As the community grows, the goal is to support people transitioning toward safer, more independent living.</p>
       </div>
 
-      {profileMessage && <div className="success-banner">{profileMessage}</div>}
-      {profileError && <div className="error-banner">{profileError}</div>}
+      {profileMessage && <div className="success-banner" role="status">{profileMessage}</div>}
+      {profileError && <div className="error-banner" role="alert">{profileError}</div>}
 
       <div className="profile-actions">
         <button className="secondary-button" onClick={handleRefreshBusinesses} disabled={busy}>{busy ? "Refreshing…" : "Refresh businesses"}</button>
