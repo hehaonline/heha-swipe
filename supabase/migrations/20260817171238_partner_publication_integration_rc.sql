@@ -237,7 +237,7 @@ begin
       );
   end if;
 
-  select pg_catalog.array_agg(conname||':'||contype order by conname)
+  select pg_catalog.array_agg(conname::text||':'||contype::text order by conname)
   into actual_constraints
   from pg_catalog.pg_constraint
   where conrelid='public.partner_publication_review_events'::regclass;
