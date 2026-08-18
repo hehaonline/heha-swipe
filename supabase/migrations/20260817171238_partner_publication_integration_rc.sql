@@ -615,6 +615,62 @@ drop view if exists public.public_swipe_partners;
 drop view if exists public.public_local_partners;
 drop view if exists app_private.partner_publication_projection;
 
+-- These nested helpers use SQL-standard bodies so their private-schema
+-- dependencies are resolved now, not looked up through the querying role when
+-- a public stored view executes them. CREATE OR REPLACE preserves their OIDs,
+-- ownership and existing privileges; the exact ACL is converged below.
+create or replace function app_private.partner_public_profile_snapshot(
+  p_partner public.partners
+)
+returns jsonb
+language sql
+immutable
+security invoker
+set search_path = ''
+return jsonb_build_object(
+  'name', nullif(btrim(p_partner.name), ''),
+  'category', p_partner.category,
+  'categories', coalesce(p_partner.categories, array[]::text[]),
+  'neighborhood', nullif(btrim(coalesce(p_partner.neighborhood, '')), ''),
+  'tagline', nullif(btrim(coalesce(p_partner.tagline, '')), ''),
+  'bio', nullif(btrim(coalesce(p_partner.bio, '')), ''),
+  'tags', coalesce(p_partner.tags, array[]::text[]),
+  'hours', nullif(btrim(coalesce(p_partner.hours, '')), ''),
+  'business_type', nullif(btrim(coalesce(p_partner.business_type, '')), ''),
+  'offerings', coalesce(p_partner.offerings, array[]::text[]),
+  'website', nullif(btrim(coalesce(p_partner.website, '')), ''),
+  'instagram', nullif(btrim(coalesce(p_partner.instagram, '')), ''),
+  'items', case
+    when app_private.is_wave1_food_partner(p_partner) then '[]'::jsonb
+    else coalesce(p_partner.items, '[]'::jsonb)
+  end,
+  'photo_emoji', nullif(btrim(coalesce(p_partner.photo_emoji, '')), ''),
+  'color', nullif(btrim(coalesce(p_partner.color, '')), ''),
+  'image_url', nullif(btrim(coalesce(p_partner.image_url, '')), ''),
+  'gallery_urls', coalesce(p_partner.gallery_urls, '[]'::jsonb),
+  'price_range', case
+    when app_private.is_wave1_food_partner(p_partner) then null
+    else nullif(btrim(coalesce(p_partner.price_range, '')), '')
+  end,
+  'delivery_days', coalesce(p_partner.delivery_days, array[]::text[])
+);
+
+create or replace function app_private.partner_public_profile_hash(
+  p_partner public.partners
+)
+returns text
+language sql
+immutable
+security invoker
+set search_path = ''
+return pg_catalog.encode(
+  extensions.digest(
+    app_private.partner_public_profile_snapshot(p_partner)::text,
+    'sha256'
+  ),
+  'hex'
+);
+
 create view app_private.partner_publication_projection
 with (security_invoker=false,security_barrier=true)
 as
@@ -719,6 +775,30 @@ left join latest_review_events local_review
 
 revoke all on table app_private.partner_publication_projection
   from public,anon,authenticated,service_role;
+
+-- PostgreSQL checks EXECUTE on functions used by a stored view against the
+-- querying role. The stored views retain resolved helper OIDs, so callers do
+-- not need (and must not receive) direct access to the private schema.
+revoke all on schema app_private
+  from public,anon,authenticated,service_role;
+
+revoke all on function app_private.is_wave1_food_partner(public.partners)
+  from public,anon,authenticated,service_role;
+revoke all on function app_private.wave1_local_lane(public.partners)
+  from public,anon,authenticated,service_role;
+revoke all on function app_private.partner_public_profile_snapshot(public.partners)
+  from public,anon,authenticated,service_role;
+revoke all on function app_private.partner_public_profile_hash(public.partners)
+  from public,anon,authenticated,service_role;
+
+grant execute on function app_private.is_wave1_food_partner(public.partners)
+  to anon,authenticated,service_role;
+grant execute on function app_private.wave1_local_lane(public.partners)
+  to anon,authenticated,service_role;
+grant execute on function app_private.partner_public_profile_snapshot(public.partners)
+  to anon,authenticated,service_role;
+grant execute on function app_private.partner_public_profile_hash(public.partners)
+  to anon,authenticated,service_role;
 
 -- ---------------------------------------------------------------------------
 -- 5. Exact public 33-column contract. Targeted HEHA Local routes remain
@@ -1014,8 +1094,13 @@ declare
   expected_policies constant text[] := array[
     'Owners can view own partner','partners_internal_read'
   ]::text[];
+  expected_helper_roles constant text[] := array[
+    'anon','authenticated','service_role'
+  ]::text[];
   actual_columns text[];
+  actual_helper_roles text[];
   actual_policies text[];
+  helper_function text;
   partner_owner oid;
   view_name text;
   view_options text[];
@@ -1107,6 +1192,101 @@ begin
       message='Partner publication review RLS/service/PUBLIC ACL contract is malformed.';
   end if;
 
+  if pg_catalog.has_schema_privilege('anon','app_private','USAGE')
+     or pg_catalog.has_schema_privilege('anon','app_private','CREATE')
+     or pg_catalog.has_schema_privilege('authenticated','app_private','USAGE')
+     or pg_catalog.has_schema_privilege('authenticated','app_private','CREATE')
+     or pg_catalog.has_schema_privilege('service_role','app_private','USAGE')
+     or pg_catalog.has_schema_privilege('service_role','app_private','CREATE')
+     or exists (
+       select 1
+       from pg_catalog.pg_namespace namespace_row
+       cross join lateral pg_catalog.aclexplode(
+         coalesce(
+           namespace_row.nspacl,
+           pg_catalog.acldefault('n',namespace_row.nspowner)
+         )
+       ) privilege_row
+       where namespace_row.oid=pg_catalog.to_regnamespace('app_private')
+         and privilege_row.grantee=0
+     ) then
+    raise exception using
+      errcode='55000',
+      message='app_private schema is directly accessible to a browser or service role.';
+  end if;
+
+  foreach helper_function in array array[
+    'app_private.is_wave1_food_partner(public.partners)',
+    'app_private.wave1_local_lane(public.partners)',
+    'app_private.partner_public_profile_snapshot(public.partners)',
+    'app_private.partner_public_profile_hash(public.partners)'
+  ]::text[] loop
+    select pg_catalog.array_agg(role_row.rolname order by role_row.rolname)
+    into actual_helper_roles
+    from pg_catalog.pg_proc function_row
+    cross join lateral pg_catalog.aclexplode(
+      coalesce(
+        function_row.proacl,
+        pg_catalog.acldefault('f',function_row.proowner)
+      )
+    ) privilege_row
+    join pg_catalog.pg_roles role_row
+      on role_row.oid=privilege_row.grantee
+    where function_row.oid=helper_function::regprocedure
+      and privilege_row.privilege_type='EXECUTE'
+      and privilege_row.grantee<>0
+      and privilege_row.grantee<>function_row.proowner;
+
+    if actual_helper_roles is distinct from expected_helper_roles
+       or exists (
+         select 1
+         from pg_catalog.pg_proc function_row
+         cross join lateral pg_catalog.aclexplode(
+           coalesce(
+             function_row.proacl,
+             pg_catalog.acldefault('f',function_row.proowner)
+           )
+         ) privilege_row
+         where function_row.oid=helper_function::regprocedure
+           and privilege_row.privilege_type='EXECUTE'
+           and (
+             privilege_row.grantee=0
+             or (
+               privilege_row.is_grantable
+               and privilege_row.grantee<>function_row.proowner
+             )
+           )
+       )
+       or (
+         select function_row.prosecdef
+         from pg_catalog.pg_proc function_row
+         where function_row.oid=helper_function::regprocedure
+       ) then
+      raise exception using
+        errcode='55000',
+        message=pg_catalog.format(
+          'Unsafe helper-function ACL or execution mode on %s: %s',
+          helper_function,
+          actual_helper_roles
+        );
+    end if;
+  end loop;
+
+  if exists (
+    select 1
+    from pg_catalog.unnest(array[
+      'app_private.partner_public_profile_snapshot(public.partners)',
+      'app_private.partner_public_profile_hash(public.partners)'
+    ]::text[]) parsed_helper(signature)
+    join pg_catalog.pg_proc function_row
+      on function_row.oid=parsed_helper.signature::regprocedure
+    where function_row.prosqlbody is null
+  ) then
+    raise exception using
+      errcode='55000',
+      message='A nested publication helper is not definition-time resolved.';
+  end if;
+
   select relowner into partner_owner
   from pg_catalog.pg_class
   where oid='public.partners'::regclass;
@@ -1139,12 +1319,16 @@ begin
 
     if not pg_catalog.has_table_privilege('anon',pg_catalog.format('public.%I',view_name),'SELECT')
        or not pg_catalog.has_table_privilege('authenticated',pg_catalog.format('public.%I',view_name),'SELECT')
+       or not pg_catalog.has_table_privilege('service_role',pg_catalog.format('public.%I',view_name),'SELECT')
        or pg_catalog.has_table_privilege('anon',pg_catalog.format('public.%I',view_name),'INSERT')
        or pg_catalog.has_table_privilege('authenticated',pg_catalog.format('public.%I',view_name),'INSERT')
+       or pg_catalog.has_table_privilege('service_role',pg_catalog.format('public.%I',view_name),'INSERT')
        or pg_catalog.has_table_privilege('anon',pg_catalog.format('public.%I',view_name),'UPDATE')
        or pg_catalog.has_table_privilege('authenticated',pg_catalog.format('public.%I',view_name),'UPDATE')
+       or pg_catalog.has_table_privilege('service_role',pg_catalog.format('public.%I',view_name),'UPDATE')
        or pg_catalog.has_table_privilege('anon',pg_catalog.format('public.%I',view_name),'DELETE')
-       or pg_catalog.has_table_privilege('authenticated',pg_catalog.format('public.%I',view_name),'DELETE') then
+       or pg_catalog.has_table_privilege('authenticated',pg_catalog.format('public.%I',view_name),'DELETE')
+       or pg_catalog.has_table_privilege('service_role',pg_catalog.format('public.%I',view_name),'DELETE') then
       raise exception using
         errcode='55000',
         message=pg_catalog.format('Unsafe browser ACL on public.%I.',view_name);
