@@ -307,7 +307,7 @@ $proof$;
 set local role anon;
 select pg_temp.assert_public_state(
   'initial fail closed',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   false,
   false
 );
@@ -321,7 +321,7 @@ select pg_temp.expect_state(
   'cross-business publication status BOLA',
   '42501',
   $$select public.get_my_partner_publication_status(
-    '77777777-7777-4777-8777-777777777777'
+    '78787878-7878-4787-8787-787878787878'
   )$$
 );
 select pg_temp.expect_state(
@@ -341,7 +341,7 @@ select pg_temp.set_auth('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 set local role authenticated;
 select (
   public.authorize_existing_partner_profile_preparation(
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     array['heha_swipe','heha_local']::text[],
     'Avery Owner',
     'Founder',
@@ -354,7 +354,7 @@ select (
 
 select (
   public.authorize_partner_profile_publication(
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     array['heha_swipe','heha_local']::text[],
     'Avery Owner',
     'Founder',
@@ -368,7 +368,7 @@ do $proof$
 declare status_payload jsonb;
 begin
   status_payload := public.get_my_partner_publication_status(
-    '77777777-7777-4777-8777-777777777777'
+    '78787878-7878-4787-8787-787878787878'
   );
   assert (status_payload -> 'publication_destinations')
     in ('["heha_local", "heha_swipe"]'::jsonb, '["heha_swipe", "heha_local"]'::jsonb);
@@ -392,7 +392,7 @@ reset role;
 set local role anon;
 select pg_temp.assert_public_state(
   'owner grant without staff review hidden',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   false,
   false
 );
@@ -411,7 +411,7 @@ select pg_temp.expect_state(
   format(
     $$select public.record_partner_publication_review(
       '70000000-0000-4000-8000-000000000003',
-      '77777777-7777-4777-8777-777777777777',
+      '78787878-7878-4787-8787-787878787878',
       'heha_swipe', %L, 'approved',
       'dddddddd-dddd-4ddd-8ddd-dddddddddddd', null
     )$$,
@@ -430,7 +430,7 @@ select pg_temp.expect_state(
   format(
     $$select public.record_partner_publication_review(
       '70000000-0000-4000-8000-000000000004',
-      '77777777-7777-4777-8777-777777777777',
+      '78787878-7878-4787-8787-787878787878',
       'heha_swipe', %L, 'approved',
       'cccccccc-cccc-4ccc-8ccc-cccccccccccc', null
     )$$,
@@ -443,7 +443,7 @@ select pg_temp.expect_state(
   format(
     $$select public.record_partner_publication_review(
       '70000000-0000-4000-8000-000000000005',
-      '77777777-7777-4777-8777-777777777777',
+      '78787878-7878-4787-8787-787878787878',
       'heha_swipe', %L, 'approved',
       '23232323-2323-4232-8232-232323232323', null
     )$$,
@@ -455,7 +455,7 @@ select pg_temp.expect_state(
   '23514',
   $$select public.record_partner_publication_review(
     '70000000-0000-4000-8000-000000000006',
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     'heha_swipe',
     '0000000000000000000000000000000000000000000000000000000000000000',
     'approved',
@@ -466,7 +466,7 @@ select pg_temp.expect_state(
 
 select public.record_partner_publication_review(
     '70000000-0000-4000-8000-000000000007',
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     'heha_swipe',
     :'profile_hash_v1',
     'approved',
@@ -475,7 +475,7 @@ select public.record_partner_publication_review(
 ) as first_review_id \gset
 select public.record_partner_publication_review(
     '70000000-0000-4000-8000-000000000007',
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     'heha_swipe',
     :'profile_hash_v1',
     'approved',
@@ -499,7 +499,7 @@ select pg_temp.clear_auth();
 set local role service_role;
 select public.record_partner_publication_review(
     '70000000-0000-4000-8000-000000000007',
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     'heha_swipe',
     :'profile_hash_v1',
     'approved',
@@ -517,7 +517,7 @@ select pg_temp.expect_state(
   format(
     $$select public.record_partner_publication_review(
       '70000000-0000-4000-8000-000000000017',
-      '77777777-7777-4777-8777-777777777777',
+      '78787878-7878-4787-8787-787878787878',
       'heha_swipe', %L, 'approved',
       'dddddddd-dddd-4ddd-8ddd-dddddddddddd', null
     )$$,
@@ -536,7 +536,7 @@ do $proof$
 declare status_payload jsonb;
 begin
   status_payload := public.get_my_partner_publication_status(
-    '77777777-7777-4777-8777-777777777777'
+    '78787878-7878-4787-8787-787878787878'
   );
   assert status_payload -> 'public_destinations' = '["heha_swipe"]'::jsonb;
   assert status_payload -> 'staff_review_destinations' = '["heha_swipe"]'::jsonb;
@@ -561,7 +561,7 @@ select pg_temp.expect_state(
   format(
     $$select public.record_partner_publication_review(
       '70000000-0000-4000-8000-000000000007',
-      '77777777-7777-4777-8777-777777777777',
+      '78787878-7878-4787-8787-787878787878',
       'heha_swipe', %L, 'rejected',
       'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
       'Changed decision'
@@ -572,7 +572,7 @@ select pg_temp.expect_state(
 
 select public.record_partner_publication_review(
     '70000000-0000-4000-8000-000000000008',
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     'heha_local',
     :'profile_hash_v1',
     'approved',
@@ -584,7 +584,7 @@ begin
   assert (
     select count(*) = 2
     from public.partner_publication_review_events
-    where partner_id = '77777777-7777-4777-8777-777777777777'
+    where partner_id = '78787878-7878-4787-8787-787878787878'
   );
   assert not exists (
     select 1
@@ -592,7 +592,7 @@ begin
     join public.partner_publication_consent_events consent_row
       on consent_row.id = review_row.consent_event_id
      and consent_row.event_sequence = review_row.consent_event_sequence
-    where review_row.partner_id = '77777777-7777-4777-8777-777777777777'
+    where review_row.partner_id = '78787878-7878-4787-8787-787878787878'
       and (
         consent_row.partner_id is distinct from review_row.partner_id
         or consent_row.owner_id is distinct from review_row.owner_id
@@ -616,7 +616,7 @@ do $proof$
 declare status_payload jsonb;
 begin
   status_payload := public.get_my_partner_publication_status(
-    '77777777-7777-4777-8777-777777777777'
+    '78787878-7878-4787-8787-787878787878'
   );
   assert status_payload -> 'public_destinations' = '["heha_swipe"]'::jsonb;
   assert status_payload -> 'staff_review_destinations'
@@ -654,7 +654,7 @@ select pg_temp.expect_state(
   '42501',
   $$update public.partner_publication_consent_events
     set state = 'revoked'
-    where partner_id = '77777777-7777-4777-8777-777777777777'
+    where partner_id = '78787878-7878-4787-8787-787878787878'
       and destination = 'heha_swipe'
       and action = 'publish_profile'$$
 );
@@ -662,7 +662,7 @@ select pg_temp.expect_state(
   'consent evidence direct delete immutable',
   '42501',
   $$delete from public.partner_publication_consent_events
-    where partner_id = '77777777-7777-4777-8777-777777777777'
+    where partner_id = '78787878-7878-4787-8787-787878787878'
       and destination = 'heha_swipe'
       and action = 'publish_profile'$$
 );
@@ -676,7 +676,7 @@ begin
   assert (
     select state = 'granted'
     from public.partner_publication_consent_events
-    where partner_id = '77777777-7777-4777-8777-777777777777'
+    where partner_id = '78787878-7878-4787-8787-787878787878'
       and destination = 'heha_swipe'
       and action = 'publish_profile'
     order by event_sequence desc
@@ -694,7 +694,7 @@ $proof$;
 set local role anon;
 select pg_temp.assert_public_state(
   'grant and staff review visible',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   true,
   true
 );
@@ -703,12 +703,12 @@ declare card record;
 begin
   select * into card
   from public.public_swipe_partners
-  where id = '77777777-7777-4777-8777-777777777777';
+  where id = '78787878-7878-4787-8787-787878787878';
   assert card.local_eligible is false;
   assert card.local_lane is null;
   assert card.primary_cta_destination = 'swipe';
   assert card.primary_cta_label = 'Discover Partner';
-  assert card.primary_cta_path = '/?partner=77777777-7777-4777-8777-777777777777';
+  assert card.primary_cta_path = '/?partner=78787878-7878-4787-8787-787878787878';
   assert card.items = '[]'::jsonb;
   assert card.price_range is null;
   insert into partner_publication_integration_results(label, ok, detail)
@@ -725,7 +725,7 @@ select pg_temp.set_auth('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 set local role authenticated;
 select (
   public.withdraw_partner_publication_authorization(
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     array['heha_local']::text[],
     'Avery Owner',
     'Founder',
@@ -740,7 +740,7 @@ begin
   assert (
     select state = 'granted'
     from public.partner_publication_consent_events
-    where partner_id = '77777777-7777-4777-8777-777777777777'
+    where partner_id = '78787878-7878-4787-8787-787878787878'
       and destination = 'heha_swipe'
       and action = 'publish_profile'
     order by event_sequence desc
@@ -749,7 +749,7 @@ begin
   assert (
     select state = 'revoked'
     from public.partner_publication_consent_events
-    where partner_id = '77777777-7777-4777-8777-777777777777'
+    where partner_id = '78787878-7878-4787-8787-787878787878'
       and destination = 'heha_local'
       and action = 'publish_profile'
     order by event_sequence desc
@@ -766,7 +766,7 @@ $proof$;
 set local role anon;
 select pg_temp.assert_public_state(
   'local withdrawal preserves swipe',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   true,
   true
 );
@@ -779,7 +779,7 @@ select pg_temp.set_auth('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 set local role authenticated;
 select (
   public.withdraw_partner_publication_authorization(
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     array['heha_swipe']::text[],
     'Avery Owner',
     'Founder',
@@ -792,7 +792,7 @@ do $proof$
 declare status_payload jsonb;
 begin
   status_payload := public.get_my_partner_publication_status(
-    '77777777-7777-4777-8777-777777777777'
+    '78787878-7878-4787-8787-787878787878'
   );
   assert status_payload -> 'public_destinations' = '[]'::jsonb;
   assert status_payload -> 'staff_review_destinations' = '[]'::jsonb;
@@ -812,7 +812,7 @@ reset role;
 set local role anon;
 select pg_temp.assert_public_state(
   'swipe withdrawal hidden',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   false,
   false
 );
@@ -825,13 +825,13 @@ update public.partners
 set status = 'approved',
     swipe_eligible = true,
     updated_at = pg_catalog.now()
-where id = '77777777-7777-4777-8777-777777777777';
+where id = '78787878-7878-4787-8787-787878787878';
 
 select pg_temp.set_auth('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 set local role authenticated;
 select (
   public.authorize_existing_partner_profile_preparation(
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     array['heha_swipe']::text[],
     'Avery Owner',
     'Founder',
@@ -843,7 +843,7 @@ select (
 ) as unchanged_profile_hash \gset
 select (
   public.authorize_partner_profile_publication(
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     array['heha_swipe']::text[],
     'Avery Owner',
     'Founder',
@@ -863,7 +863,7 @@ select pg_temp.assert_true(
 set local role anon;
 select pg_temp.assert_public_state(
   'unchanged reconsent still needs fresh review',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   false,
   false
 );
@@ -873,7 +873,7 @@ select pg_temp.clear_auth();
 set local role service_role;
 select public.record_partner_publication_review(
     '70000000-0000-4000-8000-000000000013',
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     'heha_swipe',
     :'unchanged_profile_hash',
     'approved',
@@ -885,7 +885,7 @@ reset role;
 set local role anon;
 select pg_temp.assert_public_state(
   'fresh review after unchanged reconsent visible',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   true,
   true
 );
@@ -895,12 +895,12 @@ reset role;
 select pg_temp.clear_auth();
 update public.partners
 set bio = 'Profile version two', updated_at = pg_catalog.now()
-where id = '77777777-7777-4777-8777-777777777777';
+where id = '78787878-7878-4787-8787-787878787878';
 
 set local role anon;
 select pg_temp.assert_public_state(
   'profile drift hidden',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   false,
   false
 );
@@ -910,7 +910,7 @@ select pg_temp.set_auth('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 set local role authenticated;
 select (
   public.authorize_existing_partner_profile_preparation(
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     array['heha_swipe']::text[],
     'Avery Owner',
     'Founder',
@@ -922,7 +922,7 @@ select (
 ) as profile_hash_v2 \gset
 select (
   public.authorize_partner_profile_publication(
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     array['heha_swipe']::text[],
     'Avery Owner',
     'Founder',
@@ -942,7 +942,7 @@ select pg_temp.assert_true(
 set local role anon;
 select pg_temp.assert_public_state(
   'profile drift owner reconsent alone hidden',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   false,
   false
 );
@@ -952,7 +952,7 @@ select pg_temp.clear_auth();
 set local role service_role;
 select public.record_partner_publication_review(
     '70000000-0000-4000-8000-000000000016',
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     'heha_swipe',
     :'profile_hash_v2',
     'approved',
@@ -964,7 +964,7 @@ reset role;
 set local role anon;
 select pg_temp.assert_public_state(
   'profile drift fresh exact review visible',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   true,
   true
 );
@@ -977,12 +977,12 @@ update public.partners
 set category = 'PrivateChef',
     categories = array['PrivateChef']::text[],
     updated_at = pg_catalog.now()
-where id = '77777777-7777-4777-8777-777777777777';
+where id = '78787878-7878-4787-8787-787878787878';
 
 set local role anon;
 select pg_temp.assert_public_state(
   'category mutation hidden',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   false,
   false
 );
@@ -992,7 +992,7 @@ select pg_temp.set_auth('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 set local role authenticated;
 select (
   public.authorize_existing_partner_profile_preparation(
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     array['heha_swipe']::text[],
     'Avery Owner',
     'Founder',
@@ -1004,7 +1004,7 @@ select (
 ) as profile_hash_v3 \gset
 select (
   public.authorize_partner_profile_publication(
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     array['heha_swipe']::text[],
     'Avery Owner',
     'Founder',
@@ -1024,7 +1024,7 @@ select pg_temp.assert_true(
 set local role anon;
 select pg_temp.assert_public_state(
   'category mutation owner reconsent alone hidden',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   false,
   false
 );
@@ -1034,7 +1034,7 @@ select pg_temp.clear_auth();
 set local role service_role;
 select public.record_partner_publication_review(
     '70000000-0000-4000-8000-000000000020',
-    '77777777-7777-4777-8777-777777777777',
+    '78787878-7878-4787-8787-787878787878',
     'heha_swipe',
     :'profile_hash_v3',
     'approved',
@@ -1046,7 +1046,7 @@ reset role;
 set local role anon;
 select pg_temp.assert_public_state(
   'category mutation fresh exact review visible',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   true,
   true
 );
@@ -1056,14 +1056,14 @@ reset role;
 select pg_temp.set_auth('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 set local role authenticated;
 select public.opt_out_partner_listing(
-  '77777777-7777-4777-8777-777777777777'
+  '78787878-7878-4787-8787-787878787878'
 );
 reset role;
 
 set local role anon;
 select pg_temp.assert_public_state(
   'listing opt out hidden',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   false,
   false
 );
@@ -1074,7 +1074,7 @@ reset role;
 select pg_temp.set_auth('dddddddd-dddd-4ddd-8ddd-dddddddddddd');
 set local role authenticated;
 select public.set_partner_listing_status(
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   'listed'
 );
 reset role;
@@ -1082,7 +1082,7 @@ reset role;
 set local role anon;
 select pg_temp.assert_public_state(
   'independent listing relist visible',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   true,
   true
 );
@@ -1103,11 +1103,11 @@ begin
       and claimed_by is null
       and heha_partner is false
     from public.partners
-    where id = '77777777-7777-4777-8777-777777777777'
+    where id = '78787878-7878-4787-8787-787878787878'
   );
   assert exists (
     select 1 from public.partner_lifecycle_events
-    where partner_id = '77777777-7777-4777-8777-777777777777'
+    where partner_id = '78787878-7878-4787-8787-787878787878'
       and event_type = 'owner_released'
   );
   insert into partner_publication_integration_results(label, ok, detail)
@@ -1121,7 +1121,7 @@ $proof$;
 set local role anon;
 select pg_temp.assert_public_state(
   'owner release hidden',
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   false,
   false
 );
@@ -1133,7 +1133,7 @@ select pg_temp.expect_state(
   'former owner status denied',
   '42501',
   $$select public.get_my_partner_publication_status(
-    '77777777-7777-4777-8777-777777777777'
+    '78787878-7878-4787-8787-787878787878'
   )$$
 );
 select pg_temp.expect_state(
@@ -1154,7 +1154,7 @@ select pg_temp.expect_state(
   'post-release cross-business BOLA denied',
   '42501',
   $$select public.get_my_partner_publication_status(
-    '77777777-7777-4777-8777-777777777777'
+    '78787878-7878-4787-8787-787878787878'
   )$$
 );
 reset role;

@@ -236,7 +236,7 @@ jobs:
         run: |
           set -euo pipefail
           psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
-            -v wave1_partner_id=77777777-7777-4777-8777-777777777777 \
+            -v wave1_partner_id=78787878-7878-4787-8787-787878787878 \
             -v super_admin_user_id=dddddddd-dddd-4ddd-8ddd-dddddddddddd \
             -f supabase/tests/partner_publication_consent_proof.sql \
             2>&1 | tee artifacts/partner-publication-integration-proof/consent-proof.txt

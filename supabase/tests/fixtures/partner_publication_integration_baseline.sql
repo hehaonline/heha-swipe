@@ -272,11 +272,11 @@ insert into public.partners (
   neighborhood, tagline, bio, website, instagram, location, contact, phone,
   routing_notes, routing_updated_by, reviewed_by, review_note, is_test_record
 ) values (
-  '77777777-7777-4777-8777-777777777777',
+  '78787878-7878-4787-8787-787878787878',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   'Tampa Test Kitchen', 'Catering', array['Catering']::text[], 'approved', false,
   true, true, true, 'group_orders', 'local', 'Start a Group Order',
-  '/group-orders/77777777-7777-4777-8777-777777777777',
+  '/group-orders/78787878-7878-4787-8787-787878787878',
   'Tampa Bay', 'Fresh local catering', 'Profile version one',
   'https://example.invalid', '@tampatestkitchen',
   'PRIVATE exact address', 'PRIVATE contact', '555-0177',

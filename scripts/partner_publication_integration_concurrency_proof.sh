@@ -7,7 +7,7 @@ set -euo pipefail
 PSQL=(psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 -qtA)
 OWNER=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
 REVIEWER=dddddddd-dddd-4ddd-8ddd-dddddddddddd
-PARTNER=77777777-7777-4777-8777-777777777777
+PARTNER=78787878-7878-4787-8787-787878787878
 PROOF_TMP="$(mktemp -d)"
 trap 'rm -rf "${PROOF_TMP}"' EXIT
 
