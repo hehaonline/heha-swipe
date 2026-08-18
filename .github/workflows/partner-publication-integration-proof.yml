@@ -214,6 +214,7 @@ jobs:
         run: |
           set -euo pipefail
           psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -v publication_integration_pre_final=true \
             -f supabase/tests/hybrid_partner_lifecycle_proof.sql \
             2>&1 | tee artifacts/partner-publication-integration-proof/hybrid-proof-before-final.txt
 
