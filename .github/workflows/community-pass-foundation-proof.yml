@@ -34,37 +34,37 @@ jobs:
           --health-timeout=5s
           --health-retries=12
 
-    env:
-      PGHOST: 127.0.0.1
-      PGPORT: 5432
-      PGDATABASE: heha_community_pass_proof
-      PGUSER: postgres
-      PGPASSWORD: postgres
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install PostgreSQL client
+      - name: Record exact proof environment
+        shell: bash
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y postgresql-client
+          set -euo pipefail
+          echo "checked_out_sha=$(git rev-parse HEAD)"
+          docker exec "${{ job.services.postgres.id }}" psql --version
+          docker exec "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -Atc "show server_version"
 
       - name: Apply synthetic baseline
+        shell: bash
         run: >-
-          psql -X -v ON_ERROR_STOP=1
-          -f supabase/tests/fixtures/community_pass_minimal_baseline.sql
+          docker exec -i "${{ job.services.postgres.id }}"
+          psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
+          < supabase/tests/fixtures/community_pass_minimal_baseline.sql
 
       - name: Apply Package A migration twice
+        shell: bash
         run: |
-          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20260819193000_community_pass_foundation_v1.sql
-          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20260819193000_community_pass_foundation_v1.sql
+          set -euo pipefail
+          docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819193000_community_pass_foundation_v1.sql
+          docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819193000_community_pass_foundation_v1.sql
 
       - name: Run exact foundation proof
+        shell: bash
         run: >-
-          psql -X -v ON_ERROR_STOP=1
-          -v user_a_id=00000000-0000-0000-0000-0000000000a1
-          -v user_b_id=00000000-0000-0000-0000-0000000000b2
-          -f supabase/tests/community_pass_foundation_proof.sql
+          docker exec -i "${{ job.services.postgres.id }}"
+          psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
+          < supabase/tests/community_pass_foundation_proof.sql
 
       - name: Scan proof sources for credential-like material
         shell: bash
