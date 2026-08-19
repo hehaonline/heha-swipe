@@ -160,6 +160,13 @@ class PartnerReconciliationTests(unittest.TestCase):
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(missing_family)
 
+    def test_pii_shaped_record_ids_are_rejected_before_report_emission(self):
+        for record_id in ("SYN-8135559999", "SYN-813-555-9999"):
+            invalid = copy.deepcopy(self.dataset)
+            invalid["records"][0]["id"] = record_id
+            with self.subTest(record_id=record_id), self.assertRaises(MODULE.InputRejected):
+                MODULE.build_report(invalid)
+
     def test_unknown_root_record_and_expected_pair_fields_are_rejected(self):
         unknown_root = copy.deepcopy(self.dataset)
         unknown_root["undeclared"] = True
@@ -368,6 +375,46 @@ class PartnerReconciliationTests(unittest.TestCase):
         result = MODULE.classify_pair(left, right)
         self.assertEqual("ownership_conflict", result["classification"])
         self.assertIn("identity_contradiction", result["conflicting_fields"])
+
+    def test_place_match_cannot_override_three_secondary_conflicts(self):
+        left = copy.deepcopy(self.dataset["records"][0])
+        right = copy.deepcopy(self.dataset["records"][0])
+        right["id"] = "SYN-A-CONFLICT"
+        right["website"] = "https://other-kitchen.test"
+        right["phone"] = "813-555-0110"
+        right["email"] = "owner@other-kitchen.test"
+        right["instagram"] = "synthetic_other_kitchen"
+
+        result = MODULE.classify_pair(left, right)
+        self.assertEqual("ownership_conflict", result["classification"])
+        self.assertIn("google_place_id", result["matched_fields"])
+        self.assertIn("identity_contradiction", result["conflicting_fields"])
+
+        left["address"] = ""
+        right["address"] = ""
+        missing_address = MODULE.classify_pair(left, right)
+        self.assertEqual("ownership_conflict", missing_address["classification"])
+        self.assertIn("identity_contradiction", missing_address["conflicting_fields"])
+
+    def test_composite_strong_match_preserves_qualifying_context(self):
+        similar_left = copy.deepcopy(self.dataset["records"][0])
+        similar_right = copy.deepcopy(self.dataset["records"][1])
+        similar_left["google_place_id"] = ""
+        similar_right["google_place_id"] = ""
+        similar = MODULE.classify_pair(similar_left, similar_right)
+        self.assertEqual("strong_identifier_match", similar["classification"])
+        self.assertIn("normalized_name", similar["matched_fields"])
+
+        address_left = copy.deepcopy(self.dataset["records"][8])
+        address_right = copy.deepcopy(self.dataset["records"][9])
+        address_left["name"] = "Synthetic Alpha Kitchen"
+        address_right["name"] = "Synthetic Omega Fitness"
+        for record in (address_left, address_right):
+            record["website"] = "https://shared-context.test"
+            record["phone"] = "813-555-0111"
+        address = MODULE.classify_pair(address_left, address_right)
+        self.assertEqual("strong_identifier_match", address["classification"])
+        self.assertIn("normalized_address", address["matched_fields"])
 
     def test_invalid_cli_input_does_not_create_output(self):
         invalid = copy.deepcopy(self.dataset)
