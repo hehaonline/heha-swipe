@@ -62,7 +62,7 @@ The offline reporter uses deterministic standard-library normalization:
 - URL/`@` removal and lowercase for Instagram;
 - exact trimmed comparison for Google Place ID and owner ID.
 
-Normalization never changes source data. The fixture schema rejects undeclared root, record and expected-pair fields. Each pair uses an order-independent length-prefixed key so delimiter-like ID text cannot collide. The report includes only record IDs and matched/conflicting field names, not raw identifier values.
+Normalization never changes source data. The fixture schema rejects undeclared root, record and expected-pair fields. Each pair uses an order-independent length-prefixed key so delimiter-like ID text cannot collide. The report includes only record IDs and matched/conflicting field names, not raw identifier values. Record IDs are bounded, hyphen-delimited uppercase fixture words; digits are forbidden so phone/account-like values cannot be emitted through an ID.
 
 ## Private reconciliation queue contract
 
