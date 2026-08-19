@@ -22,14 +22,9 @@ on:
       - supabase/tests/hybrid_partner_lifecycle_proof.sql
       - scripts/partner_publication_integration_concurrency_proof.sh
       - scripts/hybrid_partner_concurrency_proof.sh
-      - src/lib/hehaLocalRouting.js
-      - src/lib/hehaLocalRouting.test.js
-      - src/lib/partnerPublicationConsent.js
-      - src/lib/partnerPublicationConsent.test.js
-      - src/lib/partnerVisibility.js
-      - src/lib/partnerVisibility.test.js
-      - src/lib/publicPartnerDirectoryContract.js
-      - src/lib/publicPartnerDirectoryContract.test.js
+      - .env.example
+      - README.md
+      - src/**
   workflow_dispatch:
 
 permissions:
@@ -292,10 +287,29 @@ jobs:
           npm ci
           node --test \
             src/lib/hehaLocalRouting.test.js \
+            src/lib/partnerBrowserWebhookBoundary.test.js \
             src/lib/partnerPublicationConsent.test.js \
             src/lib/partnerVisibility.test.js \
             src/lib/publicPartnerDirectoryContract.test.js
-          npm run build
+          forbidden_env_name="$(printf '%s_' VITE MAKE PARTNER APPROVAL)WEBHOOK"
+          if git grep -nF "${forbidden_env_name}"; then
+            echo 'Removed partner browser webhook configuration was reintroduced.'
+            exit 1
+          fi
+          sentinel='https://heha.invalid/sec-002-partner-webhook-sentinel'
+          env "${forbidden_env_name}=${sentinel}" npm run build
+          if grep -rFq "${sentinel}" dist; then
+            echo 'Partner browser webhook sentinel leaked into the production bundle.'
+            exit 1
+          fi
+          if grep -rFq "${forbidden_env_name}" dist; then
+            echo 'Partner browser webhook configuration name leaked into the production bundle.'
+            exit 1
+          fi
+          {
+            echo 'partner_browser_webhook_source_guard=pass'
+            echo 'partner_browser_webhook_bundle_guard=pass'
+          } | tee artifacts/partner-publication-integration-proof/browser-webhook-guard.txt
           git diff --check
 
       - name: Prove SQL evidence detects raw anon exposure

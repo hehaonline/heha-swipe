@@ -38,7 +38,7 @@ See the integration planning document:
 - React + Vite
 - Supabase Auth
 - Supabase public tables: `profiles`, `partners`, `saves`, `swipe_events`, `customer_profiles`, and future order/contribution tables
-- Optional Make.com webhooks for new user and partner approval notifications
+- Optional legacy Make.com webhook for new-user notifications
 
 ## Required env variables
 
