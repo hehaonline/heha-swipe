@@ -1059,6 +1059,26 @@ Verified through GitHub: exact RC source for `AuthScreen.jsx` and the audit's pr
 
 Collision/scope: the refreshed open-PR sweep found only #116 changing this audit path. This update changes documentation only; it does not modify #113, Auth code, provider configuration, credentials, native projects, environments, deployments, or external state.
 
+
+## Current Swipe publication full-proof and review-feedback reconciliation — 2026-08-19
+
+This section supersedes PR #127's earlier failing-proof status. It records the exact passing database evidence and the separate exact-head review blockers without treating either as proof of the other.
+
+- **Exact state:** Swipe PR #127 remains open, draft, and mergeable on `main@82ec41a27150847f3d461716bc58636e24babfe6`, at exact head `3c0189e4a6d9c109e328a7ea7676f4bf7888df3c` with 37 changed files and five unresolved review threads.
+- **Bounded harness repair accepted:** the sole commit after `abcf5c4296dc7db013a27d688ba7c8ae57b346d3` changes only `select p into v_partner` to `select p.* into v_partner` in `partner_publication_consent_proof.sql`. That is the requested row-expansion repair; it changes proof code, not runtime database behavior.
+- **Full proof now passes:** exact-head Partner Publication Integration Proof run [#32284911292](https://github.com/hehaonline/heha-swipe/actions/runs/32284911292) completed successfully. Its literal-head check, disposable Supabase start, donor handoff, full lifecycle chain, final migration, consent and combined behavioral proofs, migration reapply, both concurrency proofs, focused JavaScript contracts/build, raw-anonymous-exposure negative control, sanitized-evidence scan/upload, and teardown all report success. Vercel and Snyk also report success.
+- **P1 publication-state dead end:** the final migration drops `approve_partner(uuid)`, while both public views require `partners.status IN ('approved','live')`. The new consent/review/listing functions do not advance the independent `status` field, so a newly submitted `pending` partner has no supported repository workflow to become visible without an out-of-band raw update.
+- **P1 existing-partner consent dead end:** `authorize_existing_partner_profile_preparation` rejects every existing profile that is not Catering/Private Chef, while the final public views require exact current consent and staff review across all categories. Existing Restaurant, Vendor, Market, Wellness, Coach, Service, and Events profiles can therefore be hidden with no supported path back.
+- **P1 destination overreach:** `public_partner_directory` uses the `heha_swipe` consent/review decision when `website_eligible` is true, but the owner-facing consent choices describe only HEHA Swipe and HEHA Local. Swipe consent can therefore authorize a separate website-directory surface the owner was not asked to approve.
+- **P1 withdrawal gap:** the repository exports `withdrawPartnerProfilePublication`, but the persisted Profile UI imports and calls only authorization. Once approved, an owner has no supported visible action to withdraw destination-scoped publication and immediately hide the profile.
+- **P2 proof-trigger gap:** the workflow path filter omits consent-facing components, repository code, and CSS that its JavaScript/build step is intended to protect. A later UI-only regression can skip this proof entirely.
+
+**Safe release default:** keep #127 draft and unapplied. First add a least-privilege staff transition from pending to an explicitly reviewed visible status; add supported exact-destination consent and withdrawal for every publishable category/surface; include all publication UI/repository paths in the workflow trigger; and extend the disposable proof for pending→reviewed→visible, non-Wave-1 existing profiles, separate Swipe versus website consent, owner withdrawal, denial/BOLA, retry, and concurrency. Then rerun the entire exact-head workflow and resolve each review thread with evidence. Do not merge, apply migrations, publish partners, deploy, or activate the browser webhook from the current green run.
+
+Verified through GitHub: exact head/base/one-commit delta, all workflow job steps and conclusions, hosted statuses, exact migration/UI/repository source, review-thread state, and all 26 open Swipe PR file sets. Not run independently: local Supabase/PostgreSQL, migrations/proofs, JavaScript tests/build, browser/authenticated partner flows, accessibility QA, live Supabase, deployment, or Production.
+
+Collision/scope: only #116 changes this readiness document. This update changes documentation only; it does not modify #127, donor branches, migrations, workflows, Auth/provider settings, partner data, environments, deployments, or external services.
+
 ## Rollback
 
 This audit changes documentation only. Reverting its documentation commits removes the document. No application code, dependency, manifest, deployment, native project, signing material, store record, Supabase state, or external service is changed.
