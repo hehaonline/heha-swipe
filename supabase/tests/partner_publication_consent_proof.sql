@@ -631,6 +631,8 @@ begin
     p_destinations => array['heha_swipe']::text[],
     p_authorized_representative_name => 'Wave One Owner',
     p_authorized_representative_title => 'Owner',
+    p_authority_confirmed => true,
+    p_profile_confirmed => true,
     p_media_permission_confirmed => true,
     p_tampa_bay_service_confirmed => false,
     p_consent_statement_version => 'wave1-profile-consent-2026-08-10'
@@ -645,6 +647,8 @@ begin
     p_destinations => array['heha_swipe']::text[],
     p_authorized_representative_name => 'Wave One Owner',
     p_authorized_representative_title => 'Owner',
+    p_authority_confirmed => true,
+    p_profile_confirmed => true,
     p_media_permission_confirmed => true,
     p_tampa_bay_service_confirmed => false,
     p_consent_statement_version => 'wave1-profile-consent-2026-08-10'
@@ -663,6 +667,8 @@ begin
       p_destinations => array['heha_local']::text[],
       p_authorized_representative_name => 'Wave One Owner',
       p_authorized_representative_title => 'Owner',
+      p_authority_confirmed => true,
+      p_profile_confirmed => true,
       p_media_permission_confirmed => true,
       p_tampa_bay_service_confirmed => false,
       p_consent_statement_version => 'wave1-profile-consent-2026-08-10'
@@ -772,7 +778,7 @@ begin
   begin
     perform public.authorize_existing_partner_profile_preparation(
       v_partner_id, array['heha_local']::text[],
-      'Wellness Owner', 'Owner', true, true, v_local_prepare_key,
+      'Wellness Owner', 'Owner', true, true, true, true, v_local_prepare_key,
       'wave1-profile-consent-2026-08-10'
     );
     raise exception 'non-Wave-1 owner prepared an HEHA Local profile';
@@ -781,12 +787,12 @@ begin
 
   v_prepare_result := public.authorize_existing_partner_profile_preparation(
     v_partner_id, array['heha_swipe']::text[],
-    'Wellness Owner', 'Owner', true, false, v_prepare_key,
+    'Wellness Owner', 'Owner', true, true, true, false, v_prepare_key,
     'wave1-profile-consent-2026-08-10'
   );
   if public.authorize_existing_partner_profile_preparation(
     v_partner_id, array['heha_swipe']::text[],
-    'Wellness Owner', 'Owner', true, false, v_prepare_key,
+    'Wellness Owner', 'Owner', true, true, true, false, v_prepare_key,
     'wave1-profile-consent-2026-08-10'
   ) is distinct from v_prepare_result then
     raise exception 'non-Wave-1 owner preparation retry changed its response';
@@ -891,7 +897,7 @@ begin
       v_partner_id, 'heha_local', 'prepare_profile', 'granted',
       'Wellness Representative', 'Owner', 'wellness@heha.example',
       'non-wave-local-prepare-denial', v_local_prepare_key,
-      'wave1-profile-consent-2026-08-10', null, true, true,
+      'wave1-profile-consent-2026-08-10', null, true, true, true, true,
       array['Tampa Bay']::text[]
     );
     raise exception 'verified non-Wave-1 HEHA Local preparation was accepted';
@@ -902,14 +908,14 @@ begin
     v_partner_id, 'heha_swipe', 'prepare_profile', 'granted',
     'Wellness Representative', 'Owner', 'wellness@heha.example',
     'non-wave-swipe-prepare', v_prepare_key,
-    'wave1-profile-consent-2026-08-10', null, true, false,
+    'wave1-profile-consent-2026-08-10', null, true, true, true, false,
     array['Tampa Bay']::text[]
   );
   if public.record_verified_partner_publication_consent(
     v_partner_id, 'heha_swipe', 'prepare_profile', 'granted',
     'Wellness Representative', 'Owner', 'wellness@heha.example',
     'non-wave-swipe-prepare', v_prepare_key,
-    'wave1-profile-consent-2026-08-10', null, true, false,
+    'wave1-profile-consent-2026-08-10', null, true, true, true, false,
     array['Tampa Bay']::text[]
   ) is distinct from v_prepare_event then
     raise exception 'verified non-Wave-1 Swipe preparation was not idempotent';
@@ -921,7 +927,7 @@ begin
       'Wellness Representative', 'Owner', 'wellness@heha.example',
       'non-wave-local-publish-denial', v_local_publish_key,
       'wave1-profile-consent-2026-08-10',
-      current_setting('heha.proof_non_wave_hash'), true, true,
+      current_setting('heha.proof_non_wave_hash'), true, true, true, true,
       array['Tampa Bay']::text[]
     );
     raise exception 'verified non-Wave-1 HEHA Local publication was accepted';
@@ -933,7 +939,7 @@ begin
     'Wellness Representative', 'Owner', 'wellness@heha.example',
     'non-wave-swipe-publish', v_publish_key,
     'wave1-profile-consent-2026-08-10',
-    current_setting('heha.proof_non_wave_hash'), true, false,
+    current_setting('heha.proof_non_wave_hash'), true, true, true, false,
     array['Tampa Bay']::text[]
   );
   if public.record_verified_partner_publication_consent(
@@ -941,7 +947,7 @@ begin
     'Wellness Representative', 'Owner', 'wellness@heha.example',
     'non-wave-swipe-publish', v_publish_key,
     'wave1-profile-consent-2026-08-10',
-    current_setting('heha.proof_non_wave_hash'), true, false,
+    current_setting('heha.proof_non_wave_hash'), true, true, true, false,
     array['Tampa Bay']::text[]
   ) is distinct from v_publish_event then
     raise exception 'verified non-Wave-1 Swipe publication was not idempotent';
