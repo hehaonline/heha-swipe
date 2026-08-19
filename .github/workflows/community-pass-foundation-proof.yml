@@ -5,7 +5,9 @@ on:
     paths:
       - "supabase/migrations/20260819193000_community_pass_foundation_v1.sql"
       - "supabase/migrations/20260819200500_community_pass_trial_activation_qualification.sql"
+      - "supabase/migrations/20260819202500_community_pass_account_unlink_fail_safe.sql"
       - "supabase/tests/community_pass_foundation_proof.sql"
+      - "supabase/tests/community_pass_account_unlink_proof.sql"
       - "supabase/tests/fixtures/community_pass_minimal_baseline.sql"
       - ".github/workflows/community-pass-foundation-proof.yml"
   workflow_dispatch:
@@ -61,6 +63,7 @@ jobs:
             echo "Package A apply pass ${pass}"
             docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819193000_community_pass_foundation_v1.sql
             docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819200500_community_pass_trial_activation_qualification.sql
+            docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819202500_community_pass_account_unlink_fail_safe.sql
           done
 
       - name: Run exact foundation proof
@@ -70,6 +73,13 @@ jobs:
           psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
           < supabase/tests/community_pass_foundation_proof.sql
 
+      - name: Run exact account-unlink proof
+        shell: bash
+        run: >-
+          docker exec -i "${{ job.services.postgres.id }}"
+          psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
+          < supabase/tests/community_pass_account_unlink_proof.sql
+
       - name: Scan proof sources for credential-like material
         shell: bash
         run: |
@@ -77,7 +87,9 @@ jobs:
           files=(
             supabase/migrations/20260819193000_community_pass_foundation_v1.sql
             supabase/migrations/20260819200500_community_pass_trial_activation_qualification.sql
+            supabase/migrations/20260819202500_community_pass_account_unlink_fail_safe.sql
             supabase/tests/community_pass_foundation_proof.sql
+            supabase/tests/community_pass_account_unlink_proof.sql
             supabase/tests/fixtures/community_pass_minimal_baseline.sql
           )
           if grep -EIn '(sk_live_|sk_test_|whsec_|service_role_key|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY)' "${files[@]}"; then
