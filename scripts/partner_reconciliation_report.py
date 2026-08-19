@@ -17,6 +17,7 @@ import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 
 SCHEMA_VERSION = "heha.partner-reconciliation.synthetic/v1"
@@ -27,13 +28,51 @@ PLACE_RE = re.compile(r"^SYN-PLACE-[A-Z0-9-]+$")
 PHONE_RE = re.compile(r"^1?[2-9][0-9]{2}55501[0-9]{2}$")
 INSTAGRAM_RE = re.compile(r"^synthetic_[a-z0-9_]+$")
 
-STRONG_FIELDS = (
+STATIC_STRONG_FIELDS = (
     "google_place_id",
     "domain",
     "phone",
-    "email",
     "instagram",
 )
+
+VERIFIED_EMAIL_PROVENANCE = {
+    "owner_confirmed",
+    "authorized_business_contact",
+}
+EMAIL_PROVENANCE_VALUES = VERIFIED_EMAIL_PROVENANCE | {"unverified", "not_applicable"}
+
+ROOT_KEYS = {
+    "schema_version",
+    "data_classification",
+    "synthetic",
+    "mutation_mode",
+    "records",
+    "expected_pairs",
+}
+RECORD_KEYS = {
+    "id",
+    "synthetic",
+    "record_kind",
+    "name",
+    "address",
+    "google_place_id",
+    "website",
+    "phone",
+    "email",
+    "email_provenance",
+    "instagram",
+    "owner_account_id",
+    "child_reference_counts",
+}
+EXPECTED_PAIR_KEYS = {"candidate_key", "classification"}
+CLASSIFICATIONS = {
+    "non_partner_source",
+    "ownership_conflict",
+    "strong_identifier_match",
+    "likely_match",
+    "separate_businesses",
+    "insufficient_evidence",
+}
 
 CHILD_REFERENCE_FAMILIES = (
     "saves",
@@ -48,6 +87,7 @@ CHILD_REFERENCE_FAMILIES = (
     "readiness",
     "platform_visibility",
     "crm_links",
+    "scout_links",
 )
 
 
@@ -72,8 +112,16 @@ def normalize_domain(value: Any) -> str:
     raw = str(value or "").strip().lower()
     if not raw:
         return ""
-    host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", raw).split("/", 1)[0]
-    host = host.rsplit("@", 1)[-1].split(":", 1)[0].rstrip(".")
+    _require(not any(ch.isspace() for ch in raw), "website must not contain whitespace")
+    parsed = urlsplit(raw if "://" in raw else f"https://{raw}")
+    _require(parsed.scheme in {"http", "https"}, "website must use http or https")
+    _require(bool(parsed.netloc and parsed.hostname), "website must contain a hostname")
+    _require(parsed.username is None and parsed.password is None, "website credentials are not allowed")
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise InputRejected("website port is invalid") from exc
+    host = str(parsed.hostname).rstrip(".")
     return host[4:] if host.startswith("www.") else host
 
 
@@ -93,6 +141,7 @@ def _require(condition: bool, message: str) -> None:
 
 
 def _validate_synthetic_record(record: dict[str, Any]) -> None:
+    _require(set(record) == RECORD_KEYS, "record fields must match the declared synthetic schema exactly")
     record_id = str(record.get("id", ""))
     _require(record.get("synthetic") is True, f"{record_id or 'record'}: synthetic=true is required")
     _require(bool(ID_RE.fullmatch(record_id)), f"{record_id or 'record'}: invalid synthetic id")
@@ -111,8 +160,13 @@ def _validate_synthetic_record(record: dict[str, Any]) -> None:
         _require(bool(PLACE_RE.fullmatch(place_id)), f"{record_id}: google_place_id is not synthetic")
 
     email = normalize_email(record.get("email"))
+    email_provenance = str(record.get("email_provenance", ""))
+    _require(email_provenance in EMAIL_PROVENANCE_VALUES, f"{record_id}: invalid email_provenance")
     if email:
         _require("@" in email and email.rsplit("@", 1)[1].endswith(".test"), f"{record_id}: email must use a .test domain")
+        _require(email_provenance != "not_applicable", f"{record_id}: email provenance is required")
+    else:
+        _require(email_provenance == "not_applicable", f"{record_id}: email_provenance must be not_applicable without email")
 
     domain = normalize_domain(record.get("website"))
     if domain:
@@ -139,6 +193,7 @@ def _validate_synthetic_record(record: dict[str, Any]) -> None:
 
 def validate_dataset(dataset: dict[str, Any]) -> list[dict[str, Any]]:
     _require(isinstance(dataset, dict), "input root must be an object")
+    _require(set(dataset) == ROOT_KEYS, "input fields must match the declared synthetic schema exactly")
     _require(dataset.get("schema_version") == SCHEMA_VERSION, "unsupported or missing synthetic schema_version")
     _require(dataset.get("data_classification") == "synthetic", "data_classification=synthetic is required")
     _require(dataset.get("synthetic") is True, "dataset synthetic=true is required")
@@ -151,7 +206,24 @@ def validate_dataset(dataset: dict[str, Any]) -> list[dict[str, Any]]:
         _validate_synthetic_record(record)
         _require(record["id"] not in seen, f"duplicate record id: {record['id']}")
         seen.add(record["id"])
-    return sorted(records, key=lambda item: item["id"])
+    ordered = sorted(records, key=lambda item: item["id"])
+    expected_pairs = dataset.get("expected_pairs")
+    _require(isinstance(expected_pairs, list), "expected_pairs must be a list")
+    valid_candidate_keys = {
+        candidate_key_for(ordered[i]["id"], ordered[j]["id"])
+        for i in range(len(ordered))
+        for j in range(i + 1, len(ordered))
+    }
+    seen_expected: set[str] = set()
+    for expected in expected_pairs:
+        _require(isinstance(expected, dict), "every expected pair must be an object")
+        _require(set(expected) == EXPECTED_PAIR_KEYS, "expected-pair fields must match the declared schema exactly")
+        candidate_key = expected.get("candidate_key")
+        _require(isinstance(candidate_key, str) and candidate_key in valid_candidate_keys, "expected pair references an unknown candidate")
+        _require(candidate_key not in seen_expected, f"duplicate expected candidate: {candidate_key}")
+        _require(expected.get("classification") in CLASSIFICATIONS, f"{candidate_key}: invalid expected classification")
+        seen_expected.add(candidate_key)
+    return ordered
 
 
 def normalized_identifiers(record: dict[str, Any]) -> dict[str, str]:
@@ -160,6 +232,7 @@ def normalized_identifiers(record: dict[str, Any]) -> dict[str, str]:
         "domain": normalize_domain(record.get("website")),
         "phone": normalize_phone(record.get("phone")),
         "email": normalize_email(record.get("email")),
+        "email_provenance": str(record.get("email_provenance", "")),
         "instagram": normalize_instagram(record.get("instagram")),
         "name": normalize_text(record.get("name")),
         "address": normalize_text(record.get("address")),
@@ -176,7 +249,7 @@ def _pair_result(
     conflicting_fields: list[str],
     next_action: str,
 ) -> dict[str, Any]:
-    candidate_key = "--".join(sorted((left["id"], right["id"])))
+    candidate_key = candidate_key_for(left["id"], right["id"])
     return {
         "candidate_key": candidate_key,
         "left_record_id": left["id"],
@@ -199,11 +272,37 @@ def _pair_result(
     }
 
 
+def candidate_key_for(left_id: str, right_id: str) -> str:
+    """Return an injective, order-independent key using length-prefixed IDs."""
+    ordered = sorted((str(left_id), str(right_id)))
+    return "SYN-PAIR|" + "|".join(f"{len(record_id)}:{record_id}" for record_id in ordered)
+
+
 def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    _require(isinstance(left, dict) and isinstance(right, dict), "pair records must be objects")
+    _validate_synthetic_record(left)
+    _validate_synthetic_record(right)
+    _require(left["id"] != right["id"], "pair records must have different ids")
     left_norm = normalized_identifiers(left)
     right_norm = normalized_identifiers(right)
-    matched = [field for field in STRONG_FIELDS if left_norm[field] and left_norm[field] == right_norm[field]]
-    conflicts = [field for field in STRONG_FIELDS if left_norm[field] and right_norm[field] and left_norm[field] != right_norm[field]]
+    matched = [field for field in STATIC_STRONG_FIELDS if left_norm[field] and left_norm[field] == right_norm[field]]
+    conflicts = [
+        field
+        for field in STATIC_STRONG_FIELDS
+        if left_norm[field] and right_norm[field] and left_norm[field] != right_norm[field]
+    ]
+    both_emails_verified = (
+        left_norm["email_provenance"] in VERIFIED_EMAIL_PROVENANCE
+        and right_norm["email_provenance"] in VERIFIED_EMAIL_PROVENANCE
+    )
+    unverified_email_matches: list[str] = []
+    if left_norm["email"] and left_norm["email"] == right_norm["email"]:
+        if both_emails_verified:
+            matched.append("email")
+        else:
+            unverified_email_matches.append("email_unverified")
+    elif both_emails_verified and left_norm["email"] and right_norm["email"]:
+        conflicts.append("email")
     owners_conflict = bool(
         left_norm["owner_account_id"]
         and right_norm["owner_account_id"]
@@ -229,12 +328,18 @@ def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]
         )
 
     if owners_conflict and (matched or (name_equal and address_equal)):
+        reason = (
+            "At least one provenance-qualified strong identifier matches while owner-account evidence conflicts; "
+            "ownership conflict overrides matching evidence."
+            if matched
+            else "Normalized name and address match while owner-account evidence conflicts; ownership must be resolved by a named human."
+        )
         return _pair_result(
             left,
             right,
             "ownership_conflict",
-            "At least one strong identifier matches while owner-account evidence conflicts; ownership conflict overrides matching evidence.",
-            matched,
+            reason,
+            matched + unverified_email_matches,
             conflicts + ["owner_account_id"],
             "freeze_claim_and_escalate_to_named_human",
         )
@@ -272,8 +377,8 @@ def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]
             left,
             right,
             "likely_match",
-            "Normalized name and address match without a strong identifier; corroboration is still required.",
-            ["normalized_name", "normalized_address"],
+            "Normalized name and address match, but fewer than two provenance-qualified strong identifiers are present; corroboration is still required.",
+            matched + unverified_email_matches + ["normalized_name", "normalized_address"],
             conflicts,
             "collect_authorized_corroboration_for_named_human_review",
         )
@@ -293,13 +398,13 @@ def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]
             "keep_separate_and_block_automatic_reconciliation",
         )
 
-    if matched:
+    if matched or unverified_email_matches:
         return _pair_result(
             left,
             right,
             "likely_match",
             "One normalized identifier matches, but strong-match requirements are not met.",
-            matched,
+            matched + unverified_email_matches,
             conflicts,
             "collect_authorized_corroboration_for_named_human_review",
         )
@@ -318,7 +423,10 @@ def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]
 def build_report(dataset: dict[str, Any]) -> dict[str, Any]:
     records = validate_dataset(dataset)
     canonical_input = json.dumps(dataset, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    pairs = [classify_pair(records[i], records[j]) for i in range(len(records)) for j in range(i + 1, len(records))]
+    pairs = sorted(
+        (classify_pair(records[i], records[j]) for i in range(len(records)) for j in range(i + 1, len(records))),
+        key=lambda item: item["candidate_key"],
+    )
     return {
         "schema_version": REPORT_VERSION,
         "source_schema_version": SCHEMA_VERSION,
