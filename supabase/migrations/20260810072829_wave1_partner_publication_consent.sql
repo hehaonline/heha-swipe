@@ -9,8 +9,8 @@
 --   * records append-only preparation, publication, and withdrawal events;
 --   * binds publication approval to the exact server-captured profile version;
 --   * makes partner registration + draft authorization one transaction;
---   * requires current publication authorization before a Catering/PrivateChef
---     listing can be made live;
+--   * lets every existing owned category authorize HEHA Swipe while keeping
+--     HEHA Local limited to Catering/PrivateChef profiles;
 --   * repairs PrivateChef -> chef routing; and
 --   * replaces public partner projections with explicit safe-column allowlists.
 
@@ -174,21 +174,27 @@ as $function$
     );
 $function$;
 
-create or replace function app_private.is_supported_swipe_partner(p_partner public.partners)
+create or replace function app_private.is_supported_swipe_partner(
+  p_partner public.partners
+)
 returns boolean
 language sql
 immutable
 set search_path = ''
 as $function$
   select
-    lower(coalesce(p_partner.category, '')) = any (
-      array['restaurant','vendor','catering','privatechef','private chef','wellness','coach','service','events']::text[]
+    pg_catalog.lower(pg_catalog.btrim(coalesce(p_partner.category, ''))) in (
+      'restaurant','vendor','catering','privatechef','private chef',
+      'wellness','coach','service','events'
     )
     or exists (
       select 1
-      from unnest(coalesce(p_partner.categories, array[]::text[])) as c(value)
-      where lower(c.value) = any (
-        array['restaurant','vendor','catering','privatechef','private chef','wellness','coach','service','events']::text[]
+      from pg_catalog.unnest(
+        coalesce(p_partner.categories, array[]::text[])
+      ) as category_row(value)
+      where pg_catalog.lower(pg_catalog.btrim(category_row.value)) in (
+        'restaurant','vendor','catering','privatechef','private chef',
+        'wellness','coach','service','events'
       )
     );
 $function$;
@@ -829,12 +835,12 @@ begin
      or cardinality(v_destinations) <> cardinality(coalesce(p_destinations, array[]::text[])) then
     raise exception using errcode = '23514', message = 'Choose at least one valid HEHA destination.';
   end if;
+  v_lane := app_private.wave1_local_lane(v_partner);
   if 'heha_swipe' = any (v_destinations)
      and app_private.is_supported_swipe_partner(v_partner) is not true then
-    raise exception using errcode = '23514', message = 'This profile category is not supported for HEHA Swipe publication.';
+    raise exception using errcode = '23514', message = 'HEHA Swipe is available only for supported partner categories.';
   end if;
-  if 'heha_local' = any (v_destinations)
-     and app_private.is_wave1_food_partner(v_partner) is not true then
+  if 'heha_local' = any (v_destinations) and v_lane is null then
     raise exception using errcode = '23514', message = 'HEHA Local is currently available here for catering and private-chef profiles.';
   end if;
   if char_length(btrim(coalesce(p_authorized_representative_name, ''))) not between 2 and 120
@@ -897,7 +903,6 @@ begin
     );
   end if;
 
-  v_lane := app_private.wave1_local_lane(v_partner);
   v_snapshot := app_private.partner_public_profile_snapshot(v_partner);
   v_snapshot_hash := app_private.partner_public_profile_hash(v_partner);
   foreach v_destination in array v_destinations loop
@@ -941,7 +946,10 @@ begin
       case when v_destination = 'heha_local' then array['Tampa Bay']::text[] else array[]::text[] end,
       case when v_destination = 'heha_local' then v_lane else null end,
       true,
-      case when v_destination = 'heha_local' then true else false end,
+      case
+        when v_destination = 'heha_local' then coalesce(p_tampa_bay_service_confirmed, false)
+        else false
+      end,
       v_snapshot,
       v_snapshot_hash,
       p_request_key,
@@ -1032,13 +1040,13 @@ begin
      or cardinality(v_destinations) <> cardinality(coalesce(p_destinations, array[]::text[])) then
     raise exception using errcode = '23514', message = 'Choose at least one valid HEHA destination.';
   end if;
+  v_lane := app_private.wave1_local_lane(v_partner);
   if 'heha_swipe' = any (v_destinations)
      and app_private.is_supported_swipe_partner(v_partner) is not true then
-    raise exception using errcode = '23514', message = 'This profile category is not supported for HEHA Swipe publication.';
+    raise exception using errcode = '23514', message = 'HEHA Swipe publication is available only for supported partner categories.';
   end if;
-  if 'heha_local' = any (v_destinations)
-     and app_private.is_wave1_food_partner(v_partner) is not true then
-    raise exception using errcode = '23514', message = 'HEHA Local is currently available here for catering and private-chef profiles.';
+  if 'heha_local' = any (v_destinations) and v_lane is null then
+    raise exception using errcode = '23514', message = 'HEHA Local publication is currently limited to catering and private-chef profiles.';
   end if;
   if char_length(btrim(coalesce(p_authorized_representative_name, ''))) not between 2 and 120
      or char_length(btrim(coalesce(p_authorized_representative_title, ''))) not between 2 and 120
@@ -1054,7 +1062,6 @@ begin
 
   v_snapshot := app_private.partner_public_profile_snapshot(v_partner);
   v_snapshot_hash := app_private.partner_public_profile_hash(v_partner);
-  v_lane := app_private.wave1_local_lane(v_partner);
   v_request_payload_hash := pg_catalog.encode(
     extensions.digest(
       jsonb_build_object(
@@ -1100,13 +1107,14 @@ begin
        or v_prepare.state <> 'granted'
        or v_prepare.representative_authority_confirmed is not true
        or v_prepare.profile_preparation_confirmed is not true
+       or v_prepare.consent_statement_version is distinct from 'wave1-profile-consent-2026-08-10'
        or v_prepare.media_permission_confirmed is not true then
       raise exception using errcode = '23514', message = 'Private profile preparation must be authorized for every selected destination first.';
     end if;
     if v_destination = 'heha_local'
        and (
-         v_prepare.service_area_attested is not true
-         or v_prepare.local_lane is distinct from v_lane
+         v_prepare.local_lane is distinct from v_lane
+         or v_prepare.service_area_attested is not true
        ) then
       raise exception using errcode = '23514', message = 'The chef/catering service changed after profile preparation. Reconfirm the current HEHA Local lane before publishing.';
     end if;
@@ -1151,7 +1159,10 @@ begin
       v_prepare.service_areas,
       case when v_destination = 'heha_local' then v_lane else null end,
       v_prepare.media_permission_confirmed,
-      v_prepare.service_area_attested,
+      case
+        when v_destination = 'heha_local' then v_prepare.service_area_attested
+        else false
+      end,
       v_snapshot,
       v_snapshot_hash,
       p_request_key,
@@ -1524,19 +1535,19 @@ begin
   if not found then
     raise exception using errcode = 'P0002', message = 'Partner profile not found.';
   end if;
-  if p_state = 'granted'
-     and p_destination = 'heha_swipe'
-     and app_private.is_supported_swipe_partner(v_partner) is not true then
-    raise exception using errcode = '23514', message = 'This profile category is not supported for HEHA Swipe publication.';
-  end if;
-  if p_state = 'granted'
-     and p_destination = 'heha_local'
-     and app_private.is_wave1_food_partner(v_partner) is not true then
-    raise exception using errcode = '23514', message = 'HEHA Local is currently available here for catering and private-chef profiles.';
-  end if;
   v_lane := app_private.wave1_local_lane(v_partner);
-  if p_state = 'revoked'
-     and p_destination = 'heha_local'
+  if p_destination = 'heha_swipe'
+     and p_state = 'granted'
+     and app_private.is_supported_swipe_partner(v_partner) is not true then
+    raise exception using errcode = '23514', message = 'Verified HEHA Swipe consent is available only for supported partner categories.';
+  end if;
+  if p_destination = 'heha_local'
+     and p_state = 'granted'
+     and v_lane is null then
+    raise exception using errcode = '23514', message = 'Verified HEHA Local consent is currently limited to catering and private-chef profiles.';
+  end if;
+  if p_destination = 'heha_local'
+     and p_state = 'revoked'
      and v_lane is null then
     select e.local_lane into v_lane
     from public.partner_publication_consent_events e
@@ -1685,6 +1696,7 @@ begin
     case when p_destination = 'heha_local' then v_lane else null end,
     coalesce(p_media_permission_confirmed, false),
     case
+      when p_destination <> 'heha_local' then false
       when p_action = 'publish_profile' and p_state = 'granted' then v_prepare.service_area_attested
       else coalesce(p_tampa_bay_service_confirmed, false)
     end,

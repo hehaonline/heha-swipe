@@ -300,6 +300,7 @@ jobs:
             src/lib/partnerBrowserWebhookBoundary.test.js \
             src/lib/partnerPublicationConsent.test.js \
             src/lib/partnerPublicationUiContract.test.js \
+            src/lib/partnerPublicationWithdrawalBoundary.test.js \
             src/lib/partnerVisibility.test.js \
             src/lib/publicPartnerDirectoryContract.test.js
           forbidden_env_name="$(printf '%s_' VITE MAKE PARTNER APPROVAL)WEBHOOK"

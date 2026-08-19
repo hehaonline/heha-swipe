@@ -249,6 +249,36 @@ begin
     'public.record_partner_publication_review(uuid,uuid,text,text,text,uuid,text)',
     'EXECUTE'
   );
+  assert pg_catalog.to_regprocedure(
+    'public.review_partner_routing(uuid,text,boolean,boolean,boolean,text,text,text,text,text,boolean)'
+  ) is not null;
+  assert (
+    select function_row.prosecdef
+    from pg_catalog.pg_proc function_row
+    where function_row.oid=
+      'public.review_partner_routing(uuid,text,boolean,boolean,boolean,text,text,text,text,text,boolean)'::regprocedure
+  );
+  assert (
+    select 'search_path=""'=any(coalesce(function_row.proconfig,array[]::text[]))
+    from pg_catalog.pg_proc function_row
+    where function_row.oid=
+      'public.review_partner_routing(uuid,text,boolean,boolean,boolean,text,text,text,text,text,boolean)'::regprocedure
+  );
+  assert not pg_catalog.has_function_privilege(
+    'anon',
+    'public.review_partner_routing(uuid,text,boolean,boolean,boolean,text,text,text,text,text,boolean)',
+    'EXECUTE'
+  );
+  assert pg_catalog.has_function_privilege(
+    'authenticated',
+    'public.review_partner_routing(uuid,text,boolean,boolean,boolean,text,text,text,text,text,boolean)',
+    'EXECUTE'
+  );
+  assert not pg_catalog.has_function_privilege(
+    'service_role',
+    'public.review_partner_routing(uuid,text,boolean,boolean,boolean,text,text,text,text,text,boolean)',
+    'EXECUTE'
+  );
   assert pg_catalog.to_regprocedure('public.approve_partner(uuid)') is null;
   assert pg_catalog.to_regprocedure(
     'public.approve_heha_partnership(uuid,uuid)'
@@ -349,6 +379,281 @@ begin
 end;
 $proof$;
 
+-- ---------------------------------------------------------------------------
+-- Supported new-registration path. No privileged raw partner UPDATE is used:
+-- owner submission/consent, exact-hash staff review, routing finalization and
+-- listing activation remain separate RPC decisions.
+-- ---------------------------------------------------------------------------
+select pg_temp.set_auth('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+set local role authenticated;
+select
+  submitted.result->>'id' as submitted_partner_id,
+  submitted.result->>'public_profile_snapshot_hash' as submitted_profile_hash
+from (
+  select public.submit_partner_registration_with_consent(
+    '72000000-0000-4000-8000-000000000001',
+    'Supported Registration Proof',
+    array['Restaurant']::text[],
+    'Tampa Bay',
+    'Fresh food from a supported registration',
+    'A complete synthetic public profile for the supported registration proof.',
+    'Mon-Fri 9-5',
+    array[]::text[],
+    'Restaurant',
+    null,
+    'registration-proof@example.invalid',
+    'https://registration-proof.example.invalid',
+    '@registrationproof',
+    'PRIVATE registration location',
+    array['Prepared meals']::text[],
+    '[]'::jsonb,
+    '🍽️',
+    '#ff8a24',
+    array['heha_swipe']::text[],
+    'Bailey Owner',
+    'Founder',
+    true,
+    true,
+    true,
+    false,
+    'wave1-profile-consent-2026-08-10'
+  ) as result
+) submitted \gset
+select pg_catalog.set_config(
+  'heha.submitted_partner_id',
+  :'submitted_partner_id',
+  true
+);
+
+select (
+  public.authorize_partner_profile_publication(
+    :'submitted_partner_id'::uuid,
+    array['heha_swipe']::text[],
+    'Bailey Owner',
+    'Founder',
+    '72000000-0000-4000-8000-000000000002',
+    'wave1-profile-consent-2026-08-10',
+    :'submitted_profile_hash'
+  )->>'state'
+) as submitted_publication_consent_state \gset
+reset role;
+
+do $proof$
+begin
+  assert (
+    select status='pending'
+      and listing_status='hidden'
+      and routing_status='suggested'
+    from public.partners
+    where id=current_setting('heha.submitted_partner_id')::uuid
+  );
+  insert into partner_publication_integration_results(label,ok,detail)
+  values (
+    'new registration starts pending',
+    true,
+    'supported owner RPC created a pending, hidden, unrouted profile with exact Swipe consent'
+  );
+end;
+$proof$;
+
+set local role anon;
+select pg_temp.assert_public_state(
+  'new registration initially hidden',
+  :'submitted_partner_id'::uuid,
+  false,
+  false
+);
+reset role;
+
+select pg_temp.clear_auth();
+set local role service_role;
+select public.record_partner_publication_review(
+  '72000000-0000-4000-8000-000000000003',
+  :'submitted_partner_id'::uuid,
+  'heha_swipe',
+  :'submitted_profile_hash',
+  'rejected',
+  '12121212-1212-4212-8212-121212121212',
+  'Synthetic profile needs a corrected staff review.'
+) as submitted_rejection_review_id \gset
+reset role;
+
+do $proof$
+begin
+  assert (
+    select status='pending'
+    from public.partners
+    where id=current_setting('heha.submitted_partner_id')::uuid
+  );
+  assert not exists (
+    select 1
+    from public.partner_lifecycle_events
+    where partner_id=current_setting('heha.submitted_partner_id')::uuid
+      and event_type='publication_review_status_approved'
+  );
+  insert into partner_publication_integration_results(label,ok,detail)
+  values (
+    'rejection preserves pending status',
+    true,
+    'a valid exact-hash rejection records evidence but cannot advance legacy status'
+  );
+end;
+$proof$;
+
+select pg_temp.clear_auth();
+set local role service_role;
+select public.record_partner_publication_review(
+  '72000000-0000-4000-8000-000000000004',
+  :'submitted_partner_id'::uuid,
+  'heha_swipe',
+  :'submitted_profile_hash',
+  'approved',
+  'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  null
+) as submitted_approval_review_id \gset
+select public.record_partner_publication_review(
+  '72000000-0000-4000-8000-000000000004',
+  :'submitted_partner_id'::uuid,
+  'heha_swipe',
+  :'submitted_profile_hash',
+  'approved',
+  'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  null
+) as submitted_approval_replay_id \gset
+reset role;
+
+select pg_temp.assert_true(
+  'new registration approval replay',
+  :'submitted_approval_replay_id'::uuid=:'submitted_approval_review_id'::uuid,
+  'exact review replay returned the original evidence identity'
+);
+
+do $proof$
+begin
+  assert (
+    select status='approved'
+      and listing_status='hidden'
+      and routing_status<>'approved'
+    from public.partners
+    where id=current_setting('heha.submitted_partner_id')::uuid
+  );
+  assert (
+    select count(*)=1
+    from public.partner_lifecycle_events
+    where partner_id=current_setting('heha.submitted_partner_id')::uuid
+      and event_type='publication_review_status_approved'
+      and actor_id='dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+      and before_state->>'status'='pending'
+      and after_state->>'status'='approved'
+  );
+  insert into partner_publication_integration_results(label,ok,detail)
+  values (
+    'exact review advances status once',
+    true,
+    'approved exact-hash evidence advanced pending to approved once without routing or listing activation'
+  );
+end;
+$proof$;
+
+set local role anon;
+select pg_temp.assert_public_state(
+  'status approval without routing hidden',
+  :'submitted_partner_id'::uuid,
+  false,
+  false
+);
+reset role;
+
+select pg_temp.set_auth('34343434-3434-4434-8434-343434343434');
+set local role authenticated;
+select pg_temp.expect_state(
+  'outsider routing review denied',
+  '42501',
+  $$select public.review_partner_routing(
+    current_setting('heha.submitted_partner_id')::uuid,
+    'nourish',true,true,false,null,'swipe','Discover Partner',
+    '/?partner='||current_setting('heha.submitted_partner_id'),
+    'Unauthorized routing proof',true
+  )$$
+);
+reset role;
+
+select pg_temp.set_auth('12121212-1212-4212-8212-121212121212');
+set local role authenticated;
+select pg_temp.expect_state(
+  'pm routing finalization denied',
+  '42501',
+  $$select public.review_partner_routing(
+    current_setting('heha.submitted_partner_id')::uuid,
+    'nourish',true,true,false,null,'swipe','Discover Partner',
+    '/?partner='||current_setting('heha.submitted_partner_id'),
+    'PM routing finalization proof',true
+  )$$
+);
+reset role;
+
+select pg_temp.set_auth('dddddddd-dddd-4ddd-8ddd-dddddddddddd');
+set local role authenticated;
+select public.review_partner_routing(
+  :'submitted_partner_id'::uuid,
+  'nourish',
+  true,
+  true,
+  false,
+  null,
+  'swipe',
+  'Discover Partner',
+  '/?partner='||:'submitted_partner_id',
+  'Supported registration routing proof',
+  true
+);
+reset role;
+
+set local role anon;
+select pg_temp.assert_public_state(
+  'routing without listing activation hidden',
+  :'submitted_partner_id'::uuid,
+  false,
+  false
+);
+reset role;
+
+select pg_temp.set_auth('dddddddd-dddd-4ddd-8ddd-dddddddddddd');
+set local role authenticated;
+select public.set_partner_listing_status(
+  :'submitted_partner_id'::uuid,
+  'listed'
+);
+reset role;
+
+set local role anon;
+select pg_temp.assert_public_state(
+  'supported registration RPC path remains under terms/privacy hold',
+  :'submitted_partner_id'::uuid,
+  false,
+  false
+);
+reset role;
+
+do $proof$
+begin
+  assert (
+    select status='approved'
+      and listing_status='listed'
+      and routing_status='approved'
+      and coalesce(swipe_eligible,false)
+    from public.partners
+    where id=current_setting('heha.submitted_partner_id')::uuid
+  );
+  insert into partner_publication_integration_results(label,ok,detail)
+  values (
+    'supported registration to gated Swipe path',
+    true,
+    'supported RPCs reached approved status, routing, and listing while the terms/privacy and website-directory holds remained closed'
+  );
+end;
+$proof$;
+
 -- No consent or review means no public row.
 set local role anon;
 select pg_temp.assert_public_state(
@@ -382,18 +687,15 @@ select pg_temp.expect_state(
 );
 reset role;
 
--- The evidence-bound staff review RPC owns the only pending -> approved path.
--- Failed attestations, forged authority, unauthorized reviewers and stale
--- hashes must leave the lifecycle untouched.
-select pg_temp.clear_auth();
-update public.partners
-set status = 'pending', updated_at = pg_catalog.now()
-where id = '78787878-7878-4787-8787-787878787878';
+-- Continue on the pre-existing approved fixture without mutating raw lifecycle
+-- status. Failed attestations, forged authority, unauthorized reviewers and
+-- stale hashes must leave the lifecycle untouched; the supported pending ->
+-- approved path is proved above through the owner-registration RPC.
 select pg_temp.assert_true(
-  'review fixture starts pending',
-  (select status = 'pending' from public.partners
+  'review fixture remains approved',
+  (select status = 'approved' from public.partners
    where id = '78787878-7878-4787-8787-787878787878'),
-  'synthetic profile is pending before owner consent and staff review'
+  'the pre-existing fixture remains approved before consent and staff review'
 );
 
 -- Owner grants both destination permissions for the exact current profile.
@@ -582,10 +884,10 @@ select pg_temp.expect_state(
 
 reset role;
 select pg_temp.assert_true(
-  'failed review attempts preserve pending',
-  (select status = 'pending' from public.partners
+  'failed review attempts preserve status',
+  (select status = 'approved' from public.partners
    where id = '78787878-7878-4787-8787-787878787878'),
-  'forged authority, unauthorized reviewers and a stale hash do not advance lifecycle state'
+  'forged authority, unauthorized reviewers and a stale hash do not mutate lifecycle state'
 );
 set local role service_role;
 
@@ -614,11 +916,31 @@ select pg_temp.assert_true(
 );
 reset role;
 select pg_temp.assert_true(
-  'exact approved review advances pending atomically',
+  'exact approved review preserves approved fixture',
   (select status = 'approved' from public.partners
    where id = '78787878-7878-4787-8787-787878787878'),
-  'the exact current-hash approved review advances pending to approved and replay leaves it approved'
+  'the exact current-hash approved review and replay leave the already-approved fixture unchanged'
 );
+
+-- Exact-hash profile approval does not finalize routing. The supported routing
+-- review remains an independent super-admin decision.
+reset role;
+select pg_temp.set_auth('dddddddd-dddd-4ddd-8ddd-dddddddddddd');
+set local role authenticated;
+select public.review_partner_routing(
+  '78787878-7878-4787-8787-787878787878',
+  'nourish',
+  true,
+  true,
+  false,
+  null,
+  'swipe',
+  'Discover Partner',
+  '/?partner=78787878-7878-4787-8787-787878787878',
+  'Exact-hash publication proof routing review',
+  true
+);
+reset role;
 
 -- Exact replay is historical evidence and remains stable after the reviewer is
 -- deactivated. A new decision may not be attributed to that inactive reviewer.
@@ -960,15 +1282,9 @@ select pg_temp.assert_public_state(
 );
 reset role;
 
--- Restore only the independent Swipe-eligibility input. Withdrawal deliberately
--- leaves the profile pending; only the next exact approved review may advance
--- it back to approved.
-select pg_temp.clear_auth();
-update public.partners
-set swipe_eligible = true,
-    updated_at = pg_catalog.now()
-where id = '78787878-7878-4787-8787-787878787878';
-
+-- Leave the withdrawal's pending status and routing reset intact. Owner
+-- re-consent still cannot publish; the next exact-hash approval must perform
+-- the supported pending-to-approved transition, followed by routing review.
 select pg_temp.set_auth('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 set local role authenticated;
 select (
@@ -1037,6 +1353,63 @@ select pg_temp.assert_true(
    where id = '78787878-7878-4787-8787-787878787878'),
   'fresh exact-hash review advances the withdrawn pending profile back to approved'
 );
+
+do $proof$
+begin
+  assert (
+    select status='approved'
+      and routing_status='needs_review'
+      and coalesce(swipe_eligible,false)=false
+    from public.partners
+    where id='78787878-7878-4787-8787-787878787878'
+  );
+  assert (
+    select count(*)=1
+    from public.partner_lifecycle_events
+    where partner_id='78787878-7878-4787-8787-787878787878'
+      and event_type='publication_review_status_approved'
+      and actor_id='dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+      and after_state->>'publication_review_event_id'
+        = (
+          select review_row.id::text
+          from public.partner_publication_review_events review_row
+          where review_row.request_key='70000000-0000-4000-8000-000000000013'
+        )
+  );
+  insert into partner_publication_integration_results(label,ok,detail)
+  values (
+    'supported pending status transition',
+    true,
+    'fresh exact-hash approval advanced pending to approved once while routing remained unapproved'
+  );
+end;
+$proof$;
+
+set local role anon;
+select pg_temp.assert_public_state(
+  'status approval alone remains hidden',
+  '78787878-7878-4787-8787-787878787878',
+  false,
+  false
+);
+reset role;
+
+select pg_temp.set_auth('dddddddd-dddd-4ddd-8ddd-dddddddddddd');
+set local role authenticated;
+select public.review_partner_routing(
+  '78787878-7878-4787-8787-787878787878',
+  'nourish',
+  true,
+  true,
+  false,
+  null,
+  'swipe',
+  'Discover Partner',
+  '/?partner=78787878-7878-4787-8787-787878787878',
+  'Fresh exact-hash reapproval routing review',
+  true
+);
+reset role;
 
 set local role anon;
 select pg_temp.assert_public_state(

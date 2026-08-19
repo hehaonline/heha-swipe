@@ -51,16 +51,6 @@ no_deadlock() {
   fi
 }
 
-restore_swipe_listing_inputs() {
-  "${PSQL[@]}" >/dev/null <<SQL
-update public.partners
-set status='pending',
-    swipe_eligible=true,
-    updated_at=pg_catalog.now()
-where id='${PARTNER}';
-SQL
-}
-
 owner_prepare_publish() {
   local prepare_key="$1"
   local publish_key="$2"
@@ -102,7 +92,6 @@ SQL
 }
 
 echo 'scenario 1: withdrawal commits before waiting staff approval'
-restore_swipe_listing_inputs
 HASH_ONE="$(owner_prepare_publish \
   71000000-0000-4000-8000-000000000001 \
   71000000-0000-4000-8000-000000000002)"
@@ -175,7 +164,6 @@ assert_hidden
 echo 'scenario 1 PASS: waiting approval rechecked consent and failed closed'
 
 echo 'scenario 2: staff approval commits before waiting withdrawal'
-restore_swipe_listing_inputs
 HASH_TWO="$(owner_prepare_publish \
   71000000-0000-4000-8000-000000000005 \
   71000000-0000-4000-8000-000000000006)"
@@ -244,7 +232,16 @@ begin
   if (
     select status from public.partners where id='${PARTNER}'
   ) is distinct from 'pending' then
-    raise exception 'approve-first then withdraw race did not end pending';
+    raise exception 'later withdrawal did not return approved legacy status to pending';
+  end if;
+  if (
+    select count(*)
+    from public.partner_lifecycle_events
+    where partner_id='${PARTNER}'
+      and event_type='publication_review_status_approved'
+      and actor_id='${REVIEWER}'
+  ) <> 1 then
+    raise exception 'approve-first race did not record exactly one supported status transition';
   end if;
 end;
 \$proof\$;

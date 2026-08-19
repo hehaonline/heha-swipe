@@ -18,7 +18,7 @@ test("ProfileTab wires destination-scoped owner withdrawal to the repository", (
   );
   assert.match(
     profileTabSource,
-    /withdrawPartnerProfilePublication\(\{[\s\S]*?destinations:\s*validation\.destinations[\s\S]*?requestKey:\s*withdrawalRequestKey[\s\S]*?\}\)/
+    /withdrawPartnerProfilePublication\(\{[\s\S]*?destinations:\s*validation\.destinations[\s\S]*?requestKey:\s*publicationWithdrawalRequestKey[\s\S]*?\}\)/
   );
   assert.doesNotMatch(
     profileTabSource,

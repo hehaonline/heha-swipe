@@ -172,8 +172,19 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
       destinations: current.destinations.includes(destination)
         ? current.destinations.filter((value) => value !== destination)
         : [...current.destinations, destination],
+      tampaBayServiceConfirmed:
+        destination === PARTNER_DESTINATIONS.local
+          && current.destinations.includes(destination)
+          ? false
+          : current.tampaBayServiceConfirmed,
     }));
-    setErrors((current) => ({ ...current, destinations: null }));
+    setErrors((current) => ({
+      ...current,
+      destinations: null,
+      ...(destination === PARTNER_DESTINATIONS.local
+        ? { tampaBayServiceConfirmed: null }
+        : {}),
+    }));
   };
 
   const toggleCategory = (value) => {
@@ -196,6 +207,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
         destinations: current.destinations.filter(
           (destination) => destination !== PARTNER_DESTINATIONS.local
         ),
+        tampaBayServiceConfirmed: false,
       }));
     }
     setErrors((current) => ({ ...current, category: null }));
@@ -692,7 +704,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
               </label>
               {errors.mediaPermissionConfirmed && <Error id={`${authorizationErrorPrefix}-mediaPermissionConfirmed`}>{errors.mediaPermissionConfirmed}</Error>}
 
-              {supportsHehaLocal(form.categories) && (
+              {authorization.destinations.includes(PARTNER_DESTINATIONS.local) && (
                 <>
                   <label className="wizard-check-row">
                     <input

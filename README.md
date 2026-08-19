@@ -102,4 +102,4 @@ Those functions belong to HEHA Order Hub or later customer app phases.
 - Do not add payments until the discovery and partner flows are stable.
 - Keep Supabase schema changes in separate migrations.
 - SuperSwoop currently records a `swipe_events.direction = "super"` event.
-- Partner listings submit with `status = "pending"`; admin approval should happen outside the public UI for now.
+- Partner listings submit with `status = "pending"`; the service-only exact-hash staff-review RPC can advance that legacy status to `approved`, while routing finalization, listing activation, and owner consent remain independent gates.

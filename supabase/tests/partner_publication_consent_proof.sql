@@ -226,6 +226,41 @@ begin
 end;
 $$;
 
+-- The supported Swipe category contract is the same eight-value allowlist as
+-- the partner UI. HEHA Local remains the two-category subset.
+do $$
+declare
+  v_partner public.partners;
+  v_category text;
+begin
+  select p.* into v_partner
+  from public.partners p
+  where p.id=current_setting('heha.proof_partner_id')::uuid;
+
+  foreach v_category in array array[
+    'Restaurant','Vendor','Catering','PrivateChef',
+    'Wellness','Coach','Service','Events'
+  ]::text[] loop
+    v_partner.category := v_category;
+    v_partner.categories := array[v_category]::text[];
+    if app_private.is_supported_swipe_partner(v_partner) is not true then
+      raise exception 'supported Swipe category was rejected: %',v_category;
+    end if;
+  end loop;
+
+  v_partner.category := 'ArbitraryLegacyCategory';
+  v_partner.categories := array['ArbitraryLegacyCategory']::text[];
+  if app_private.is_supported_swipe_partner(v_partner) then
+    raise exception 'arbitrary legacy category entered the supported Swipe contract';
+  end if;
+
+  insert into pg_temp.partner_publication_consent_results values (
+    'supported Swipe category allowlist',true,
+    'all eight UI categories are supported; arbitrary legacy categories fail closed'
+  );
+end;
+$$;
+
 -- Unsupported group-order URL is denied; only the exact future exporter shape
 -- is recognized internally. The final public projection still disables Local.
 do $$
@@ -260,8 +295,7 @@ $$;
 -- earlier review stays bound to its earlier consent event and cannot authorize
 -- the new exact owner consent.
 update public.partners
-set status = 'live',
-    website_eligible = false,
+set website_eligible = false,
     swipe_eligible = true,
     local_eligible = true,
     local_lane = app_private.wave1_local_lane(partners),
@@ -442,6 +476,10 @@ begin
   if v_status -> 'publication_destinations' <> '["heha_swipe"]'::jsonb then
     raise exception 'Local-only withdrawal did not preserve Swipe consent';
   end if;
+  if v_status -> 'prepare_destinations' <> '["heha_swipe", "heha_local"]'::jsonb
+     or (v_status ->> 'needs_publication_approval')::boolean is not true then
+    raise exception 'Local withdrawal did not remain an explicit, destination-scoped reapproval choice';
+  end if;
   if exists (select 1 from public.public_local_partners where id = v_partner_id) then
     raise exception 'Local export or CTA became public';
   end if;
@@ -566,6 +604,430 @@ begin
   );
 end;
 $$;
+
+-- A Catering registration that selects only Swipe does not make a Tampa Bay
+-- service-area attestation. Selecting Local still requires that attestation
+-- before either the partner or its consent evidence is written.
+select pg_temp.set_auth_context(
+  'authenticated',
+  current_setting('heha.proof_owner_id')::uuid,
+  'owner@heha.example'
+);
+set local role authenticated;
+do $$
+declare
+  v_swipe_key uuid := gen_random_uuid();
+  v_local_key uuid := gen_random_uuid();
+  v_result jsonb;
+  v_local_name text := 'Unattested Local Registration ' || v_local_key::text;
+begin
+  v_result := public.submit_partner_registration_with_consent(
+    p_submission_key => v_swipe_key,
+    p_name => 'Swipe-only Catering Registration',
+    p_categories => array['Catering']::text[],
+    p_neighborhood => 'Tampa Bay',
+    p_tagline => 'Catering available by request',
+    p_bio => 'A proof-only catering registration for the Swipe consent boundary.',
+    p_destinations => array['heha_swipe']::text[],
+    p_authorized_representative_name => 'Wave One Owner',
+    p_authorized_representative_title => 'Owner',
+    p_media_permission_confirmed => true,
+    p_tampa_bay_service_confirmed => false,
+    p_consent_statement_version => 'wave1-profile-consent-2026-08-10'
+  );
+  if public.submit_partner_registration_with_consent(
+    p_submission_key => v_swipe_key,
+    p_name => 'Swipe-only Catering Registration',
+    p_categories => array['Catering']::text[],
+    p_neighborhood => 'Tampa Bay',
+    p_tagline => 'Catering available by request',
+    p_bio => 'A proof-only catering registration for the Swipe consent boundary.',
+    p_destinations => array['heha_swipe']::text[],
+    p_authorized_representative_name => 'Wave One Owner',
+    p_authorized_representative_title => 'Owner',
+    p_media_permission_confirmed => true,
+    p_tampa_bay_service_confirmed => false,
+    p_consent_statement_version => 'wave1-profile-consent-2026-08-10'
+  ) is distinct from v_result then
+    raise exception 'Swipe-only Catering registration retry changed its response';
+  end if;
+
+  begin
+    perform public.submit_partner_registration_with_consent(
+      p_submission_key => v_local_key,
+      p_name => v_local_name,
+      p_categories => array['Catering']::text[],
+      p_neighborhood => 'Tampa Bay',
+      p_tagline => 'Catering available by request',
+      p_bio => 'A proof-only catering registration missing Local service attestation.',
+      p_destinations => array['heha_local']::text[],
+      p_authorized_representative_name => 'Wave One Owner',
+      p_authorized_representative_title => 'Owner',
+      p_media_permission_confirmed => true,
+      p_tampa_bay_service_confirmed => false,
+      p_consent_statement_version => 'wave1-profile-consent-2026-08-10'
+    );
+    raise exception 'Local Catering registration omitted Tampa Bay attestation';
+  exception when check_violation then null;
+  end;
+
+  perform set_config('heha.proof_swipe_only_registration_key', v_swipe_key::text, true);
+  perform set_config('heha.proof_unattested_local_registration_key', v_local_key::text, true);
+  perform set_config('heha.proof_unattested_local_registration_name', v_local_name, true);
+  perform set_config('heha.proof_swipe_only_registration_id', v_result ->> 'id', true);
+end;
+$$;
+reset role;
+
+do $$
+begin
+  if (select count(*) from public.partner_publication_consent_events
+      where request_key = current_setting('heha.proof_swipe_only_registration_key')::uuid
+        and destination = 'heha_swipe'
+        and action = 'prepare_profile'
+        and state = 'granted'
+        and local_lane is null
+        and service_area_attested is false) <> 1 then
+    raise exception 'Swipe-only Catering registration wrote missing or Local-scoped evidence';
+  end if;
+  if exists (
+    select 1
+    from public.partner_publication_consent_events
+    where request_key = current_setting('heha.proof_unattested_local_registration_key')::uuid
+  ) or exists (
+    select 1
+    from public.partners
+    where owner_id = current_setting('heha.proof_owner_id')::uuid
+      and name = current_setting('heha.proof_unattested_local_registration_name')
+  ) then
+    raise exception 'rejected unattested Local registration wrote a partner or consent evidence';
+  end if;
+  if not exists (
+    select 1
+    from public.partners
+    where id = current_setting('heha.proof_swipe_only_registration_id')::uuid
+      and owner_id = current_setting('heha.proof_owner_id')::uuid
+  ) then
+    raise exception 'Swipe-only Catering registration did not create its owned pending profile';
+  end if;
+
+  insert into pg_temp.partner_publication_consent_results values (
+    'registration destination-scoped Tampa attestation', true,
+    'Swipe-only Catering registration succeeds without Local attestation; Local selection still requires it and fails atomically'
+  );
+end;
+$$;
+
+-- Existing non-Wave-1 owners may explicitly authorize HEHA Swipe without a
+-- Tampa Bay attestation. HEHA Local remains category-gated, and a rejected
+-- Local request must not write even a partial consent event.
+do $$
+begin
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('request.jwt.claim.sub', '', true);
+  perform set_config('request.jwt.claim.role', '', true);
+  perform set_config('app.hybrid_partner_context', '', true);
+end;
+$$;
+
+create temporary table non_wave_original_partner_category (
+  partner_id uuid primary key,
+  category text not null,
+  categories text[] not null
+) on commit drop;
+
+insert into non_wave_original_partner_category(partner_id, category, categories)
+select p.id, p.category, p.categories
+from public.partners p
+where p.id = current_setting('heha.proof_partner_id')::uuid;
+
+update public.partners
+set category = 'Wellness',
+    categories = array['Wellness']::text[],
+    updated_at = now()
+where id = current_setting('heha.proof_partner_id')::uuid;
+
+select pg_temp.set_auth_context(
+  'authenticated',
+  current_setting('heha.proof_owner_id')::uuid,
+  'owner@heha.example'
+);
+set local role authenticated;
+do $$
+declare
+  v_partner_id uuid := current_setting('heha.proof_partner_id')::uuid;
+  v_prepare_key uuid := gen_random_uuid();
+  v_publish_key uuid := gen_random_uuid();
+  v_local_prepare_key uuid := gen_random_uuid();
+  v_local_publish_key uuid := gen_random_uuid();
+  v_prepare_result jsonb;
+  v_publish_result jsonb;
+  v_status jsonb;
+begin
+  v_status := public.get_my_partner_publication_status(v_partner_id);
+  if v_status -> 'prepare_destinations' <> '["heha_swipe"]'::jsonb then
+    raise exception 'category drift left stale HEHA Local preparation in owner status';
+  end if;
+
+  begin
+    perform public.authorize_existing_partner_profile_preparation(
+      v_partner_id, array['heha_local']::text[],
+      'Wellness Owner', 'Owner', true, true, v_local_prepare_key,
+      'wave1-profile-consent-2026-08-10'
+    );
+    raise exception 'non-Wave-1 owner prepared an HEHA Local profile';
+  exception when check_violation then null;
+  end;
+
+  v_prepare_result := public.authorize_existing_partner_profile_preparation(
+    v_partner_id, array['heha_swipe']::text[],
+    'Wellness Owner', 'Owner', true, false, v_prepare_key,
+    'wave1-profile-consent-2026-08-10'
+  );
+  if public.authorize_existing_partner_profile_preparation(
+    v_partner_id, array['heha_swipe']::text[],
+    'Wellness Owner', 'Owner', true, false, v_prepare_key,
+    'wave1-profile-consent-2026-08-10'
+  ) is distinct from v_prepare_result then
+    raise exception 'non-Wave-1 owner preparation retry changed its response';
+  end if;
+
+  v_status := public.get_my_partner_publication_status(v_partner_id);
+  begin
+    perform public.authorize_partner_profile_publication(
+      v_partner_id, array['heha_local']::text[],
+      'Wellness Owner', 'Owner', v_local_publish_key,
+      'wave1-profile-consent-2026-08-10',
+      v_status ->> 'profile_snapshot_hash'
+    );
+    raise exception 'non-Wave-1 owner authorized HEHA Local publication';
+  exception when check_violation then null;
+  end;
+
+  v_publish_result := public.authorize_partner_profile_publication(
+    v_partner_id, array['heha_swipe']::text[],
+    'Wellness Owner', 'Owner', v_publish_key,
+    'wave1-profile-consent-2026-08-10',
+    v_status ->> 'profile_snapshot_hash'
+  );
+  if public.authorize_partner_profile_publication(
+    v_partner_id, array['heha_swipe']::text[],
+    'Wellness Owner', 'Owner', v_publish_key,
+    'wave1-profile-consent-2026-08-10',
+    v_status ->> 'profile_snapshot_hash'
+  ) is distinct from v_publish_result then
+    raise exception 'non-Wave-1 owner publication retry changed its response';
+  end if;
+
+  v_status := public.get_my_partner_publication_status(v_partner_id);
+  if v_status -> 'publication_destinations' <> '["heha_swipe"]'::jsonb then
+    raise exception 'non-Wave-1 owner did not receive Swipe-only publication authorization';
+  end if;
+
+  perform set_config('heha.proof_non_wave_prepare_key', v_prepare_key::text, true);
+  perform set_config('heha.proof_non_wave_publish_key', v_publish_key::text, true);
+  perform set_config('heha.proof_non_wave_local_prepare_key', v_local_prepare_key::text, true);
+  perform set_config('heha.proof_non_wave_local_publish_key', v_local_publish_key::text, true);
+  perform set_config(
+    'heha.proof_non_wave_hash',
+    v_status ->> 'profile_snapshot_hash',
+    true
+  );
+end;
+$$;
+reset role;
+
+do $$
+begin
+  if (select count(*) from public.partner_publication_consent_events
+      where request_key = current_setting('heha.proof_non_wave_prepare_key')::uuid
+        and destination = 'heha_swipe'
+        and action = 'prepare_profile'
+        and state = 'granted'
+        and local_lane is null
+        and service_area_attested is false) <> 1
+     or (select count(*) from public.partner_publication_consent_events
+      where request_key = current_setting('heha.proof_non_wave_publish_key')::uuid
+        and destination = 'heha_swipe'
+        and action = 'publish_profile'
+        and state = 'granted'
+        and local_lane is null
+        and service_area_attested is false) <> 1 then
+    raise exception 'non-Wave-1 owner Swipe evidence is missing or carries Local attestation';
+  end if;
+  if exists (
+    select 1
+    from public.partner_publication_consent_events
+    where request_key in (
+      current_setting('heha.proof_non_wave_local_prepare_key')::uuid,
+      current_setting('heha.proof_non_wave_local_publish_key')::uuid
+    )
+  ) then
+    raise exception 'rejected non-Wave-1 Local owner request wrote consent evidence';
+  end if;
+end;
+$$;
+
+-- The verified-evidence path has the same surface boundary: real service
+-- authority may record non-Wave-1 Swipe evidence, but never Local evidence.
+select pg_temp.set_auth_context(
+  'authenticated',
+  current_setting('heha.proof_super_admin_id')::uuid,
+  'service-proof@heha.example'
+);
+set local role service_role;
+do $$
+declare
+  v_partner_id uuid := current_setting('heha.proof_partner_id')::uuid;
+  v_prepare_key uuid := gen_random_uuid();
+  v_publish_key uuid := gen_random_uuid();
+  v_local_prepare_key uuid := gen_random_uuid();
+  v_local_publish_key uuid := gen_random_uuid();
+  v_prepare_event uuid;
+  v_publish_event uuid;
+begin
+  begin
+    perform public.record_verified_partner_publication_consent(
+      v_partner_id, 'heha_local', 'prepare_profile', 'granted',
+      'Wellness Representative', 'Owner', 'wellness@heha.example',
+      'non-wave-local-prepare-denial', v_local_prepare_key,
+      'wave1-profile-consent-2026-08-10', null, true, true,
+      array['Tampa Bay']::text[]
+    );
+    raise exception 'verified non-Wave-1 HEHA Local preparation was accepted';
+  exception when check_violation then null;
+  end;
+
+  v_prepare_event := public.record_verified_partner_publication_consent(
+    v_partner_id, 'heha_swipe', 'prepare_profile', 'granted',
+    'Wellness Representative', 'Owner', 'wellness@heha.example',
+    'non-wave-swipe-prepare', v_prepare_key,
+    'wave1-profile-consent-2026-08-10', null, true, false,
+    array['Tampa Bay']::text[]
+  );
+  if public.record_verified_partner_publication_consent(
+    v_partner_id, 'heha_swipe', 'prepare_profile', 'granted',
+    'Wellness Representative', 'Owner', 'wellness@heha.example',
+    'non-wave-swipe-prepare', v_prepare_key,
+    'wave1-profile-consent-2026-08-10', null, true, false,
+    array['Tampa Bay']::text[]
+  ) is distinct from v_prepare_event then
+    raise exception 'verified non-Wave-1 Swipe preparation was not idempotent';
+  end if;
+
+  begin
+    perform public.record_verified_partner_publication_consent(
+      v_partner_id, 'heha_local', 'publish_profile', 'granted',
+      'Wellness Representative', 'Owner', 'wellness@heha.example',
+      'non-wave-local-publish-denial', v_local_publish_key,
+      'wave1-profile-consent-2026-08-10',
+      current_setting('heha.proof_non_wave_hash'), true, true,
+      array['Tampa Bay']::text[]
+    );
+    raise exception 'verified non-Wave-1 HEHA Local publication was accepted';
+  exception when check_violation then null;
+  end;
+
+  v_publish_event := public.record_verified_partner_publication_consent(
+    v_partner_id, 'heha_swipe', 'publish_profile', 'granted',
+    'Wellness Representative', 'Owner', 'wellness@heha.example',
+    'non-wave-swipe-publish', v_publish_key,
+    'wave1-profile-consent-2026-08-10',
+    current_setting('heha.proof_non_wave_hash'), true, false,
+    array['Tampa Bay']::text[]
+  );
+  if public.record_verified_partner_publication_consent(
+    v_partner_id, 'heha_swipe', 'publish_profile', 'granted',
+    'Wellness Representative', 'Owner', 'wellness@heha.example',
+    'non-wave-swipe-publish', v_publish_key,
+    'wave1-profile-consent-2026-08-10',
+    current_setting('heha.proof_non_wave_hash'), true, false,
+    array['Tampa Bay']::text[]
+  ) is distinct from v_publish_event then
+    raise exception 'verified non-Wave-1 Swipe publication was not idempotent';
+  end if;
+
+  perform set_config('heha.proof_non_wave_verified_prepare_key', v_prepare_key::text, true);
+  perform set_config('heha.proof_non_wave_verified_publish_key', v_publish_key::text, true);
+  perform set_config('heha.proof_non_wave_verified_local_prepare_key', v_local_prepare_key::text, true);
+  perform set_config('heha.proof_non_wave_verified_local_publish_key', v_local_publish_key::text, true);
+end;
+$$;
+reset role;
+
+do $$
+declare
+  v_partner public.partners;
+begin
+  select p.* into v_partner
+  from public.partners p
+  where p.id = current_setting('heha.proof_partner_id')::uuid;
+
+  if (select count(*) from public.partner_publication_consent_events
+      where request_key = current_setting('heha.proof_non_wave_verified_prepare_key')::uuid
+        and destination = 'heha_swipe'
+        and action = 'prepare_profile'
+        and state = 'granted'
+        and local_lane is null
+        and service_area_attested is false) <> 1
+     or (select count(*) from public.partner_publication_consent_events
+      where request_key = current_setting('heha.proof_non_wave_verified_publish_key')::uuid
+        and destination = 'heha_swipe'
+        and action = 'publish_profile'
+        and state = 'granted'
+        and local_lane is null
+        and service_area_attested is false) <> 1 then
+    raise exception 'verified non-Wave-1 Swipe evidence is missing or carries Local attestation';
+  end if;
+  if exists (
+    select 1
+    from public.partner_publication_consent_events
+    where request_key in (
+      current_setting('heha.proof_non_wave_verified_local_prepare_key')::uuid,
+      current_setting('heha.proof_non_wave_verified_local_publish_key')::uuid
+    )
+  ) then
+    raise exception 'rejected verified non-Wave-1 Local request wrote consent evidence';
+  end if;
+  if not app_private.has_current_partner_publication_authorization(v_partner, 'heha_swipe')
+     or app_private.has_current_partner_publication_authorization(v_partner, 'heha_local') then
+    raise exception 'verified non-Wave-1 evidence did not preserve the Swipe-only boundary';
+  end if;
+  if exists (
+       select 1 from public.public_swipe_partners where id = v_partner.id
+     ) or exists (
+       select 1 from public.public_partner_directory where id = v_partner.id
+     ) or exists (
+       select 1 from public.public_local_partners where id = v_partner.id
+     ) then
+    raise exception 'non-Wave-1 consent bypassed exact staff review or Local export';
+  end if;
+
+  insert into pg_temp.partner_publication_consent_results values (
+    'non-Wave-1 Swipe consent boundary', true,
+    'owner and verified evidence authorize only Swipe; Local denial writes nothing; retries stay idempotent; consent alone stays non-public'
+  );
+end;
+$$;
+
+-- Restore the caller-provided Wave-1 proof row before the later BOLA and
+-- former-owner checks. The non-Wave-1 events remain append-only and become
+-- stale because their exact profile snapshot no longer matches.
+do $$
+begin
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('request.jwt.claim.sub', '', true);
+  perform set_config('request.jwt.claim.role', '', true);
+  perform set_config('app.hybrid_partner_context', '', true);
+end;
+$$;
+
+update public.partners p
+set category = original.category,
+    categories = original.categories,
+    updated_at = now()
+from non_wave_original_partner_category original
+where p.id = original.partner_id;
 
 -- BOLA: unrelated authenticated user cannot inspect or narrow this partner.
 select pg_temp.set_auth_context('authenticated', gen_random_uuid(), 'unrelated@heha.example');

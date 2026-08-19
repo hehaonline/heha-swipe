@@ -440,6 +440,7 @@ declare
   normalized_reason text := nullif(pg_catalog.btrim(coalesce(p_reason,'')),'');
   payload_hash text;
   new_id uuid;
+  prior_status text;
 begin
   if not app_private.is_service_role_request() then
     raise exception using
@@ -590,6 +591,18 @@ begin
       message='Current exact-version owner publication consent is required before HEHA staff review.';
   end if;
 
+  if p_decision='approved'
+     and (
+       partner_row.status is null
+       or partner_row.status<>all(array[
+         'pending','approved','live'
+       ]::text[])
+     ) then
+    raise exception using
+      errcode='23514',
+      message='This partner profile is not in a reviewable publication status.';
+  end if;
+
   insert into public.partner_publication_review_events(
     partner_id,owner_id,destination,decision,consent_event_id,
     consent_event_sequence,profile_snapshot,profile_snapshot_hash,request_key,
@@ -601,21 +614,45 @@ begin
   )
   returning id into new_id;
 
-  -- This evidence-bound transition is the only supported path from a newly
-  -- submitted pending profile to approved. It occurs in the same transaction
-  -- as the exact-hash, current-owner, active-reviewer approval event.
-  if p_decision='approved' and partner_row.status='pending' then
-    update public.partners p
+  -- The exact-hash review is the supported successor for the narrow legacy
+  -- profile-review transition only. A legacy suggestion trigger may populate
+  -- non-authoritative eligibility hints, but finalized routing, listing
+  -- activation, owner authorization and public-view gates remain independent;
+  -- this does not restore the retired one-step approve_partner RPC.
+  if p_decision='approved'
+     and partner_row.status='pending' then
+    prior_status := partner_row.status;
+
+    update public.partners partner_update
     set status='approved',
         updated_at=pg_catalog.now()
-    where p.id=partner_row.id
-      and p.status='pending'
-      and app_private.partner_public_profile_hash(p)=current_snapshot_hash;
+    where partner_update.id=partner_row.id
+      and partner_update.status=prior_status
+      and app_private.partner_public_profile_hash(partner_update)=current_snapshot_hash;
+
     if not found then
       raise exception using
         errcode='40001',
-        message='Partner lifecycle changed before the exact-hash approval transition completed.';
+        message='Partner lifecycle or exact public profile changed during exact-hash review.';
     end if;
+
+    insert into public.partner_lifecycle_events(
+      partner_id,event_type,actor_id,before_state,after_state
+    ) values (
+      partner_row.id,
+      'publication_review_status_approved',
+      p_reviewed_by,
+      pg_catalog.jsonb_build_object(
+        'partner_id',partner_row.id,
+        'status',prior_status
+      ),
+      pg_catalog.jsonb_build_object(
+        'partner_id',partner_row.id,
+        'status','approved',
+        'publication_review_event_id',new_id,
+        'destination',p_destination
+      )
+    );
   end if;
 
   return new_id;
@@ -628,6 +665,83 @@ revoke all on function public.record_partner_publication_review(
 grant execute on function public.record_partner_publication_review(
   uuid,uuid,text,text,text,uuid,text
 ) to service_role;
+
+-- Converge the existing routing-review capability so this final migration is
+-- self-contained on both the current schema and the disposable proof lineage.
+-- Exact-hash profile review never calls this function: routing finalization is
+-- still a separate authenticated staff decision, and only super_admin may
+-- finalize it.
+create or replace function public.review_partner_routing(
+  p_partner_id uuid,
+  p_heha_pillar text,
+  p_website_eligible boolean,
+  p_swipe_eligible boolean,
+  p_local_eligible boolean,
+  p_local_lane text,
+  p_primary_cta_destination text,
+  p_primary_cta_label text,
+  p_primary_cta_path text,
+  p_routing_notes text,
+  p_finalize boolean default false
+)
+returns void
+language plpgsql
+security definer
+set search_path=''
+as $function$
+begin
+  if not app_private.has_internal_role(
+    array['super_admin','pm_admin','developer_admin']::text[]
+  ) then
+    raise exception using
+      errcode='42501',
+      message='HEHA PM or Admin role required.';
+  end if;
+
+  if p_finalize
+     and not app_private.has_internal_role(array['super_admin']::text[]) then
+    raise exception using
+      errcode='42501',
+      message='Super-admin approval is required to finalize routing.';
+  end if;
+
+  if p_partner_id is null then
+    raise exception using errcode='22023',message='Partner identifier is required.';
+  end if;
+
+  if coalesce(p_local_eligible,false) and p_local_lane is null then
+    raise exception using
+      errcode='23514',
+      message='HEHA Local eligible partners require a local lane.';
+  end if;
+
+  update public.partners partner_update
+  set heha_pillar=p_heha_pillar,
+      website_eligible=coalesce(p_website_eligible,false),
+      swipe_eligible=coalesce(p_swipe_eligible,false),
+      local_eligible=coalesce(p_local_eligible,false),
+      local_lane=case when coalesce(p_local_eligible,false) then p_local_lane else null end,
+      primary_cta_destination=p_primary_cta_destination,
+      primary_cta_label=p_primary_cta_label,
+      primary_cta_path=p_primary_cta_path,
+      routing_notes=p_routing_notes,
+      routing_status=case when p_finalize then 'approved' else 'needs_review' end,
+      routing_updated_by=(select auth.uid()),
+      routing_updated_at=pg_catalog.now()
+  where partner_update.id=p_partner_id;
+
+  if not found then
+    raise exception using errcode='P0002',message='Partner not found.';
+  end if;
+end;
+$function$;
+
+revoke all on function public.review_partner_routing(
+  uuid,text,boolean,boolean,boolean,text,text,text,text,text,boolean
+) from public,anon,authenticated,service_role;
+grant execute on function public.review_partner_routing(
+  uuid,text,boolean,boolean,boolean,text,text,text,text,text,boolean
+) to authenticated;
 
 -- The legacy approve_partner RPC conflates review, routing and publication. It
 -- is not part of the integrated contract. HEHA relationship approval remains
@@ -721,6 +835,30 @@ drop view if exists app_private.partner_publication_projection;
 -- dependencies are resolved now, not looked up through the querying role when
 -- a public stored view executes them. CREATE OR REPLACE preserves their OIDs,
 -- ownership and existing privileges; the exact ACL is converged below.
+create or replace function app_private.is_supported_swipe_partner(
+  p_partner public.partners
+)
+returns boolean
+language sql
+immutable
+security invoker
+set search_path = ''
+return
+  pg_catalog.lower(pg_catalog.btrim(coalesce(p_partner.category,''))) in (
+    'restaurant','vendor','catering','privatechef','private chef',
+    'wellness','coach','service','events'
+  )
+  or exists (
+    select 1
+    from pg_catalog.unnest(
+      coalesce(p_partner.categories,array[]::text[])
+    ) as category_row(value)
+    where pg_catalog.lower(pg_catalog.btrim(category_row.value)) in (
+      'restaurant','vendor','catering','privatechef','private chef',
+      'wellness','coach','service','events'
+    )
+  );
+
 create or replace function app_private.partner_public_profile_snapshot(
   p_partner public.partners
 )
@@ -806,8 +944,8 @@ with base as (
 select
   base.*,
   (
-    base.owner_id is not null
-    and base.publication_is_supported_swipe_partner is true
+    base.publication_is_supported_swipe_partner is true
+    and base.owner_id is not null
     and swipe_prepare.owner_id=base.owner_id
     and swipe_publish.owner_id=base.owner_id
     and swipe_prepare.state='granted'
@@ -844,7 +982,8 @@ select
     and local_publish.profile_snapshot_hash=base.publication_current_profile_snapshot_hash
   ) as publication_current_local_owner_authorized,
   (
-    base.owner_id is not null
+    base.publication_is_supported_swipe_partner is true
+    and base.owner_id is not null
     and swipe_review.owner_id=base.owner_id
     and swipe_review.decision='approved'
     and swipe_review.consent_event_id=swipe_publish.id
@@ -1005,6 +1144,7 @@ where false
   and publication_is_supported_swipe_partner is true
   and status=any(array['approved','live']::text[])
   and listing_status='listed'
+  and routing_status='approved'
   and coalesce(swipe_eligible,false)=true
   and is_test_record=false
   and publication_current_swipe_owner_authorized is true
@@ -1061,11 +1201,81 @@ grant select on table public.public_swipe_partners to anon,authenticated,service
 grant select on table public.public_local_partners to anon,authenticated,service_role;
 
 comment on view public.public_partner_directory is
-  'SELECT-only website card projection, intentionally empty until an explicit website-directory destination, owner consent, and exact-hash staff review are implemented. Swipe consent is never reused for website publication.';
+  'SELECT-only website card projection, intentionally empty until a separate explicit website-directory owner-consent and exact-hash staff-review destination is implemented and independently proved. Swipe consent is never reused for website publication.';
 comment on view public.public_swipe_partners is
   'SELECT-only Swipe card projection, intentionally empty until approved versioned terms/privacy acceptance is evidence-bound. Exact current owner consent and exact-hash HEHA staff review remain mandatory; Official Partner is derived only from partnership_status.';
 comment on view public.public_local_partners is
   'SELECT-only Local bridge contract, intentionally empty until a least-privilege Swipe-to-Local exporter is implemented and independently proved.';
+
+-- Some current-schema lineages retain a legacy admin readiness mirror and
+-- partner trigger that called Swipe "live" from status + eligibility alone.
+-- It is not an authoritative publication surface. Where that optional table
+-- exists, cap its Swipe field at ready/not_applicable so neither the pending ->
+-- approved transition nor a legacy eligibility flag can claim publication.
+-- Preserve separately reconciled Local/Wix operational values; neither drives
+-- the deliberately empty public views in this RC.
+do $platform_visibility_convergence$
+begin
+  if pg_catalog.to_regclass('public.admin_platform_visibility') is not null then
+    execute $definition$
+      create or replace function public.sync_partner_platform_visibility()
+      returns trigger
+      language plpgsql
+      security definer
+      set search_path=''
+      as $function$
+      begin
+        insert into public.admin_platform_visibility(
+          partner_id,heha_swipe_status,heha_local_status,wix_status
+        ) values (
+          new.id,
+          case
+            when coalesce(new.swipe_eligible,false) then 'ready'
+            else 'not_applicable'
+          end,
+          'not_applicable',
+          'not_applicable'
+        )
+        on conflict (partner_id) where partner_id is not null do update
+        set heha_swipe_status=excluded.heha_swipe_status,
+            updated_at=pg_catalog.now();
+        return new;
+      end;
+      $function$
+    $definition$;
+
+    execute 'revoke all on function public.sync_partner_platform_visibility() from public,anon,authenticated,service_role';
+    execute 'drop trigger if exists partners_sync_platform_visibility on public.partners';
+    execute $trigger$
+      create trigger partners_sync_platform_visibility
+      after insert or update of status,website_eligible,swipe_eligible,local_eligible,local_lane
+      on public.partners
+      for each row execute function public.sync_partner_platform_visibility()
+    $trigger$;
+
+    execute $refresh$
+      insert into public.admin_platform_visibility(
+        partner_id,heha_swipe_status,heha_local_status,wix_status
+      )
+      select
+        partner_row.id,
+        case
+          when coalesce(partner_row.swipe_eligible,false) then 'ready'
+          else 'not_applicable'
+        end,
+        'not_applicable',
+        'not_applicable'
+      from public.partners partner_row
+      on conflict (partner_id) where partner_id is not null do update
+      set heha_swipe_status=excluded.heha_swipe_status,
+          updated_at=pg_catalog.now()
+    $refresh$;
+
+    comment on function public.sync_partner_platform_visibility() is
+      'Fail-closed non-authoritative Swipe readiness mirror. Existing separately reconciled Local/Wix values are preserved; public visibility is determined only by the final consent/review/routing/listing-gated views.';
+  end if;
+end;
+$platform_visibility_convergence$;
 
 -- Owner-facing status must distinguish owner consent, current HEHA review and
 -- actual public visibility. In particular, consent alone is not publication,
@@ -1115,7 +1325,21 @@ begin
     );
     if consent_event.id is not null
        and consent_event.owner_id is not distinct from actor_id
-       and consent_event.state='granted' then
+       and consent_event.state='granted'
+       and consent_event.consent_statement_version='wave1-profile-consent-2026-08-10'
+       and consent_event.media_permission_confirmed is true
+       and (
+         (
+           destination='heha_swipe'
+           and app_private.is_supported_swipe_partner(partner_row) is true
+         )
+         or (
+           destination='heha_local'
+           and app_private.wave1_local_lane(partner_row) is not null
+           and consent_event.local_lane=app_private.wave1_local_lane(partner_row)
+           and consent_event.service_area_attested is true
+         )
+       ) then
       prepare_destinations := pg_catalog.array_append(
         prepare_destinations,
         destination
@@ -1216,6 +1440,7 @@ declare
   actual_policies text[];
   helper_function text;
   partner_owner oid;
+  platform_visibility_unsafe boolean := false;
   view_name text;
   view_options text[];
   view_owner oid;
@@ -1478,7 +1703,8 @@ begin
     select 1
     from pg_catalog.unnest(array[
       'app_private.partner_public_profile_snapshot(public.partners)',
-      'app_private.partner_public_profile_hash(public.partners)'
+      'app_private.partner_public_profile_hash(public.partners)',
+      'app_private.is_supported_swipe_partner(public.partners)'
     ]::text[]) parsed_helper(signature)
     join pg_catalog.pg_proc function_row
       on function_row.oid=parsed_helper.signature::regprocedure
@@ -1579,5 +1805,49 @@ begin
         message=pg_catalog.format('PUBLIC retains a privilege on public.%I.',view_name);
     end if;
   end loop;
+
+  if exists (select 1 from public.public_partner_directory) then
+    raise exception using
+      errcode='55000',
+      message='Website directory must remain fail-closed until it has explicit destination consent.';
+  end if;
+
+  if pg_catalog.to_regclass('public.admin_platform_visibility') is not null then
+    execute $check$
+      select exists (
+        select 1
+        from public.admin_platform_visibility visibility_row
+        where visibility_row.partner_id is not null
+          and visibility_row.heha_swipe_status is distinct from 'ready'
+          and visibility_row.heha_swipe_status is distinct from 'not_applicable'
+      )
+    $check$ into platform_visibility_unsafe;
+
+    if pg_catalog.to_regprocedure('public.sync_partner_platform_visibility()') is null
+       or not (
+         select function_row.prosecdef
+         from pg_catalog.pg_proc function_row
+         where function_row.oid='public.sync_partner_platform_visibility()'::regprocedure
+       )
+       or not (
+         select 'search_path=""'=any(coalesce(function_row.proconfig,array[]::text[]))
+         from pg_catalog.pg_proc function_row
+         where function_row.oid='public.sync_partner_platform_visibility()'::regprocedure
+       )
+       or pg_catalog.has_function_privilege(
+         'anon','public.sync_partner_platform_visibility()','EXECUTE'
+       )
+       or pg_catalog.has_function_privilege(
+         'authenticated','public.sync_partner_platform_visibility()','EXECUTE'
+       )
+       or pg_catalog.has_function_privilege(
+         'service_role','public.sync_partner_platform_visibility()','EXECUTE'
+       )
+       or platform_visibility_unsafe then
+      raise exception using
+        errcode='55000',
+        message='Legacy platform visibility was not converged to fail-closed readiness state.';
+    end if;
+  end if;
 end;
 $publication_postconditions$;

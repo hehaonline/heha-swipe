@@ -5,7 +5,7 @@ export const PARTNER_DESTINATIONS = Object.freeze({
   local: "heha_local",
 });
 
-export const SWIPE_CATEGORIES = Object.freeze([
+export const SUPPORTED_PARTNER_CATEGORIES = Object.freeze([
   "Restaurant",
   "Vendor",
   "Catering",
@@ -16,9 +16,12 @@ export const SWIPE_CATEGORIES = Object.freeze([
   "Events",
 ]);
 
+// Backward-compatible public name retained for existing UI/security contracts.
+export const SWIPE_CATEGORIES = SUPPORTED_PARTNER_CATEGORIES;
+
 const LOCAL_CATEGORIES = new Set(["catering", "privatechef", "private chef"]);
 const SWIPE_CATEGORY_KEYS = new Set([
-  ...SWIPE_CATEGORIES.map((category) => category.toLowerCase()),
+  ...SUPPORTED_PARTNER_CATEGORIES.map((category) => category.toLowerCase()),
   "private chef",
 ]);
 const VALID_DESTINATIONS = new Set(Object.values(PARTNER_DESTINATIONS));
@@ -50,7 +53,6 @@ export function deriveWave1LocalLane(categories = []) {
 
 export function availablePartnerDestinations(categories = []) {
   const destinations = [];
-
   if (supportsHehaSwipe(categories)) {
     destinations.push({
       value: PARTNER_DESTINATIONS.swipe,
@@ -77,10 +79,26 @@ export function normalizePartnerDestinations(destinations = [], categories = [])
     .map((destination) => String(destination || "").trim())
     .filter((destination) => {
       if (!VALID_DESTINATIONS.has(destination)) return false;
-      if (destination === PARTNER_DESTINATIONS.local) return localAllowed;
-      return swipeAllowed;
+      if (destination === PARTNER_DESTINATIONS.swipe) return swipeAllowed;
+      return destination !== PARTNER_DESTINATIONS.local || localAllowed;
     }))]
     .sort();
+}
+
+export function publicationApprovalDestinationCandidates(status) {
+  const current = new Set(
+    (Array.isArray(status?.publication_destinations)
+      ? status.publication_destinations
+      : [])
+      .filter((destination) => VALID_DESTINATIONS.has(destination))
+  );
+
+  return [...new Set(
+    (Array.isArray(status?.prepare_destinations)
+      ? status.prepare_destinations
+      : [])
+      .filter((destination) => VALID_DESTINATIONS.has(destination))
+  )].filter((destination) => !current.has(destination));
 }
 
 export function validatePartnerDraftAuthorization({
@@ -114,7 +132,10 @@ export function validatePartnerDraftAuthorization({
   if (!mediaPermissionConfirmed) {
     errors.mediaPermissionConfirmed = "Confirm that supplied business media may be used for the reviewed profile.";
   }
-  if (normalized.includes(PARTNER_DESTINATIONS.local) && !tampaBayServiceConfirmed) {
+  if (
+    normalized.includes(PARTNER_DESTINATIONS.local)
+    && !tampaBayServiceConfirmed
+  ) {
     errors.tampaBayServiceConfirmed = "Confirm that this business accepts requests in Tampa Bay.";
   }
 

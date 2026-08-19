@@ -33,15 +33,25 @@ publication projection and all three public partner views.
 - Public views expose exactly the reviewed 33-column allowlist.
 - Owner IDs, contact details, phone numbers, routing notes, review actors,
   analytics, lifecycle fields, and internal pricing remain private.
-- Visibility requires an approved/live non-test row, `listing_status='listed'`,
-  destination eligibility, current owner consent, an exact current content
-  snapshot, and a separate exact-hash HEHA staff publication review.
-- A pending partner cannot move to approved/live through owner consent alone.
-  The supported transition requires a HEHA staff review of the exact current
-  profile hash; any drift or missing review remains fail-closed.
-- Website-directory publication is a separate destination and remains disabled
-  until its own explicit, versioned directory consent is implemented. HEHA
-  Swipe consent must never be reused as website-directory consent.
+- HEHA Swipe visibility requires an approved/live non-test row,
+  `listing_status='listed'`, finalized routing, Swipe eligibility, current owner
+  consent, an exact current content snapshot, and a separate exact-hash HEHA
+  staff publication review.
+- The HEHA Swipe public projection nevertheless remains intentionally empty in
+  this RC until founder/legal approves immutable partner-terms and privacy
+  versions and a successor binds both explicit acknowledgements to the private
+  evidence contract. The gates above are necessary, not yet sufficient.
+- A first approved exact-hash staff review may advance only the legacy profile
+  review status from `pending` to `approved`. It does not activate
+  routing, listing, owner consent, Official Partner status, or any public view;
+  profile drift or a missing current review remains fail-closed.
+- The website directory is intentionally empty until it has a separate explicit
+  owner-consent destination and independent staff review. Swipe consent is never
+  reused for website publication.
+- Any legacy `admin_platform_visibility` Swipe field is non-authoritative and
+  capped at `ready`/`not_applicable`; it cannot claim Swipe is live from legacy
+  status and eligibility flags. Separately reconciled Local/Wix operational
+  values are preserved and do not drive the deliberately empty public views.
 - Owner consent never grants Official Partner status. Public `heha_partner` is
   derived only from `partnership_status='official_partner'`.
 - Withdrawal, profile drift, listing opt-out/removal, owner release, or stale
