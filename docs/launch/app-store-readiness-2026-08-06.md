@@ -1095,6 +1095,23 @@ Verified through GitHub: exact one-commit/three-file delta, current source, full
 
 Collision/scope: the refreshed sweep covered all 27 open Swipe PRs, including new PR #128; only #116 changes this readiness document. This audit update changes documentation only and does not modify #127, migrations, workflows, runtime code, database state, partner records, environments, deployments, or external services.
 
+
+## Current Swipe proof-trigger and SEC-002 regression reconciliation — 2026-08-19
+
+This section supersedes the workflow-trigger status in the immediately preceding SEC-002 reconciliation. It does not supersede the four P1 publication-contract blockers.
+
+- **Exact state:** Swipe PR #127 remains open, draft, and mergeable at `b7bd3e2a5f46be13f966cd5f31a43d3aecfea67b`, one commit after the SEC-002 source-removal head `4d1314aeded0b5df6fb8b1e75de17e5cff51137d`.
+- **Bounded delta accepted:** the three-file delta broadens the integration-proof pull-request trigger from the previously enumerated backend paths to `src/**`, adds `src/lib/partnerBrowserWebhookBoundary.test.js`, and corrects README wording from an undefined admin approval path to a manual HEHA review handoff. The regression test scans client source, `.env.example`, and README for the removed partner webhook variable; rejects a browser `fetch(` path in Partner Wizard; and preserves the durable database submission-before-success ordering.
+- **SEC-002 guard is now executable evidence:** the workflow explicitly runs the new regression, rejects reintroduction of the removed variable in tracked source, builds with a synthetic forbidden endpoint, and fails if either the endpoint or variable name appears in `dist`. This is stronger evidence than the prior source-only absence check.
+- **Exact-head proof passes:** Partner Publication Integration Proof run [#32294246193](https://github.com/hehaonline/heha-swipe/actions/runs/32294246193) completed successfully. Literal-head verification, disposable Supabase startup, donor handoff, lifecycle and final migrations, consent/combined SQL, replay, both concurrency proofs, focused JavaScript contracts, production build, browser-webhook source/bundle guards, raw-anonymous-exposure negative control, sanitized evidence upload, and cleanup all report success. Vercel and Snyk also report success.
+- **Review state:** all five inline threads remain unresolved in GitHub. The P2 workflow-path finding is addressed by this exact delta and passing run but still awaits thread resolution by the PR owner. The four P1 findings remain unchanged: no supported pending→approved/live transition, no supported consent preparation for existing non-Wave-1 profiles, Swipe consent can authorize the separate website directory, and the owner UI has no withdrawal action after approval.
+
+**Safe release default:** treat the P2 trigger gap and SEC-002 browser path as repaired in exact-head evidence, but keep #127 draft and unapplied. Resolve the four P1 publication-contract findings with least-privilege functions, destination-exact consent, visible withdrawal/recovery, and disposable unauthorized/retry/concurrency proofs before any merge or migration decision. Do not resolve the P2 thread without linking the exact passing run, and do not recreate a client-side webhook.
+
+Verified through GitHub: exact one-commit/three-file delta, full changed file contents, exact workflow trigger and guard commands, job-step conclusions for run #32294246193, Vercel/Snyk statuses, draft/mergeable state, and five-thread state. Not run independently: local Node tests/build, Supabase/PostgreSQL, browser/authenticated flows, accessibility QA, external Make/environment inspection, deployment, or Production.
+
+Collision/scope: all 27 open Swipe PR file sets were refreshed immediately before this write; only #116 changes this audit document. This update changes documentation only and does not modify #127, runtime code, workflows, migrations, data, environments, deployments, or external services.
+
 ## Rollback
 
 This audit changes documentation only. Reverting its documentation commits removes the document. No application code, dependency, manifest, deployment, native project, signing material, store record, Supabase state, or external service is changed.
