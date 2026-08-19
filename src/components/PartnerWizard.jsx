@@ -269,39 +269,12 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
         submissionKey,
       });
 
-      let reviewHandoffWarning = null;
-      try {
-        const webhookUrl = import.meta.env.VITE_MAKE_PARTNER_APPROVAL_WEBHOOK;
-        if (webhookUrl) {
-          const controller = new AbortController();
-          const timeoutId = window.setTimeout(() => controller.abort(), 5000);
-          try {
-            const response = await fetch(webhookUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              signal: controller.signal,
-              body: JSON.stringify({
-                partner_id: data.id,
-                partner_name: data.name,
-                category: data.category,
-                categories: data.categories || form.categories,
-                neighborhood: form.neighborhood.trim(),
-                owner_email: user.email || user.phone,
-                requested_destinations: authorizationResult.destinations,
-                status: "pending_review",
-              }),
-            });
-            if (!response.ok) throw new Error(`Partner review handoff returned ${response.status}.`);
-          } finally {
-            window.clearTimeout(timeoutId);
-          }
-        }
-      } catch {
-        reviewHandoffWarning = "Your registration is saved in HEHA’s review queue, but the optional review notification did not send. HEHA can still recover and review this submission.";
-      }
-
+      // SEC-002: the durable review-queue write above is the authoritative
+      // review handoff. No browser-side webhook notification is sent; any
+      // optional notification must come from an authenticated server-side
+      // consumer with a protected secret (see issue #86).
       setSubmittedListing(data);
-      setStatusError(reviewHandoffWarning);
+      setStatusError(null);
     } catch (error) {
       setErrors({ submit: error.message || "Could not submit this listing yet." });
     } finally {

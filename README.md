@@ -53,7 +53,6 @@ Optional:
 
 ```bash
 VITE_MAKE_NEW_USER_WEBHOOK=
-VITE_MAKE_PARTNER_APPROVAL_WEBHOOK=
 ```
 
 ## Local development
