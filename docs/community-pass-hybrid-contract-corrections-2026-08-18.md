@@ -14,7 +14,7 @@ It is binding wherever it adds detail to or conflicts with the parent contract. 
 
 ### Corrected authority links
 
-The duplicated link in the parent header is incorrect. The valid HEHA-wide authority is:
+The duplicated link in the earlier parent header is corrected in the parent source. The valid HEHA-wide authority is:
 
 - https://github.com/hehaonline/heha-order-hub/issues/234
 
@@ -27,7 +27,7 @@ The duplicated link in the parent header is incorrect. The valid HEHA-wide autho
 | Order Hub #234 hybrid correction comment `5326475528` | Controls HEHA-wide finance/reward integration and the recurring-versus-prepaid correction. |
 | Swipe #125 founder visual/copy comment `5328777557` | Controls the `$2–$100` slider UX and exact impact wording. |
 | PR #126 founder copy-lock comment `5329293565` | Controls placement, copy consistency, and the fixed-allocation prohibition for the implementation successor. |
-| Parent contract head `59bf60d5b7ca3d0a30d265c59a66acc66a90c0dd` | Controls the hybrid architecture, except where this addendum supplies the required exact contracts below. |
+| Parent contract head `59bf60d5b7ca3d0a30d265c59a66acc66a90c0dd`, as corrected by later heads | Controls the hybrid architecture, except where this addendum supplies the required exact contracts below. |
 
 No agent may revive the old `$1` minimum, present every paid plan as non-renewing, auto-convert the free trial, or apply six-/twelve-month reservation rules to an already active monthly subscription.
 
@@ -90,9 +90,19 @@ Monthly entitlement becomes `monthly_subscription_active` only when all of the f
 - `invoice.voided` where applicable
 - `customer.subscription.updated`
 - `customer.subscription.deleted`
-- provider refund and dispute events selected by the implementation review
+- `refund.created`
+- `refund.updated`
+- `refund.failed`
+- `charge.refunded` for aggregate charge reconciliation only
+- `charge.dispute.created`
+- `charge.dispute.updated`
+- `charge.dispute.closed`
+- `charge.dispute.funds_withdrawn`
+- `charge.dispute.funds_reinstated`
 
 `customer.subscription.created` or `updated` alone can synchronize provider state but cannot unlock access without a verified paid invoice.
+
+Refund-object events are authoritative for an individual refund lifecycle. `charge.refunded` is a consistency and aggregate-reconciliation signal; it must not replace `refund.created`, `refund.updated`, or `refund.failed`, and it must not create a second refund transition.
 
 #### Seven-day payment recovery
 
@@ -128,9 +138,28 @@ The webhook must nevertheless fail safely if Stripe reports a delayed payment st
 - `checkout.session.async_payment_succeeded` + full server verification → `reserved_prepaid_paid`;
 - `checkout.session.async_payment_failed` → `prepaid_payment_failed`;
 - `checkout.session.expired` → `prepaid_checkout_expired`;
-- verified refund/dispute events update refundable liability, reservation, entitlement, and reconciliation state without browser authority.
+- `refund.created`, `refund.updated`, and `refund.failed` update the canonical refund attempt, settled-refund amount, refundable liability, reservation, entitlement, and human-resolution state after server retrieval and verification;
+- `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `charge.dispute.funds_withdrawn`, and `charge.dispute.funds_reinstated` update the canonical dispute, cash, liability, entitlement-risk, and reconciliation states without browser authority;
+- `charge.refunded` is retained only as an aggregate charge-reconciliation check and cannot substitute for Refund-object events.
 
 A pending prepaid payment never starts the founding trial, creates an active paid term, or authorizes member benefits.
+
+#### Exact refund state transitions
+
+- `refund.created`: record one provider refund attempt and its amount. Set `refund_pending` unless the server-retrieved Refund is already `succeeded`; never decrement an open liability or end access from event metadata alone.
+- `refund.updated`: retrieve the Refund and reconcile its current status and amount. A verified `succeeded` Refund increments settled `refunded_cents` exactly once and applies the approved full or partial entitlement/reservation transition. A pending, canceled, or otherwise non-final Refund remains non-settled.
+- `refund.failed`: set `refund_failed`, preserve the unresolved customer liability, record the bounded failure reason, and route a retryable human-resolution case. It cannot be treated as refunded revenue or settled cash.
+- A partial refund changes only the verified refunded amount and the corresponding unused entitlement value; it cannot double-revoke the retained paid period or remove legitimately earned HEHA Credit.
+
+#### Exact dispute state transitions
+
+- `charge.dispute.created`: set `dispute_open`, record the contested amount and provider IDs, place the financial record into reconciliation review, and prevent duplicate refund/credit remedies for the same contested value.
+- `charge.dispute.updated`: synchronize evidence deadline, status, and contested amount from the server-retrieved Dispute without independently granting or revoking benefits.
+- `charge.dispute.funds_withdrawn`: record the Stripe cash withdrawal and disputed-liability movement exactly once; this is not a customer refund.
+- `charge.dispute.funds_reinstated`: reverse the matching cash-withdrawal reconciliation entry exactly once without creating new revenue or a new entitlement.
+- `charge.dispute.closed`: set the canonical won/lost/other final outcome. A verified lost dispute may end future entitlement according to the approved risk policy and paid-period boundary, but it cannot retroactively add delivery charges or silently reverse legitimately earned credits. A won dispute restores only the applicable financial/reconciliation state.
+
+Refund and dispute handling must be source-ordered by provider object state rather than arrival order. A refund event arriving before a late payment or invoice event must remain safely reconcilable and must not create negative refunded balances, duplicate entitlement changes, or revenue recognition.
 
 ### 3.4 Payment-finality tests
 
@@ -144,6 +173,11 @@ Prove at minimum:
 - late/out-of-order invoice and subscription events;
 - prepaid `completed` while processing remains pending;
 - async prepaid success/failure;
+- full and partial `refund.created`/`refund.updated` success exactly once;
+- `refund.failed` preserves an open liability and retry route;
+- `charge.refunded` cannot duplicate a Refund-object transition;
+- dispute creation, update, close, funds withdrawal, and funds reinstatement;
+- refund-before-late-payment-event and dispute-before-refund ordering;
 - duplicate event replay and worker/event concurrency;
 - server-retrieved state overrides tampered or stale event metadata.
 
