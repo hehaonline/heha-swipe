@@ -666,6 +666,66 @@ grant execute on function public.record_partner_publication_review(
   uuid,uuid,text,text,text,uuid,text
 ) to service_role;
 
+-- HubSpot is an internal CRM mirror, not an alternate partner read surface.
+-- Its worker receives only the ten private partner fields it actually consumes;
+-- the raw row, routing state, lifecycle evidence and public-card fields remain
+-- inaccessible. The in-body authority check keeps this fail-closed even if a
+-- future deployment accidentally broadens the function ACL.
+create or replace function public.get_partner_hubspot_sync_source(
+  p_partner_id uuid
+)
+returns table (
+  name text,
+  category text,
+  contact text,
+  instagram text,
+  website text,
+  bio text,
+  phone text,
+  partner_type text,
+  neighborhood text,
+  hours text
+)
+language plpgsql
+stable
+security definer
+set search_path=''
+as $function$
+begin
+  if not app_private.is_service_role_request() then
+    raise exception using
+      errcode='42501',
+      message='Only the service role may read the HubSpot partner sync source.';
+  end if;
+
+  if p_partner_id is null then
+    raise exception using
+      errcode='22023',
+      message='Partner identifier is required for HubSpot sync.';
+  end if;
+
+  return query
+  select
+    partner_row.name,
+    partner_row.category,
+    partner_row.contact,
+    partner_row.instagram,
+    partner_row.website,
+    partner_row.bio,
+    partner_row.phone,
+    partner_row.partner_type,
+    partner_row.neighborhood,
+    partner_row.hours
+  from public.partners partner_row
+  where partner_row.id=p_partner_id;
+end;
+$function$;
+
+revoke all on function public.get_partner_hubspot_sync_source(uuid)
+  from public,anon,authenticated,service_role;
+grant execute on function public.get_partner_hubspot_sync_source(uuid)
+  to service_role;
+
 -- Converge the existing routing-review capability so this final migration is
 -- self-contained on both the current schema and the disposable proof lineage.
 -- Exact-hash profile review never calls this function: routing finalization is
@@ -819,6 +879,38 @@ using (
 );
 
 revoke all on table public.partners from public,anon,authenticated,service_role;
+
+-- PostgreSQL's table-level REVOKE also removes corresponding column grants.
+-- Repeat the column form explicitly so the intended raw-row boundary remains
+-- reviewable and deterministic even when an environment starts with hostile
+-- per-column ACL entries.
+do $partner_column_acl_reset$
+declare
+  partner_column_list text;
+begin
+  select pg_catalog.string_agg(
+    pg_catalog.format('%I',attribute_row.attname),
+    ',' order by attribute_row.attnum
+  )
+  into partner_column_list
+  from pg_catalog.pg_attribute attribute_row
+  where attribute_row.attrelid='public.partners'::regclass
+    and attribute_row.attnum>0
+    and not attribute_row.attisdropped;
+
+  if partner_column_list is null then
+    raise exception using
+      errcode='55000',
+      message='public.partners has no revocable user columns.';
+  end if;
+
+  execute pg_catalog.format(
+    'revoke all privileges (%s) on table public.partners from public,anon,authenticated,service_role',
+    partner_column_list
+  );
+end;
+$partner_column_acl_reset$;
+
 grant select,insert,update on table public.partners to authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -1429,6 +1521,10 @@ declare
     'delivery_days','heha_pillar','local_eligible','local_lane',
     'primary_cta_destination','primary_cta_label','primary_cta_path'
   ]::text[];
+  expected_hubspot_columns constant text[] := array[
+    'name','category','contact','instagram','website','bio','phone',
+    'partner_type','neighborhood','hours'
+  ]::text[];
   expected_policies constant text[] := array[
     'Owners can view own partner','partners_internal_read'
   ]::text[];
@@ -1506,6 +1602,44 @@ begin
     raise exception using
       errcode='55000',
       message='authenticated public.partners ACL is not exactly SELECT/INSERT/UPDATE.';
+  end if;
+
+  if pg_catalog.has_any_column_privilege('anon','public.partners','SELECT')
+     or pg_catalog.has_any_column_privilege('anon','public.partners','INSERT')
+     or pg_catalog.has_any_column_privilege('anon','public.partners','UPDATE')
+     or pg_catalog.has_any_column_privilege('anon','public.partners','REFERENCES')
+     or pg_catalog.has_any_column_privilege('service_role','public.partners','SELECT')
+     or pg_catalog.has_any_column_privilege('service_role','public.partners','INSERT')
+     or pg_catalog.has_any_column_privilege('service_role','public.partners','UPDATE')
+     or pg_catalog.has_any_column_privilege('service_role','public.partners','REFERENCES')
+     or not pg_catalog.has_any_column_privilege('authenticated','public.partners','SELECT')
+     or not pg_catalog.has_any_column_privilege('authenticated','public.partners','INSERT')
+     or not pg_catalog.has_any_column_privilege('authenticated','public.partners','UPDATE')
+     or pg_catalog.has_any_column_privilege('authenticated','public.partners','REFERENCES') then
+    raise exception using
+      errcode='55000',
+      message='Effective public.partners column privileges do not match the raw-row boundary.';
+  end if;
+
+  if exists (
+    select 1
+    from pg_catalog.pg_attribute attribute_row
+    cross join lateral pg_catalog.aclexplode(
+      coalesce(attribute_row.attacl,'{}'::pg_catalog.aclitem[])
+    ) privilege_row
+    left join pg_catalog.pg_roles role_row
+      on role_row.oid=privilege_row.grantee
+    where attribute_row.attrelid='public.partners'::regclass
+      and attribute_row.attnum>0
+      and not attribute_row.attisdropped
+      and (
+        privilege_row.grantee=0
+        or role_row.rolname=any(array['anon','authenticated','service_role']::text[])
+      )
+  ) then
+    raise exception using
+      errcode='55000',
+      message='A raw role retains an explicit public.partners column ACL.';
   end if;
 
   if pg_catalog.has_table_privilege('anon','public.partner_publication_consent_events','SELECT')
@@ -1641,6 +1775,59 @@ begin
       message='Partner consent/review RPC execute privileges do not match the least-privilege contract.';
   end if;
 
+  if pg_catalog.to_regprocedure(
+       'public.get_partner_hubspot_sync_source(uuid)'
+     ) is null
+     or pg_catalog.has_function_privilege(
+       'anon','public.get_partner_hubspot_sync_source(uuid)','EXECUTE'
+     )
+     or pg_catalog.has_function_privilege(
+       'authenticated','public.get_partner_hubspot_sync_source(uuid)','EXECUTE'
+     )
+     or not pg_catalog.has_function_privilege(
+       'service_role','public.get_partner_hubspot_sync_source(uuid)','EXECUTE'
+     )
+     or coalesce((
+       select not function_row.prosecdef
+         or function_row.provolatile<>'s'
+         or not (
+           'search_path=""'=any(coalesce(function_row.proconfig,array[]::text[]))
+         )
+         or function_row.proargnames[2:11] is distinct from expected_hubspot_columns
+         or function_row.proallargtypes[2:11] is distinct from
+           pg_catalog.array_fill('pg_catalog.text'::regtype::oid,array[10])
+       from pg_catalog.pg_proc function_row
+       where function_row.oid=pg_catalog.to_regprocedure(
+         'public.get_partner_hubspot_sync_source(uuid)'
+       )
+     ),true)
+     or exists (
+       select 1
+       from pg_catalog.pg_proc function_row
+       cross join lateral pg_catalog.aclexplode(
+         coalesce(
+           function_row.proacl,
+           pg_catalog.acldefault('f',function_row.proowner)
+         )
+       ) privilege_row
+       left join pg_catalog.pg_roles role_row
+         on role_row.oid=privilege_row.grantee
+       where function_row.oid=pg_catalog.to_regprocedure(
+         'public.get_partner_hubspot_sync_source(uuid)'
+       )
+         and privilege_row.privilege_type='EXECUTE'
+         and privilege_row.grantee<>function_row.proowner
+         and (
+           privilege_row.grantee=0
+           or role_row.rolname is distinct from 'service_role'
+           or privilege_row.is_grantable
+         )
+     ) then
+    raise exception using
+      errcode='55000',
+      message='HubSpot partner sync source RPC is not an exact ten-column service-only security-definer boundary.';
+  end if;
+
   foreach helper_function in array array[
     'app_private.is_wave1_food_partner(public.partners)',
     'app_private.is_supported_swipe_partner(public.partners)',
@@ -1736,13 +1923,14 @@ begin
     where protected_function.oid=any(array[
       'app_private.guard_partner_publication_consent_immutability()'::regprocedure,
       'app_private.guard_partner_publication_review_immutability()'::regprocedure,
-      'public.record_partner_publication_review(uuid,uuid,text,text,text,uuid,text)'::regprocedure
+      'public.record_partner_publication_review(uuid,uuid,text,text,text,uuid,text)'::regprocedure,
+      'public.get_partner_hubspot_sync_source(uuid)'::regprocedure
     ]::oid[])
       and protected_function.proowner is distinct from partner_owner
   ) then
     raise exception using
       errcode='55000',
-      message='A publication ledger, identity sequence, private projection, guard, or review RPC has an unexpected owner.';
+      message='A publication ledger, identity sequence, private projection, guard, review RPC, or HubSpot sync RPC has an unexpected owner.';
   end if;
 
   foreach view_name in array array[

@@ -16,6 +16,7 @@ on:
       - supabase/migrations/20260817154529_hybrid_partner_security_reconciliation.sql
       - supabase/migrations/20260817154927_hybrid_partner_claim_recipient_contract.sql
       - supabase/migrations/20260817171238_partner_publication_integration_rc.sql
+      - supabase/functions/hubspot-sync/index.ts
       - supabase/tests/fixtures/partner_publication_integration_baseline.sql
       - supabase/tests/partner_publication_consent_proof.sql
       - supabase/tests/partner_publication_integration_proof.sql
@@ -276,8 +277,11 @@ jobs:
         run: |
           set -euo pipefail
           psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
-            -c 'grant select on table public.partners to service_role' \
+            -c 'grant select (contact),insert (contact),update (contact),references (contact) on table public.partners to public,anon,authenticated,service_role' \
             2>&1 | tee artifacts/partner-publication-integration-proof/final-reapply.txt
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -c 'grant select,insert,update,delete,truncate,references,trigger on table public.partners to public,anon,authenticated,service_role' \
+            2>&1 | tee -a artifacts/partner-publication-integration-proof/final-reapply.txt
           psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
             -f supabase/migrations/20260817171238_partner_publication_integration_rc.sql \
             2>&1 | tee -a artifacts/partner-publication-integration-proof/final-reapply.txt
@@ -285,7 +289,7 @@ jobs:
             -f supabase/tests/partner_publication_integration_proof.sql \
             > artifacts/partner-publication-integration-proof/behavioral-proof-after-reapply.txt 2>&1
           {
-            echo 'service_role_raw_partners_reapply_convergence=pass'
+            echo 'raw_table_and_column_acl_reapply_convergence=pass'
             echo 'final_migration_reapply_and_post_final_proof=pass'
           } | tee -a artifacts/partner-publication-integration-proof/final-reapply.txt
 
@@ -314,6 +318,7 @@ jobs:
           npm ci
           node --test \
             src/lib/hehaLocalRouting.test.js \
+            src/lib/hubspotSyncAccessContract.test.js \
             src/lib/partnerBrowserWebhookBoundary.test.js \
             src/lib/partnerPublicationConsent.test.js \
             src/lib/partnerPublicationUiContract.test.js \

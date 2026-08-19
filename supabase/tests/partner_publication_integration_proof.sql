@@ -129,6 +129,10 @@ declare
     'delivery_days','heha_pillar','local_eligible','local_lane',
     'primary_cta_destination','primary_cta_label','primary_cta_path'
   ]::text[];
+  expected_hubspot_columns constant text[] := array[
+    'name','category','contact','instagram','website','bio','phone',
+    'partner_type','neighborhood','hours'
+  ]::text[];
   actual_columns text[];
   view_name text;
   private_column text;
@@ -154,6 +158,34 @@ begin
   assert pg_catalog.has_table_privilege('authenticated', 'public.partners', 'INSERT');
   assert pg_catalog.has_table_privilege('authenticated', 'public.partners', 'UPDATE');
   assert not pg_catalog.has_table_privilege('authenticated', 'public.partners', 'DELETE');
+  assert not pg_catalog.has_any_column_privilege('anon', 'public.partners', 'SELECT');
+  assert not pg_catalog.has_any_column_privilege('anon', 'public.partners', 'INSERT');
+  assert not pg_catalog.has_any_column_privilege('anon', 'public.partners', 'UPDATE');
+  assert not pg_catalog.has_any_column_privilege('anon', 'public.partners', 'REFERENCES');
+  assert not pg_catalog.has_any_column_privilege('service_role', 'public.partners', 'SELECT');
+  assert not pg_catalog.has_any_column_privilege('service_role', 'public.partners', 'INSERT');
+  assert not pg_catalog.has_any_column_privilege('service_role', 'public.partners', 'UPDATE');
+  assert not pg_catalog.has_any_column_privilege('service_role', 'public.partners', 'REFERENCES');
+  assert pg_catalog.has_any_column_privilege('authenticated', 'public.partners', 'SELECT');
+  assert pg_catalog.has_any_column_privilege('authenticated', 'public.partners', 'INSERT');
+  assert pg_catalog.has_any_column_privilege('authenticated', 'public.partners', 'UPDATE');
+  assert not pg_catalog.has_any_column_privilege('authenticated', 'public.partners', 'REFERENCES');
+  assert not exists (
+    select 1
+    from pg_catalog.pg_attribute attribute_row
+    cross join lateral pg_catalog.aclexplode(
+      coalesce(attribute_row.attacl,'{}'::pg_catalog.aclitem[])
+    ) privilege_row
+    left join pg_catalog.pg_roles role_row
+      on role_row.oid=privilege_row.grantee
+    where attribute_row.attrelid='public.partners'::regclass
+      and attribute_row.attnum>0
+      and not attribute_row.attisdropped
+      and (
+        privilege_row.grantee=0
+        or role_row.rolname=any(array['anon','authenticated','service_role']::text[])
+      )
+  ), 'raw roles must not retain explicit public.partners column ACL entries';
 
   assert pg_catalog.to_regclass('public.partner_publication_consent_events') is not null;
   assert pg_catalog.to_regclass('public.partner_publication_review_events') is not null;
@@ -249,6 +281,61 @@ begin
     'public.record_partner_publication_review(uuid,uuid,text,text,text,uuid,text)',
     'EXECUTE'
   );
+  assert pg_catalog.to_regprocedure(
+    'public.get_partner_hubspot_sync_source(uuid)'
+  ) is not null;
+  assert not pg_catalog.has_function_privilege(
+    'anon',
+    'public.get_partner_hubspot_sync_source(uuid)',
+    'EXECUTE'
+  );
+  assert not pg_catalog.has_function_privilege(
+    'authenticated',
+    'public.get_partner_hubspot_sync_source(uuid)',
+    'EXECUTE'
+  );
+  assert pg_catalog.has_function_privilege(
+    'service_role',
+    'public.get_partner_hubspot_sync_source(uuid)',
+    'EXECUTE'
+  );
+  assert (
+    select function_row.prosecdef
+      and function_row.provolatile='s'
+      and 'search_path=""'=any(coalesce(function_row.proconfig,array[]::text[]))
+      and function_row.proargnames[2:11]=expected_hubspot_columns
+      and function_row.proallargtypes[2:11]=
+        pg_catalog.array_fill('pg_catalog.text'::regtype::oid,array[10])
+      and function_row.proowner=(
+        select relation_row.relowner
+        from pg_catalog.pg_class relation_row
+        where relation_row.oid='public.partners'::regclass
+      )
+    from pg_catalog.pg_proc function_row
+    where function_row.oid=
+      'public.get_partner_hubspot_sync_source(uuid)'::regprocedure
+  ), 'HubSpot sync RPC must be same-owner, stable, security-definer and exactly ten text columns';
+  assert not exists (
+    select 1
+    from pg_catalog.pg_proc function_row
+    cross join lateral pg_catalog.aclexplode(
+      coalesce(
+        function_row.proacl,
+        pg_catalog.acldefault('f',function_row.proowner)
+      )
+    ) privilege_row
+    left join pg_catalog.pg_roles role_row
+      on role_row.oid=privilege_row.grantee
+    where function_row.oid=
+      'public.get_partner_hubspot_sync_source(uuid)'::regprocedure
+      and privilege_row.privilege_type='EXECUTE'
+      and privilege_row.grantee<>function_row.proowner
+      and (
+        privilege_row.grantee=0
+        or role_row.rolname is distinct from 'service_role'
+        or privilege_row.is_grantable
+      )
+  ), 'HubSpot sync RPC must have no PUBLIC, browser, grant-option, or unexpected execute ACL';
   assert pg_catalog.to_regprocedure(
     'public.review_partner_routing(uuid,text,boolean,boolean,boolean,text,text,text,text,text,boolean)'
   ) is not null;
@@ -374,10 +461,59 @@ begin
   insert into partner_publication_integration_results(label, ok, detail)
   values (
     'exact structural boundary', true,
-    'raw anon denied; private ledgers closed; review RPC service-only; all public views exactly 33 allowlisted columns'
+    'raw table and column ACLs denied; private ledgers closed; review and HubSpot RPCs service-only; all public views exactly 33 allowlisted columns'
   );
 end;
 $proof$;
+
+set local role anon;
+select pg_temp.expect_state(
+  'anon HubSpot partner sync source denied',
+  '42501',
+  $$select * from public.get_partner_hubspot_sync_source(
+    '78787878-7878-4787-8787-787878787878'
+  )$$
+);
+reset role;
+
+set local role authenticated;
+select pg_temp.expect_state(
+  'authenticated HubSpot partner sync source denied',
+  '42501',
+  $$select * from public.get_partner_hubspot_sync_source(
+    '78787878-7878-4787-8787-787878787878'
+  )$$
+);
+reset role;
+
+set local role service_role;
+do $proof$
+declare
+  hubspot_source record;
+begin
+  select * into hubspot_source
+  from public.get_partner_hubspot_sync_source(
+    '78787878-7878-4787-8787-787878787878'
+  );
+
+  assert found, 'service HubSpot partner sync source returned no row';
+  assert hubspot_source.name='Tampa Test Kitchen';
+  assert hubspot_source.category='Catering';
+  assert hubspot_source.contact='PRIVATE contact';
+  assert hubspot_source.instagram='@tampatestkitchen';
+  assert hubspot_source.website='https://example.invalid';
+  assert hubspot_source.bio='Profile version one';
+  assert hubspot_source.phone='555-0177';
+  assert hubspot_source.neighborhood='Tampa Bay';
+
+  insert into partner_publication_integration_results(label, ok, detail)
+  values (
+    'service HubSpot partner sync source succeeds', true,
+    'service_role reads only the exact ten-field sync projection while raw public.partners remains denied'
+  );
+end;
+$proof$;
+reset role;
 
 -- ---------------------------------------------------------------------------
 -- Supported new-registration path. No privileged raw partner UPDATE is used:
