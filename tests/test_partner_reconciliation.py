@@ -132,6 +132,7 @@ class PartnerReconciliationTests(unittest.TestCase):
             "https://evil.com\\good.test",
             "https://evil.com%5cgood.test",
             "https://[bad.test",
+            "https://citrus-kitchen.test/person@example.com",
         ):
             malformed_domain = copy.deepcopy(self.dataset)
             malformed_domain["records"][0]["website"] = malformed_url
@@ -209,6 +210,21 @@ class PartnerReconciliationTests(unittest.TestCase):
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(nested_scalar)
 
+        hidden_phone_pii = copy.deepcopy(self.dataset)
+        hidden_phone_pii["records"][0]["phone"] = "person@example.com +1 813-555-0101"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(hidden_phone_pii)
+
+        hidden_address_pii = copy.deepcopy(self.dataset)
+        hidden_address_pii["records"][0]["address"] = "101 Example Avenue person@example.com, Tampa, FL"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(hidden_address_pii)
+
+        hidden_name_pii = copy.deepcopy(self.dataset)
+        hidden_name_pii["records"][0]["name"] = "Synthetic Citrus person@example.com"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(hidden_name_pii)
+
     def test_classify_pair_revalidates_records_at_the_entry_point(self):
         left = copy.deepcopy(self.dataset["records"][0])
         right = copy.deepcopy(self.dataset["records"][1])
@@ -274,8 +290,8 @@ class PartnerReconciliationTests(unittest.TestCase):
         right = copy.deepcopy(self.dataset["records"][9])
         left["name"] = "Synthetic Alpha"
         right["name"] = "Synthetic Omega"
-        left["address"] = "101 Example Alpha Way"
-        right["address"] = "202 Example Omega Way"
+        left["address"] = "101 Example Alpha Way, Tampa, FL"
+        right["address"] = "202 Example Omega Way, Tampa, FL"
         left["email"] = "shared@identity.test"
         right["email"] = "shared@identity.test"
         left["email_provenance"] = "unverified"
@@ -299,6 +315,22 @@ class PartnerReconciliationTests(unittest.TestCase):
                 exit_code = MODULE.main(["--input", str(input_path)])
             self.assertNotEqual(0, exit_code)
             self.assertNotIn("person@example.com", stderr.getvalue())
+
+    def test_cli_rejects_duplicate_json_keys_before_schema_validation(self):
+        raw = FIXTURE_PATH.read_text(encoding="utf-8")
+        duplicate = raw.replace(
+            '"email": "hello@citrus-kitchen.test",',
+            '"email": "person@example.com",\n      "email": "hello@citrus-kitchen.test",',
+            1,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "duplicate.json"
+            output_path = Path(temp_dir) / "report.json"
+            input_path.write_text(duplicate, encoding="utf-8")
+            with redirect_stderr(io.StringIO()):
+                exit_code = MODULE.main(["--input", str(input_path), "--output", str(output_path)])
+            self.assertNotEqual(0, exit_code)
+            self.assertFalse(output_path.exists())
 
     def test_exact_name_and_address_do_not_override_multiple_strong_conflicts(self):
         left = copy.deepcopy(self.dataset["records"][0])
