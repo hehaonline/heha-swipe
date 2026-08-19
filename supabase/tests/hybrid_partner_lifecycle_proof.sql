@@ -863,8 +863,8 @@ do $$ declare p public.partners; a public.partner_agreement_acceptances; begin
                 where partner_id=p.id and event_type='partnership_approved'
                   and after_state->>'agreement_acceptance_id'=a.id::text
                   and after_state->>'agreement_version_id'=a.agreement_version_id::text);
-  assert exists(select 1 from public.public_swipe_partners where id=p.id and heha_partner=true);
-  insert into hybrid_results values('official approval',true,'only a reviewed, claimed profile with current, owner-matched, unrevoked acceptance evidence becomes official/signed, and contract_signed_at is taken from the evidence');
+  assert not exists(select 1 from public.public_swipe_partners where id=p.id);
+  insert into hybrid_results values('official approval',true,'only a reviewed, claimed profile with current, owner-matched, unrevoked acceptance evidence becomes official/signed, contract_signed_at is taken from the evidence, and the donor public hold remains empty');
 end $$;
 
 -- Partnership termination is an evidence terminal state, not merely a partner
@@ -957,11 +957,9 @@ do $$ begin
   );
 end $$;
 
--- #118's temporary consent-owned view predates listing_status. The combined
--- workflow may therefore defer only the public-view assertion until the sole
--- final integration migration replaces that view. Standalone donor runs remain
--- strict by default, and the post-final integration proof still requires the
--- public row to disappear immediately.
+-- #118's donor public views are deliberately held empty before the final
+-- integration migration. Pre-final mode additionally proves the exact handoff
+-- ordering; both modes require the canonical opt-out row to stay non-public.
 \if :{?publication_integration_pre_final}
 \else
 \set publication_integration_pre_final false
@@ -976,9 +974,13 @@ do $$ begin
     select 1 from supabase_migrations.schema_migrations
     where version='20260817171238'
   );
+  assert not exists(
+    select 1 from public.public_swipe_partners
+    where id='11111111-1111-4111-8111-111111111111'
+  );
   insert into hybrid_results values(
     'opt out canonical pre-final state',true,
-    'canonical opt-out is complete; #118 public-view removal is deferred only until the final integration handoff'
+    'canonical opt-out is complete and the #118 donor public hold remains empty before the final integration handoff'
   );
 end $$;
 \else
