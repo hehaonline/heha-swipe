@@ -36,6 +36,12 @@ publication projection and all three public partner views.
 - Visibility requires an approved/live non-test row, `listing_status='listed'`,
   destination eligibility, current owner consent, an exact current content
   snapshot, and a separate exact-hash HEHA staff publication review.
+- A pending partner cannot move to approved/live through owner consent alone.
+  The supported transition requires a HEHA staff review of the exact current
+  profile hash; any drift or missing review remains fail-closed.
+- Website-directory publication is a separate destination and remains disabled
+  until its own explicit, versioned directory consent is implemented. HEHA
+  Swipe consent must never be reused as website-directory consent.
 - Owner consent never grants Official Partner status. Public `heha_partner` is
   derived only from `partnership_status='official_partner'`.
 - Withdrawal, profile drift, listing opt-out/removal, owner release, or stale
@@ -55,3 +61,7 @@ publication projection and all three public partner views.
   CI evidence but are not sufficient Production release evidence because the
   repository's historical migration chain is not a reliable fresh-reset lineage.
 - Fresh security review after every exact-head repair.
+- Founder/legal approval of the exact versioned partner terms and privacy copy,
+  plus the matching acceptance predicate and evidence contract. This is a hard
+  release blocker; draft placeholders or generic profile permission do not
+  satisfy it.

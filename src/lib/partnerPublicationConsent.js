@@ -5,7 +5,22 @@ export const PARTNER_DESTINATIONS = Object.freeze({
   local: "heha_local",
 });
 
+export const SWIPE_CATEGORIES = Object.freeze([
+  "Restaurant",
+  "Vendor",
+  "Catering",
+  "PrivateChef",
+  "Wellness",
+  "Coach",
+  "Service",
+  "Events",
+]);
+
 const LOCAL_CATEGORIES = new Set(["catering", "privatechef", "private chef"]);
+const SWIPE_CATEGORY_KEYS = new Set([
+  ...SWIPE_CATEGORIES.map((category) => category.toLowerCase()),
+  "private chef",
+]);
 const VALID_DESTINATIONS = new Set(Object.values(PARTNER_DESTINATIONS));
 
 function normalizedCategories(categories = []) {
@@ -19,6 +34,11 @@ export function supportsHehaLocal(categories = []) {
     .some((category) => LOCAL_CATEGORIES.has(category.toLowerCase()));
 }
 
+export function supportsHehaSwipe(categories = []) {
+  return normalizedCategories(categories)
+    .some((category) => SWIPE_CATEGORY_KEYS.has(category.toLowerCase()));
+}
+
 export function deriveWave1LocalLane(categories = []) {
   const values = normalizedCategories(categories).map((category) => category.toLowerCase());
   for (const value of values) {
@@ -29,13 +49,15 @@ export function deriveWave1LocalLane(categories = []) {
 }
 
 export function availablePartnerDestinations(categories = []) {
-  const destinations = [
-    {
+  const destinations = [];
+
+  if (supportsHehaSwipe(categories)) {
+    destinations.push({
       value: PARTNER_DESTINATIONS.swipe,
       label: "HEHA Swipe",
       description: "Let local customers discover your reviewed business profile in HEHA Swipe.",
-    },
-  ];
+    });
+  }
 
   if (supportsHehaLocal(categories)) {
     destinations.push({
@@ -50,11 +72,13 @@ export function availablePartnerDestinations(categories = []) {
 
 export function normalizePartnerDestinations(destinations = [], categories = []) {
   const localAllowed = supportsHehaLocal(categories);
+  const swipeAllowed = supportsHehaSwipe(categories);
   return [...new Set((Array.isArray(destinations) ? destinations : [])
     .map((destination) => String(destination || "").trim())
     .filter((destination) => {
       if (!VALID_DESTINATIONS.has(destination)) return false;
-      return destination !== PARTNER_DESTINATIONS.local || localAllowed;
+      if (destination === PARTNER_DESTINATIONS.local) return localAllowed;
+      return swipeAllowed;
     }))]
     .sort();
 }
@@ -90,8 +114,51 @@ export function validatePartnerDraftAuthorization({
   if (!mediaPermissionConfirmed) {
     errors.mediaPermissionConfirmed = "Confirm that supplied business media may be used for the reviewed profile.";
   }
-  if (supportsHehaLocal(categories) && !tampaBayServiceConfirmed) {
+  if (normalized.includes(PARTNER_DESTINATIONS.local) && !tampaBayServiceConfirmed) {
     errors.tampaBayServiceConfirmed = "Confirm that this business accepts requests in Tampa Bay.";
+  }
+
+  return {
+    valid: Object.keys(errors).length === 0,
+    errors,
+    destinations: normalized,
+  };
+}
+
+export function validatePartnerPublicationWithdrawal({
+  destinations = [],
+  activeDestinations = [],
+  representativeName = "",
+  representativeTitle = "",
+  withdrawalConfirmed = false,
+} = {}) {
+  const errors = {};
+  const requested = Array.isArray(destinations) ? destinations : [];
+  const active = new Set(
+    (Array.isArray(activeDestinations) ? activeDestinations : [])
+      .map((destination) => String(destination || "").trim())
+      .filter((destination) => VALID_DESTINATIONS.has(destination))
+  );
+  const normalized = [...new Set(requested
+    .map((destination) => String(destination || "").trim())
+    .filter((destination) => VALID_DESTINATIONS.has(destination)))]
+    .sort();
+
+  if (
+    !normalized.length
+    || normalized.length !== requested.length
+    || normalized.some((destination) => !active.has(destination))
+  ) {
+    errors.destinations = "Choose one or more currently approved destinations to withdraw.";
+  }
+  if (String(representativeName).trim().length < 2) {
+    errors.representativeName = "Add the authorized representative’s full name.";
+  }
+  if (String(representativeTitle).trim().length < 2) {
+    errors.representativeTitle = "Add the representative’s role or title.";
+  }
+  if (!withdrawalConfirmed) {
+    errors.withdrawalConfirmed = "Confirm the selected destination withdrawal.";
   }
 
   return {

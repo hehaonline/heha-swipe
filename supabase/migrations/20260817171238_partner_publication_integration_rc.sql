@@ -10,9 +10,16 @@
 
 -- ---------------------------------------------------------------------------
 -- 1. Fail closed unless every donor dependency reached this exact point.
+--
+-- This review candidate expects a disposable/current-schema reset that replays
+-- the attestation-aware donor migration above. It deliberately does not
+-- partially upgrade a database that already recorded the older donor body as
+-- applied: such a database fails this contract and requires either a reset or
+-- a separately reviewed forward corrective migration before this RC can run.
 -- ---------------------------------------------------------------------------
 do $donor_contract$
 declare
+  consent_required_column text;
   required_column text;
   view_name text;
   expected_columns constant text[] := array[
@@ -37,6 +44,7 @@ begin
   if pg_catalog.to_regprocedure('app_private.partner_public_profile_snapshot(public.partners)') is null
      or pg_catalog.to_regprocedure('app_private.partner_public_profile_hash(public.partners)') is null
      or pg_catalog.to_regprocedure('app_private.is_wave1_food_partner(public.partners)') is null
+     or pg_catalog.to_regprocedure('app_private.is_supported_swipe_partner(public.partners)') is null
      or pg_catalog.to_regprocedure('app_private.wave1_local_lane(public.partners)') is null
      or pg_catalog.to_regprocedure(
        'app_private.has_current_partner_publication_authorization(public.partners,text)'
@@ -48,11 +56,74 @@ begin
       message='The exact consent snapshot and non-forgeable authority helpers are required before publication integration.';
   end if;
 
+  foreach consent_required_column in array array[
+    'representative_authority_confirmed','profile_preparation_confirmed'
+  ]::text[] loop
+    if not exists (
+      select 1
+      from pg_catalog.pg_attribute
+      where attrelid='public.partner_publication_consent_events'::regclass
+        and attname=consent_required_column
+        and atttypid='pg_catalog.bool'::regtype
+        and attnotnull
+        and not attisdropped
+    ) then
+      raise exception using
+        errcode='55000',
+        message=pg_catalog.format(
+          'Required persisted consent attestation public.partner_publication_consent_events.%I is missing or malformed.',
+          consent_required_column
+        );
+    end if;
+  end loop;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint
+    where conrelid='public.partner_publication_consent_events'::regclass
+      and conname='partner_publication_consent_attestations_check'
+      and contype='c'
+      and convalidated
+  ) then
+    raise exception using
+      errcode='55000',
+      message='Granted consent rows must be protected by the persisted authority/profile attestation constraint.';
+  end if;
+
+  if pg_catalog.to_regprocedure(
+       'public.submit_partner_registration_with_consent(uuid,text,text[],text,text,text,text,text[],text,text,text,text,text,text,text[],jsonb,text,text,text[],text,text,boolean,boolean,boolean,boolean,text)'
+     ) is null
+     or pg_catalog.to_regprocedure(
+       'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,boolean,boolean,uuid,text)'
+     ) is null
+     or pg_catalog.to_regprocedure(
+       'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,boolean,boolean,text[])'
+     ) is null then
+    raise exception using
+      errcode='55000',
+      message='Attestation-aware partner consent RPC signatures are required before publication integration.';
+  end if;
+
+  if pg_catalog.to_regprocedure(
+       'public.submit_partner_registration_with_consent(uuid,text,text[],text,text,text,text,text[],text,text,text,text,text,text,text[],jsonb,text,text,text[],text,text,boolean,boolean,text)'
+     ) is not null
+     or pg_catalog.to_regprocedure(
+       'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,uuid,text)'
+     ) is not null
+     or pg_catalog.to_regprocedure(
+       'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,text[])'
+     ) is not null then
+    raise exception using
+      errcode='55000',
+      message='A legacy partner consent RPC overload remains callable.';
+  end if;
+
   foreach required_column in array array[
     'id','owner_id','status','is_test_record','website_eligible','swipe_eligible',
     'local_eligible','local_lane','primary_cta_destination','primary_cta_label',
     'primary_cta_path','claim_status','partnership_status','contract_status',
-    'listing_status'
+    'listing_status','heha_pillar','routing_status','routing_notes',
+    'routing_updated_by','routing_updated_at'
   ]::text[] loop
     if not exists (
       select 1
@@ -450,6 +521,18 @@ begin
       errcode='23514',
       message='A currently owned partner profile is required for publication review.';
   end if;
+  if p_destination='heha_swipe'
+     and app_private.is_supported_swipe_partner(partner_row) is not true then
+    raise exception using
+      errcode='23514',
+      message='This profile category is not supported for HEHA Swipe publication review.';
+  end if;
+  if p_destination='heha_local'
+     and app_private.is_wave1_food_partner(partner_row) is not true then
+    raise exception using
+      errcode='23514',
+      message='HEHA Local publication review is limited to catering and private-chef profiles.';
+  end if;
 
   -- FOR SHARE prevents an active reviewer role from being deactivated between
   -- authorization and evidence insertion. Exact replay returned above does not
@@ -497,6 +580,8 @@ begin
      or current_consent.owner_id is distinct from partner_row.owner_id
      or current_consent.state<>'granted'
      or current_consent.consent_statement_version<>'wave1-profile-consent-2026-08-10'
+     or current_consent.representative_authority_confirmed is not true
+     or current_consent.profile_preparation_confirmed is not true
      or current_consent.media_permission_confirmed is not true
      or current_consent.profile_snapshot is distinct from current_snapshot
      or current_consent.profile_snapshot_hash is distinct from current_snapshot_hash then
@@ -515,6 +600,23 @@ begin
     payload_hash,p_reviewed_by,normalized_reason
   )
   returning id into new_id;
+
+  -- This evidence-bound transition is the only supported path from a newly
+  -- submitted pending profile to approved. It occurs in the same transaction
+  -- as the exact-hash, current-owner, active-reviewer approval event.
+  if p_decision='approved' and partner_row.status='pending' then
+    update public.partners p
+    set status='approved',
+        updated_at=pg_catalog.now()
+    where p.id=partner_row.id
+      and p.status='pending'
+      and app_private.partner_public_profile_hash(p)=current_snapshot_hash;
+    if not found then
+      raise exception using
+        errcode='40001',
+        message='Partner lifecycle changed before the exact-hash approval transition completed.';
+    end if;
+  end if;
 
   return new_id;
 end;
@@ -678,6 +780,7 @@ with base as (
   select
     p.*,
     app_private.is_wave1_food_partner(p) as publication_is_wave1_food_partner,
+    app_private.is_supported_swipe_partner(p) as publication_is_supported_swipe_partner,
     app_private.wave1_local_lane(p) as publication_derived_local_lane,
     app_private.partner_public_profile_snapshot(p) as publication_current_profile_snapshot,
     app_private.partner_public_profile_hash(p) as publication_current_profile_snapshot_hash
@@ -704,12 +807,17 @@ select
   base.*,
   (
     base.owner_id is not null
+    and base.publication_is_supported_swipe_partner is true
     and swipe_prepare.owner_id=base.owner_id
     and swipe_publish.owner_id=base.owner_id
     and swipe_prepare.state='granted'
     and swipe_publish.state='granted'
     and swipe_prepare.consent_statement_version='wave1-profile-consent-2026-08-10'
     and swipe_publish.consent_statement_version='wave1-profile-consent-2026-08-10'
+    and swipe_prepare.representative_authority_confirmed is true
+    and swipe_prepare.profile_preparation_confirmed is true
+    and swipe_publish.representative_authority_confirmed is true
+    and swipe_publish.profile_preparation_confirmed is true
     and swipe_prepare.media_permission_confirmed is true
     and swipe_publish.media_permission_confirmed is true
     and swipe_publish.profile_snapshot=base.publication_current_profile_snapshot
@@ -723,6 +831,10 @@ select
     and local_publish.state='granted'
     and local_prepare.consent_statement_version='wave1-profile-consent-2026-08-10'
     and local_publish.consent_statement_version='wave1-profile-consent-2026-08-10'
+    and local_prepare.representative_authority_confirmed is true
+    and local_prepare.profile_preparation_confirmed is true
+    and local_publish.representative_authority_confirmed is true
+    and local_publish.profile_preparation_confirmed is true
     and local_prepare.media_permission_confirmed is true
     and local_publish.media_permission_confirmed is true
     and local_prepare.service_area_attested is true
@@ -784,6 +896,8 @@ revoke all on schema app_private
 
 revoke all on function app_private.is_wave1_food_partner(public.partners)
   from public,anon,authenticated,service_role;
+revoke all on function app_private.is_supported_swipe_partner(public.partners)
+  from public,anon,authenticated,service_role;
 revoke all on function app_private.wave1_local_lane(public.partners)
   from public,anon,authenticated,service_role;
 revoke all on function app_private.partner_public_profile_snapshot(public.partners)
@@ -793,6 +907,8 @@ revoke all on function app_private.partner_public_profile_hash(public.partners)
 
 grant execute on function app_private.is_wave1_food_partner(public.partners)
   to anon,authenticated,service_role;
+grant execute on function app_private.is_supported_swipe_partner(public.partners)
+  to anon,authenticated,service_role;
 grant execute on function app_private.wave1_local_lane(public.partners)
   to anon,authenticated,service_role;
 grant execute on function app_private.partner_public_profile_snapshot(public.partners)
@@ -801,10 +917,11 @@ grant execute on function app_private.partner_public_profile_hash(public.partner
   to anon,authenticated,service_role;
 
 -- ---------------------------------------------------------------------------
--- 5. Exact public 33-column contract. Targeted HEHA Local routes remain
--- disabled until a least-privilege exporter/outbox is implemented and proved.
--- Directory and Swipe therefore emit only their safe Swipe fallback CTA, and
--- the Local bridge view intentionally returns no rows.
+-- 5. Exact public 33-column contract. Website-directory publication remains
+-- disabled until it has its own destination/consent/review path. Swipe remains
+-- disabled until approved, versioned terms and privacy acceptance are bound to
+-- the exact partner evidence. Local remains disabled until a least-privilege
+-- exporter/outbox is implemented and proved.
 -- ---------------------------------------------------------------------------
 create view public.public_partner_directory
 with (security_invoker=false,security_barrier=true)
@@ -844,12 +961,7 @@ select
   'Discover Partner'::text as primary_cta_label,
   ('/?partner='||id::text)::text as primary_cta_path
 from app_private.partner_publication_projection
-where status=any(array['approved','live']::text[])
-  and listing_status='listed'
-  and coalesce(website_eligible,false)=true
-  and is_test_record=false
-  and publication_current_swipe_owner_authorized is true
-  and publication_current_swipe_staff_approved is true;
+where false;
 
 create view public.public_swipe_partners
 with (security_invoker=false,security_barrier=true)
@@ -889,7 +1001,9 @@ select
   'Discover Partner'::text as primary_cta_label,
   ('/?partner='||id::text)::text as primary_cta_path
 from app_private.partner_publication_projection
-where status=any(array['approved','live']::text[])
+where false
+  and publication_is_supported_swipe_partner is true
+  and status=any(array['approved','live']::text[])
   and listing_status='listed'
   and coalesce(swipe_eligible,false)=true
   and is_test_record=false
@@ -947,9 +1061,9 @@ grant select on table public.public_swipe_partners to anon,authenticated,service
 grant select on table public.public_local_partners to anon,authenticated,service_role;
 
 comment on view public.public_partner_directory is
-  'SELECT-only website card projection. Exact current owner consent and exact-hash HEHA staff review are required; raw owner, contact, routing, analytics and lifecycle fields are excluded.';
+  'SELECT-only website card projection, intentionally empty until an explicit website-directory destination, owner consent, and exact-hash staff review are implemented. Swipe consent is never reused for website publication.';
 comment on view public.public_swipe_partners is
-  'SELECT-only Swipe card projection. Exact current owner consent and exact-hash HEHA staff review are required; Official Partner is derived only from partnership_status.';
+  'SELECT-only Swipe card projection, intentionally empty until approved versioned terms/privacy acceptance is evidence-bound. Exact current owner consent and exact-hash HEHA staff review remain mandatory; Official Partner is derived only from partnership_status.';
 comment on view public.public_local_partners is
   'SELECT-only Local bridge contract, intentionally empty until a least-privilege Swipe-to-Local exporter is implemented and independently proved.';
 
@@ -1157,6 +1271,35 @@ begin
       message='authenticated public.partners ACL is not exactly SELECT/INSERT/UPDATE.';
   end if;
 
+  if pg_catalog.has_table_privilege('anon','public.partner_publication_consent_events','SELECT')
+     or pg_catalog.has_table_privilege('authenticated','public.partner_publication_consent_events','SELECT')
+     or pg_catalog.has_table_privilege('anon','public.partner_publication_consent_events','INSERT')
+     or pg_catalog.has_table_privilege('authenticated','public.partner_publication_consent_events','INSERT')
+     or pg_catalog.has_table_privilege('service_role','public.partner_publication_consent_events','INSERT')
+     or pg_catalog.has_table_privilege('service_role','public.partner_publication_consent_events','UPDATE')
+     or pg_catalog.has_table_privilege('service_role','public.partner_publication_consent_events','DELETE')
+     or not pg_catalog.has_table_privilege('service_role','public.partner_publication_consent_events','SELECT')
+     or not (
+       select relrowsecurity
+       from pg_catalog.pg_class
+       where oid='public.partner_publication_consent_events'::regclass
+     ) or exists (
+       select 1
+       from pg_catalog.pg_class relation_row
+       cross join lateral pg_catalog.aclexplode(
+         coalesce(
+           relation_row.relacl,
+           pg_catalog.acldefault('r',relation_row.relowner)
+         )
+       ) privilege_row
+       where relation_row.oid='public.partner_publication_consent_events'::regclass
+         and privilege_row.grantee=0
+     ) then
+    raise exception using
+      errcode='55000',
+      message='Partner publication consent evidence has an unsafe direct grant or RLS contract.';
+  end if;
+
   if pg_catalog.has_table_privilege('anon','public.partner_publication_review_events','SELECT')
      or pg_catalog.has_table_privilege('authenticated','public.partner_publication_review_events','SELECT')
      or pg_catalog.has_table_privilege('anon','public.partner_publication_review_events','INSERT')
@@ -1215,8 +1358,55 @@ begin
       message='app_private schema is directly accessible to a browser or service role.';
   end if;
 
+  if pg_catalog.has_function_privilege(
+       'anon',
+       'public.record_partner_publication_review(uuid,uuid,text,text,text,uuid,text)',
+       'EXECUTE'
+     ) or pg_catalog.has_function_privilege(
+       'authenticated',
+       'public.record_partner_publication_review(uuid,uuid,text,text,text,uuid,text)',
+       'EXECUTE'
+     ) or not pg_catalog.has_function_privilege(
+       'service_role',
+       'public.record_partner_publication_review(uuid,uuid,text,text,text,uuid,text)',
+       'EXECUTE'
+     ) or pg_catalog.has_function_privilege(
+       'anon',
+       'public.submit_partner_registration_with_consent(uuid,text,text[],text,text,text,text,text[],text,text,text,text,text,text,text[],jsonb,text,text,text[],text,text,boolean,boolean,boolean,boolean,text)',
+       'EXECUTE'
+     ) or not pg_catalog.has_function_privilege(
+       'authenticated',
+       'public.submit_partner_registration_with_consent(uuid,text,text[],text,text,text,text,text[],text,text,text,text,text,text,text[],jsonb,text,text,text[],text,text,boolean,boolean,boolean,boolean,text)',
+       'EXECUTE'
+     ) or pg_catalog.has_function_privilege(
+       'anon',
+       'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,boolean,boolean,uuid,text)',
+       'EXECUTE'
+     ) or not pg_catalog.has_function_privilege(
+       'authenticated',
+       'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,boolean,boolean,uuid,text)',
+       'EXECUTE'
+     ) or pg_catalog.has_function_privilege(
+       'anon',
+       'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,boolean,boolean,text[])',
+       'EXECUTE'
+     ) or not pg_catalog.has_function_privilege(
+       'authenticated',
+       'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,boolean,boolean,text[])',
+       'EXECUTE'
+     ) or not pg_catalog.has_function_privilege(
+       'service_role',
+       'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,boolean,boolean,text[])',
+       'EXECUTE'
+     ) then
+    raise exception using
+      errcode='55000',
+      message='Partner consent/review RPC execute privileges do not match the least-privilege contract.';
+  end if;
+
   foreach helper_function in array array[
     'app_private.is_wave1_food_partner(public.partners)',
+    'app_private.is_supported_swipe_partner(public.partners)',
     'app_private.wave1_local_lane(public.partners)',
     'app_private.partner_public_profile_snapshot(public.partners)',
     'app_private.partner_public_profile_hash(public.partners)'
@@ -1290,6 +1480,32 @@ begin
   select relowner into partner_owner
   from pg_catalog.pg_class
   where oid='public.partners'::regclass;
+
+  if exists (
+    select 1
+    from pg_catalog.pg_class protected_relation
+    where protected_relation.oid=any(array[
+      'public.partner_publication_consent_events'::regclass,
+      'public.partner_publication_consent_events_event_sequence_seq'::regclass,
+      'public.partner_publication_review_events'::regclass,
+      'public.partner_publication_review_events_event_sequence_seq'::regclass,
+      'app_private.partner_publication_projection'::regclass
+    ]::oid[])
+      and protected_relation.relowner is distinct from partner_owner
+  ) or exists (
+    select 1
+    from pg_catalog.pg_proc protected_function
+    where protected_function.oid=any(array[
+      'app_private.guard_partner_publication_consent_immutability()'::regprocedure,
+      'app_private.guard_partner_publication_review_immutability()'::regprocedure,
+      'public.record_partner_publication_review(uuid,uuid,text,text,text,uuid,text)'::regprocedure
+    ]::oid[])
+      and protected_function.proowner is distinct from partner_owner
+  ) then
+    raise exception using
+      errcode='55000',
+      message='A publication ledger, identity sequence, private projection, guard, or review RPC has an unexpected owner.';
+  end if;
 
   foreach view_name in array array[
     'public_partner_directory','public_swipe_partners','public_local_partners'

@@ -164,12 +164,12 @@ begin
   end if;
 
   foreach v_function in array array[
-    'public.submit_partner_registration_with_consent(uuid,text,text[],text,text,text,text,text[],text,text,text,text,text,text,text[],jsonb,text,text,text[],text,text,boolean,boolean,text)'::regprocedure,
-    'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,uuid,text)'::regprocedure,
+    'public.submit_partner_registration_with_consent(uuid,text,text[],text,text,text,text,text[],text,text,text,text,text,text,text[],jsonb,text,text,text[],text,text,boolean,boolean,boolean,boolean,text)'::regprocedure,
+    'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,boolean,boolean,uuid,text)'::regprocedure,
     'public.authorize_partner_profile_publication(uuid,text[],text,text,uuid,text,text)'::regprocedure,
     'public.withdraw_partner_publication_authorization(uuid,text[],text,text,uuid,text)'::regprocedure,
     'public.get_my_partner_publication_status(uuid)'::regprocedure,
-    'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,text[])'::regprocedure
+    'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,boolean,boolean,text[])'::regprocedure
   ] loop
     select p.proconfig into v_config from pg_catalog.pg_proc p where p.oid = v_function;
     if not ('search_path=""' = any (coalesce(v_config, array[]::text[]))) then
@@ -182,8 +182,8 @@ begin
   end loop;
 
   foreach v_function in array array[
-    'public.submit_partner_registration_with_consent(uuid,text,text[],text,text,text,text,text[],text,text,text,text,text,text,text[],jsonb,text,text,text[],text,text,boolean,boolean,text)'::regprocedure,
-    'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,uuid,text)'::regprocedure,
+    'public.submit_partner_registration_with_consent(uuid,text,text[],text,text,text,text,text[],text,text,text,text,text,text,text[],jsonb,text,text,text[],text,text,boolean,boolean,boolean,boolean,text)'::regprocedure,
+    'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,boolean,boolean,uuid,text)'::regprocedure,
     'public.authorize_partner_profile_publication(uuid,text[],text,text,uuid,text,text)'::regprocedure,
     'public.withdraw_partner_publication_authorization(uuid,text[],text,text,uuid,text)'::regprocedure,
     'public.get_my_partner_publication_status(uuid)'::regprocedure
@@ -200,7 +200,7 @@ begin
     raise exception 'owner withdrawal must mint the private listing-change capability before updating the partner';
   end if;
 
-  v_function := 'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,text[])'::regprocedure;
+  v_function := 'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,boolean,boolean,text[])'::regprocedure;
   if not pg_catalog.has_function_privilege('authenticated', v_function, 'EXECUTE')
      or not pg_catalog.has_function_privilege('service_role', v_function, 'EXECUTE') then
     raise exception 'verified-consent RPC needs authenticated + service_role execution';
@@ -283,7 +283,8 @@ begin
     perform public.record_verified_partner_publication_consent(
       v_partner_id, 'heha_swipe', 'prepare_profile', 'revoked',
       'Forged Service', 'Attacker', 'attacker@heha.example', 'forged-service-role',
-      gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, false, false,
+      gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null,
+      false, false, false, false,
       array['Tampa Bay']::text[]
     );
     raise exception 'forged service JWT recorded consent';
@@ -318,13 +319,15 @@ begin
   v_event := public.record_verified_partner_publication_consent(
     v_partner_id, 'heha_swipe', 'publish_profile', 'revoked',
     'Wave One Proof', 'Operations', 'proof@heha.example', 'real-service-revocation',
-    v_key, 'wave1-profile-consent-2026-08-10', null, false, false,
+    v_key, 'wave1-profile-consent-2026-08-10', null,
+    false, false, false, false,
     array['Tampa Bay']::text[]
   );
   if v_event is null or public.record_verified_partner_publication_consent(
     v_partner_id, 'heha_swipe', 'publish_profile', 'revoked',
     'Wave One Proof', 'Operations', 'proof@heha.example', 'real-service-revocation',
-    v_key, 'wave1-profile-consent-2026-08-10', null, false, false,
+    v_key, 'wave1-profile-consent-2026-08-10', null,
+    false, false, false, false,
     array['Tampa Bay']::text[]
   ) is distinct from v_event then
     raise exception 'real service role failed idempotent evidence recording';
@@ -333,7 +336,8 @@ begin
     perform public.record_verified_partner_publication_consent(
       v_partner_id, 'invalid_destination', 'publish_profile', 'revoked',
       'Wave One Proof', 'Operations', 'proof@heha.example', 'invalid-destination',
-      gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null, false, false,
+      gen_random_uuid(), 'wave1-profile-consent-2026-08-10', null,
+      false, false, false, false,
       array['Tampa Bay']::text[]
     );
     raise exception 'invalid destination was accepted';
@@ -375,12 +379,12 @@ begin
 
   perform public.authorize_existing_partner_profile_preparation(
     v_partner_id, array['heha_swipe', 'heha_local']::text[],
-    'Wave One Owner', 'Owner', true, true, v_prepare_key,
+    'Wave One Owner', 'Owner', true, true, true, true, v_prepare_key,
     'wave1-profile-consent-2026-08-10'
   );
   perform public.authorize_existing_partner_profile_preparation(
     v_partner_id, array['heha_swipe', 'heha_local']::text[],
-    'Wave One Owner', 'Owner', true, true, v_prepare_key,
+    'Wave One Owner', 'Owner', true, true, true, true, v_prepare_key,
     'wave1-profile-consent-2026-08-10'
   );
   v_status := public.get_my_partner_publication_status(v_partner_id);

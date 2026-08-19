@@ -45,11 +45,13 @@ create table public.partner_publication_consent_events (
   state text not null,
   authorized_representative_name text not null,
   authorized_representative_title text not null,
+  representative_authority_confirmed boolean not null default false,
+  profile_preparation_confirmed boolean not null default false,
   authorized_account_contact text not null,
   consent_statement_version text not null,
   evidence_channel text not null,
   evidence_reference text,
-  service_areas text[] not null default array['Tampa Bay']::text[],
+  service_areas text[] not null default array[]::text[],
   local_lane text,
   media_permission_confirmed boolean not null default false,
   service_area_attested boolean not null default false,
@@ -77,15 +79,21 @@ create table public.partner_publication_consent_events (
     check (char_length(btrim(authorized_representative_name)) between 2 and 120),
   constraint partner_publication_consent_title_check
     check (char_length(btrim(authorized_representative_title)) between 2 and 120),
+  constraint partner_publication_consent_attestations_check
+    check (
+      state <> 'granted'
+      or (representative_authority_confirmed and profile_preparation_confirmed)
+    ),
   constraint partner_publication_consent_contact_check
     check (char_length(btrim(authorized_account_contact)) between 3 and 320),
   constraint partner_publication_consent_statement_check
     check (char_length(btrim(consent_statement_version)) between 3 and 80),
   constraint partner_publication_consent_service_area_check
     check (
-      cardinality(service_areas) between 1 and 20
+      cardinality(service_areas) between 0 and 20
       and array_position(service_areas, null) is null
-      and char_length(array_to_string(service_areas, '')) between 2 and 2400
+      and char_length(array_to_string(service_areas, '')) between 0 and 2400
+      and (destination <> 'heha_local' or cardinality(service_areas) >= 1)
     ),
   constraint partner_publication_consent_evidence_reference_check
     check (
@@ -166,6 +174,25 @@ as $function$
     );
 $function$;
 
+create or replace function app_private.is_supported_swipe_partner(p_partner public.partners)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $function$
+  select
+    lower(coalesce(p_partner.category, '')) = any (
+      array['restaurant','vendor','catering','privatechef','private chef','wellness','coach','service','events']::text[]
+    )
+    or exists (
+      select 1
+      from unnest(coalesce(p_partner.categories, array[]::text[])) as c(value)
+      where lower(c.value) = any (
+        array['restaurant','vendor','catering','privatechef','private chef','wellness','coach','service','events']::text[]
+      )
+    );
+$function$;
+
 create or replace function app_private.wave1_local_lane(p_partner public.partners)
 returns text
 language sql
@@ -238,6 +265,7 @@ as $function$
 $function$;
 
 revoke all on function app_private.is_wave1_food_partner(public.partners) from public, anon, authenticated;
+revoke all on function app_private.is_supported_swipe_partner(public.partners) from public, anon, authenticated;
 revoke all on function app_private.wave1_local_lane(public.partners) from public, anon, authenticated;
 revoke all on function app_private.partner_public_profile_snapshot(public.partners) from public, anon, authenticated;
 revoke all on function app_private.partner_public_profile_hash(public.partners) from public, anon, authenticated;
@@ -285,6 +313,14 @@ begin
   if p_destination <> all (array['heha_swipe', 'heha_local']::text[]) then
     return false;
   end if;
+  if p_destination = 'heha_swipe'
+     and app_private.is_supported_swipe_partner(p_partner) is not true then
+    return false;
+  end if;
+  if p_destination = 'heha_local'
+     and app_private.is_wave1_food_partner(p_partner) is not true then
+    return false;
+  end if;
 
   v_prepare := app_private.latest_partner_consent_event(
     p_partner.id,
@@ -298,9 +334,13 @@ begin
   );
   if v_prepare.id is null
      or v_prepare.state <> 'granted'
+     or v_prepare.representative_authority_confirmed is not true
+     or v_prepare.profile_preparation_confirmed is not true
      or v_prepare.media_permission_confirmed is not true
      or v_publish.id is null
      or v_publish.state <> 'granted'
+     or v_publish.representative_authority_confirmed is not true
+     or v_publish.profile_preparation_confirmed is not true
      or v_publish.media_permission_confirmed is not true then
     return false;
   end if;
@@ -401,6 +441,12 @@ revoke all on function app_private.is_specific_local_partner_path(text)
 revoke all on function app_private.is_specific_wave1_local_partner_path(text, uuid, text)
   from public, anon, authenticated;
 
+drop function if exists public.submit_partner_registration_with_consent(
+  uuid, text, text[], text, text, text, text, text[], text, text, text,
+  text, text, text, text[], jsonb, text, text, text[], text, text,
+  boolean, boolean, text
+);
+
 create or replace function public.submit_partner_registration_with_consent(
   p_submission_key uuid,
   p_name text,
@@ -423,6 +469,8 @@ create or replace function public.submit_partner_registration_with_consent(
   p_destinations text[] default array[]::text[],
   p_authorized_representative_name text default null,
   p_authorized_representative_title text default null,
+  p_authority_confirmed boolean default false,
+  p_profile_confirmed boolean default false,
   p_media_permission_confirmed boolean default false,
   p_tampa_bay_service_confirmed boolean default false,
   p_consent_statement_version text default null
@@ -507,6 +555,8 @@ begin
         'destinations', v_destinations,
         'representative_name', btrim(coalesce(p_authorized_representative_name, '')),
         'representative_title', btrim(coalesce(p_authorized_representative_title, '')),
+        'authority_confirmed', coalesce(p_authority_confirmed, false),
+        'profile_confirmed', coalesce(p_profile_confirmed, false),
         'media_permission', coalesce(p_media_permission_confirmed, false),
         'tampa_bay_service_confirmed', coalesce(p_tampa_bay_service_confirmed, false),
         'statement_version', p_consent_statement_version
@@ -565,13 +615,17 @@ begin
   if v_account_contact is null then
     raise exception using errcode = '23514', message = 'A verified account email or phone is required to record authorization.';
   end if;
+  if p_authority_confirmed is not true then
+    raise exception using errcode = '23514', message = 'Confirm that you are authorized to represent this business.';
+  end if;
+  if p_profile_confirmed is not true then
+    raise exception using errcode = '23514', message = 'Confirm that HEHA may prepare this private profile for review.';
+  end if;
   if p_media_permission_confirmed is not true then
     raise exception using errcode = '23514', message = 'Confirm permission to use business media supplied to HEHA.';
   end if;
-  if exists (
-    select 1 from unnest(v_categories) as c(value)
-    where lower(c.value) in ('catering', 'privatechef', 'private chef')
-  ) and p_tampa_bay_service_confirmed is not true then
+  if 'heha_local' = any (v_destinations)
+     and p_tampa_bay_service_confirmed is not true then
     raise exception using errcode = '23514', message = 'Confirm that this chef/catering business accepts requests in Tampa Bay.';
   end if;
   if p_consent_statement_version is distinct from 'wave1-profile-consent-2026-08-10' then
@@ -643,6 +697,8 @@ begin
       state,
       authorized_representative_name,
       authorized_representative_title,
+      representative_authority_confirmed,
+      profile_preparation_confirmed,
       authorized_account_contact,
       consent_statement_version,
       evidence_channel,
@@ -663,13 +719,15 @@ begin
       'granted',
       btrim(p_authorized_representative_name),
       btrim(p_authorized_representative_title),
+      true,
+      true,
       v_account_contact,
       p_consent_statement_version,
       'heha_swipe',
-      array['Tampa Bay']::text[],
+      case when v_destination = 'heha_local' then array['Tampa Bay']::text[] else array[]::text[] end,
       case when v_destination = 'heha_local' then v_lane else null end,
       true,
-      coalesce(p_tampa_bay_service_confirmed, false),
+      case when v_destination = 'heha_local' then coalesce(p_tampa_bay_service_confirmed, false) else false end,
       v_snapshot,
       v_snapshot_hash,
       p_submission_key,
@@ -696,18 +754,26 @@ $function$;
 
 revoke all on function public.submit_partner_registration_with_consent(
   uuid, text, text[], text, text, text, text, text[], text, text, text,
-  text, text, text, text[], jsonb, text, text, text[], text, text, boolean, boolean, text
+  text, text, text, text[], jsonb, text, text, text[], text, text,
+  boolean, boolean, boolean, boolean, text
 ) from public, anon, authenticated, service_role;
 grant execute on function public.submit_partner_registration_with_consent(
   uuid, text, text[], text, text, text, text, text[], text, text, text,
-  text, text, text, text[], jsonb, text, text, text[], text, text, boolean, boolean, text
+  text, text, text, text[], jsonb, text, text, text[], text, text,
+  boolean, boolean, boolean, boolean, text
 ) to authenticated;
+
+drop function if exists public.authorize_existing_partner_profile_preparation(
+  uuid, text[], text, text, boolean, boolean, uuid, text
+);
 
 create or replace function public.authorize_existing_partner_profile_preparation(
   p_partner_id uuid,
   p_destinations text[],
   p_authorized_representative_name text,
   p_authorized_representative_title text,
+  p_authority_confirmed boolean,
+  p_profile_confirmed boolean,
   p_media_permission_confirmed boolean,
   p_tampa_bay_service_confirmed boolean,
   p_request_key uuid,
@@ -755,10 +821,6 @@ begin
   if not found then
     raise exception using errcode = '42501', message = 'This partner profile is not owned by the signed-in account.';
   end if;
-  if app_private.is_wave1_food_partner(v_partner) is not true then
-    raise exception using errcode = '23514', message = 'This permission flow is currently limited to Tampa Bay chefs and caterers.';
-  end if;
-
   select coalesce(array_agg(distinct d.value order by d.value), array[]::text[])
   into v_destinations
   from unnest(coalesce(p_destinations, array[]::text[])) as d(value)
@@ -766,6 +828,14 @@ begin
   if cardinality(v_destinations) = 0
      or cardinality(v_destinations) <> cardinality(coalesce(p_destinations, array[]::text[])) then
     raise exception using errcode = '23514', message = 'Choose at least one valid HEHA destination.';
+  end if;
+  if 'heha_swipe' = any (v_destinations)
+     and app_private.is_supported_swipe_partner(v_partner) is not true then
+    raise exception using errcode = '23514', message = 'This profile category is not supported for HEHA Swipe publication.';
+  end if;
+  if 'heha_local' = any (v_destinations)
+     and app_private.is_wave1_food_partner(v_partner) is not true then
+    raise exception using errcode = '23514', message = 'HEHA Local is currently available here for catering and private-chef profiles.';
   end if;
   if char_length(btrim(coalesce(p_authorized_representative_name, ''))) not between 2 and 120
      or char_length(btrim(coalesce(p_authorized_representative_title, ''))) not between 2 and 120
@@ -775,7 +845,14 @@ begin
   if p_media_permission_confirmed is not true then
     raise exception using errcode = '23514', message = 'Confirm permission to use business media supplied to HEHA.';
   end if;
-  if p_tampa_bay_service_confirmed is not true then
+  if p_authority_confirmed is not true then
+    raise exception using errcode = '23514', message = 'Confirm that you are authorized to represent this business.';
+  end if;
+  if p_profile_confirmed is not true then
+    raise exception using errcode = '23514', message = 'Confirm that HEHA may prepare this private profile for review.';
+  end if;
+  if 'heha_local' = any (v_destinations)
+     and p_tampa_bay_service_confirmed is not true then
     raise exception using errcode = '23514', message = 'Confirm that this business accepts requests in Tampa Bay.';
   end if;
   if p_consent_statement_version is distinct from 'wave1-profile-consent-2026-08-10' then
@@ -789,6 +866,8 @@ begin
         'destinations', v_destinations,
         'representative_name', btrim(p_authorized_representative_name),
         'representative_title', btrim(p_authorized_representative_title),
+        'authority_confirmed', p_authority_confirmed,
+        'profile_confirmed', p_profile_confirmed,
         'media_permission', p_media_permission_confirmed,
         'tampa_bay_service_confirmed', p_tampa_bay_service_confirmed,
         'statement_version', p_consent_statement_version
@@ -830,6 +909,8 @@ begin
       state,
       authorized_representative_name,
       authorized_representative_title,
+      representative_authority_confirmed,
+      profile_preparation_confirmed,
       authorized_account_contact,
       consent_statement_version,
       evidence_channel,
@@ -851,14 +932,16 @@ begin
       'granted',
       btrim(p_authorized_representative_name),
       btrim(p_authorized_representative_title),
+      true,
+      true,
       v_account_contact,
       p_consent_statement_version,
       'heha_swipe',
       'owner-authorized-existing-profile-preparation',
-      array['Tampa Bay']::text[],
+      case when v_destination = 'heha_local' then array['Tampa Bay']::text[] else array[]::text[] end,
       case when v_destination = 'heha_local' then v_lane else null end,
       true,
-      true,
+      case when v_destination = 'heha_local' then true else false end,
       v_snapshot,
       v_snapshot_hash,
       p_request_key,
@@ -878,10 +961,10 @@ end;
 $function$;
 
 revoke all on function public.authorize_existing_partner_profile_preparation(
-  uuid, text[], text, text, boolean, boolean, uuid, text
+  uuid, text[], text, text, boolean, boolean, boolean, boolean, uuid, text
 ) from public, anon, authenticated, service_role;
 grant execute on function public.authorize_existing_partner_profile_preparation(
-  uuid, text[], text, text, boolean, boolean, uuid, text
+  uuid, text[], text, text, boolean, boolean, boolean, boolean, uuid, text
 ) to authenticated;
 
 create or replace function public.authorize_partner_profile_publication(
@@ -949,6 +1032,14 @@ begin
      or cardinality(v_destinations) <> cardinality(coalesce(p_destinations, array[]::text[])) then
     raise exception using errcode = '23514', message = 'Choose at least one valid HEHA destination.';
   end if;
+  if 'heha_swipe' = any (v_destinations)
+     and app_private.is_supported_swipe_partner(v_partner) is not true then
+    raise exception using errcode = '23514', message = 'This profile category is not supported for HEHA Swipe publication.';
+  end if;
+  if 'heha_local' = any (v_destinations)
+     and app_private.is_wave1_food_partner(v_partner) is not true then
+    raise exception using errcode = '23514', message = 'HEHA Local is currently available here for catering and private-chef profiles.';
+  end if;
   if char_length(btrim(coalesce(p_authorized_representative_name, ''))) not between 2 and 120
      or char_length(btrim(coalesce(p_authorized_representative_title, ''))) not between 2 and 120
      or v_account_contact is null then
@@ -1006,11 +1097,17 @@ begin
     v_prepare := app_private.latest_partner_consent_event(p_partner_id, v_destination, 'prepare_profile');
     if v_prepare.id is null
        or v_prepare.owner_id is distinct from v_actor_id
-       or v_prepare.state <> 'granted' then
+       or v_prepare.state <> 'granted'
+       or v_prepare.representative_authority_confirmed is not true
+       or v_prepare.profile_preparation_confirmed is not true
+       or v_prepare.media_permission_confirmed is not true then
       raise exception using errcode = '23514', message = 'Private profile preparation must be authorized for every selected destination first.';
     end if;
     if v_destination = 'heha_local'
-       and v_prepare.local_lane is distinct from v_lane then
+       and (
+         v_prepare.service_area_attested is not true
+         or v_prepare.local_lane is distinct from v_lane
+       ) then
       raise exception using errcode = '23514', message = 'The chef/catering service changed after profile preparation. Reconfirm the current HEHA Local lane before publishing.';
     end if;
 
@@ -1022,6 +1119,8 @@ begin
       state,
       authorized_representative_name,
       authorized_representative_title,
+      representative_authority_confirmed,
+      profile_preparation_confirmed,
       authorized_account_contact,
       consent_statement_version,
       evidence_channel,
@@ -1043,6 +1142,8 @@ begin
       'granted',
       btrim(p_authorized_representative_name),
       btrim(p_authorized_representative_title),
+      v_prepare.representative_authority_confirmed,
+      v_prepare.profile_preparation_confirmed,
       v_account_contact,
       p_consent_statement_version,
       'heha_swipe',
@@ -1149,7 +1250,16 @@ begin
 
   v_lane := app_private.wave1_local_lane(v_partner);
   if 'heha_local' = any (v_destinations) and v_lane is null then
-    raise exception using errcode = '23514', message = 'This profile has no HEHA Local permission lane to withdraw.';
+    select e.local_lane into v_lane
+    from public.partner_publication_consent_events e
+    where e.partner_id = v_partner.id
+      and e.destination = 'heha_local'
+      and e.local_lane is not null
+    order by e.event_sequence desc
+    limit 1;
+    if v_lane is null then
+      raise exception using errcode = '23514', message = 'This profile has no HEHA Local permission lane to withdraw.';
+    end if;
   end if;
   v_snapshot := app_private.partner_public_profile_snapshot(v_partner);
   v_snapshot_hash := app_private.partner_public_profile_hash(v_partner);
@@ -1230,7 +1340,7 @@ begin
       p_consent_statement_version,
       'heha_swipe',
       'owner-withdrew-publication-authorization',
-      array['Tampa Bay']::text[],
+      case when v_destination = 'heha_local' then array['Tampa Bay']::text[] else array[]::text[] end,
       case when v_destination = 'heha_local' then v_lane else null end,
       false,
       false,
@@ -1348,6 +1458,11 @@ revoke all on function public.get_my_partner_publication_status(uuid)
   from public, anon, authenticated, service_role;
 grant execute on function public.get_my_partner_publication_status(uuid) to authenticated;
 
+drop function if exists public.record_verified_partner_publication_consent(
+  uuid, text, text, text, text, text, text, text, uuid, text, text,
+  boolean, boolean, text[]
+);
+
 create or replace function public.record_verified_partner_publication_consent(
   p_partner_id uuid,
   p_destination text,
@@ -1360,6 +1475,8 @@ create or replace function public.record_verified_partner_publication_consent(
   p_request_key uuid,
   p_consent_statement_version text,
   p_expected_profile_snapshot_hash text default null,
+  p_authority_confirmed boolean default false,
+  p_profile_confirmed boolean default false,
   p_media_permission_confirmed boolean default false,
   p_tampa_bay_service_confirmed boolean default false,
   p_service_areas text[] default array['Tampa Bay']::text[]
@@ -1407,10 +1524,31 @@ begin
   if not found then
     raise exception using errcode = 'P0002', message = 'Partner profile not found.';
   end if;
-  if app_private.is_wave1_food_partner(v_partner) is not true then
-    raise exception using errcode = '23514', message = 'Verified-email consent recording is currently limited to the Wave 1 chef/catering pilot.';
+  if p_state = 'granted'
+     and p_destination = 'heha_swipe'
+     and app_private.is_supported_swipe_partner(v_partner) is not true then
+    raise exception using errcode = '23514', message = 'This profile category is not supported for HEHA Swipe publication.';
+  end if;
+  if p_state = 'granted'
+     and p_destination = 'heha_local'
+     and app_private.is_wave1_food_partner(v_partner) is not true then
+    raise exception using errcode = '23514', message = 'HEHA Local is currently available here for catering and private-chef profiles.';
   end if;
   v_lane := app_private.wave1_local_lane(v_partner);
+  if p_state = 'revoked'
+     and p_destination = 'heha_local'
+     and v_lane is null then
+    select e.local_lane into v_lane
+    from public.partner_publication_consent_events e
+    where e.partner_id = v_partner.id
+      and e.destination = 'heha_local'
+      and e.local_lane is not null
+    order by e.event_sequence desc
+    limit 1;
+    if v_lane is null then
+      raise exception using errcode = '23514', message = 'This profile has no HEHA Local permission lane to revoke.';
+    end if;
+  end if;
   v_request_payload_hash := pg_catalog.encode(
     extensions.digest(
       jsonb_build_object(
@@ -1424,6 +1562,8 @@ begin
         'evidence_reference', btrim(coalesce(p_evidence_reference, '')),
         'statement_version', p_consent_statement_version,
         'expected_profile_snapshot_hash', p_expected_profile_snapshot_hash,
+        'authority_confirmed', coalesce(p_authority_confirmed, false),
+        'profile_confirmed', coalesce(p_profile_confirmed, false),
         'media_permission', coalesce(p_media_permission_confirmed, false),
         'tampa_bay_service_confirmed', coalesce(p_tampa_bay_service_confirmed, false),
         'service_areas', coalesce(p_service_areas, array['Tampa Bay']::text[])
@@ -1449,6 +1589,14 @@ begin
      and p_media_permission_confirmed is not true then
     raise exception using errcode = '23514', message = 'Current permission to use supplied business media is required for every granted profile action.';
   end if;
+  if p_state = 'granted'
+     and p_authority_confirmed is not true then
+    raise exception using errcode = '23514', message = 'Verified representative-authority confirmation is required for every granted profile action.';
+  end if;
+  if p_state = 'granted'
+     and p_profile_confirmed is not true then
+    raise exception using errcode = '23514', message = 'Verified profile-preparation confirmation is required for every granted profile action.';
+  end if;
 
   if p_action = 'publish_profile' and p_state = 'granted' then
     if p_expected_profile_snapshot_hash !~ '^[0-9a-f]{64}$' then
@@ -1461,11 +1609,17 @@ begin
     );
     if v_prepare.id is null
        or v_prepare.owner_id is distinct from v_partner.owner_id
-       or v_prepare.state <> 'granted' then
+       or v_prepare.state <> 'granted'
+       or v_prepare.representative_authority_confirmed is not true
+       or v_prepare.profile_preparation_confirmed is not true
+       or v_prepare.media_permission_confirmed is not true then
       raise exception using errcode = '23514', message = 'Verified profile preparation permission must be recorded before publication permission.';
     end if;
     if p_destination = 'heha_local'
-       and v_prepare.local_lane is distinct from v_lane then
+       and (
+         v_prepare.service_area_attested is not true
+         or v_prepare.local_lane is distinct from v_lane
+       ) then
       raise exception using errcode = '23514', message = 'The chef/catering service changed after preparation permission. Record current HEHA Local preparation permission first.';
     end if;
     if app_private.partner_public_profile_hash(v_partner) is distinct from p_expected_profile_snapshot_hash then
@@ -1487,6 +1641,8 @@ begin
     state,
     authorized_representative_name,
     authorized_representative_title,
+    representative_authority_confirmed,
+    profile_preparation_confirmed,
     authorized_account_contact,
     consent_statement_version,
     evidence_channel,
@@ -1508,11 +1664,24 @@ begin
     p_state,
     btrim(p_authorized_representative_name),
     btrim(p_authorized_representative_title),
+    case
+      when p_action = 'publish_profile' and p_state = 'granted'
+        then v_prepare.representative_authority_confirmed
+      else coalesce(p_authority_confirmed, false)
+    end,
+    case
+      when p_action = 'publish_profile' and p_state = 'granted'
+        then v_prepare.profile_preparation_confirmed
+      else coalesce(p_profile_confirmed, false)
+    end,
     lower(btrim(p_authorized_representative_email)),
     p_consent_statement_version,
     'verified_email',
     btrim(p_evidence_reference),
-    coalesce(p_service_areas, array['Tampa Bay']::text[]),
+    case
+      when p_destination = 'heha_local' then coalesce(p_service_areas, array['Tampa Bay']::text[])
+      else array[]::text[]
+    end,
     case when p_destination = 'heha_local' then v_lane else null end,
     coalesce(p_media_permission_confirmed, false),
     case
@@ -1569,10 +1738,12 @@ end;
 $function$;
 
 revoke all on function public.record_verified_partner_publication_consent(
-  uuid, text, text, text, text, text, text, text, uuid, text, text, boolean, boolean, text[]
+  uuid, text, text, text, text, text, text, text, uuid, text, text,
+  boolean, boolean, boolean, boolean, text[]
 ) from public, anon, authenticated;
 grant execute on function public.record_verified_partner_publication_consent(
-  uuid, text, text, text, text, text, text, text, uuid, text, text, boolean, boolean, text[]
+  uuid, text, text, text, text, text, text, text, uuid, text, text,
+  boolean, boolean, boolean, boolean, text[]
 ) to authenticated, service_role;
 
 -- Repair the no-space PrivateChef category used by the current onboarding UI.

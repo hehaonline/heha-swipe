@@ -54,7 +54,7 @@ no_deadlock() {
 restore_swipe_listing_inputs() {
   "${PSQL[@]}" >/dev/null <<SQL
 update public.partners
-set status='approved',
+set status='pending',
     swipe_eligible=true,
     updated_at=pg_catalog.now()
 where id='${PARTNER}';
@@ -71,7 +71,7 @@ $(auth_sql "${OWNER}")
 select (
   public.authorize_existing_partner_profile_preparation(
     '${PARTNER}', array['heha_swipe']::text[],
-    'Concurrency Owner', 'Founder', true, true,
+    'Concurrency Owner', 'Founder', true, true, true, false,
     '${prepare_key}', 'wave1-profile-consent-2026-08-10'
   ) ->> 'profile_snapshot_hash'
 ) as profile_hash \gset
@@ -163,6 +163,11 @@ begin
   ) then
     raise exception 'losing staff review wrote evidence';
   end if;
+  if (
+    select status from public.partners where id='${PARTNER}'
+  ) is distinct from 'pending' then
+    raise exception 'withdraw-first race did not preserve pending lifecycle state';
+  end if;
 end;
 \$proof\$;
 SQL
@@ -181,6 +186,7 @@ psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 -qtA \
     echo 'begin;'
     echo 'set local role service_role;'
     echo "select 'integration_review_winner',public.record_partner_publication_review('71000000-0000-4000-8000-000000000007','${PARTNER}','heha_swipe','${HASH_TWO}','approved','${REVIEWER}',null);"
+    echo "do \$proof\$ begin /* integration_review_winner */ if (select status from public.partners where id='${PARTNER}') is distinct from 'approved' then raise exception 'exact review did not atomically advance pending to approved'; end if; end; \$proof\$;"
     cat "${PROOF_TMP}/review_first_in"
   }) > "${PROOF_TMP}/review_first.out" 2>&1 &
 REVIEW_FIRST_PID=$!
@@ -233,6 +239,11 @@ begin
     limit 1
   ) is distinct from 'revoked' then
     raise exception 'approve-first race did not leave latest revoke';
+  end if;
+  if (
+    select status from public.partners where id='${PARTNER}'
+  ) is distinct from 'pending' then
+    raise exception 'approve-first then withdraw race did not end pending';
   end if;
 end;
 \$proof\$;

@@ -24,6 +24,10 @@ on:
       - scripts/hybrid_partner_concurrency_proof.sh
       - .env.example
       - README.md
+      - vite.config.js
+      - index.html
+      - package.json
+      - package-lock.json
       - src/**
   workflow_dispatch:
 
@@ -289,6 +293,7 @@ jobs:
             src/lib/hehaLocalRouting.test.js \
             src/lib/partnerBrowserWebhookBoundary.test.js \
             src/lib/partnerPublicationConsent.test.js \
+            src/lib/partnerPublicationUiContract.test.js \
             src/lib/partnerVisibility.test.js \
             src/lib/publicPartnerDirectoryContract.test.js
           forbidden_env_name="$(printf '%s_' VITE MAKE PARTNER APPROVAL)WEBHOOK"

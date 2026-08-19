@@ -1,16 +1,19 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import {
+  PARTNER_DESTINATIONS,
   availablePartnerDestinations,
   createPartnerConsentRequestKey,
   publicationStatusLabel,
-  supportsHehaLocal,
+  supportsHehaSwipe,
   validatePartnerDraftAuthorization,
+  validatePartnerPublicationWithdrawal,
 } from "../lib/partnerPublicationConsent";
 import {
   authorizeExistingPartnerProfilePreparation,
   authorizePartnerProfilePublication,
   getMyPartnerPublicationStatus,
+  withdrawPartnerProfilePublication,
 } from "../services/partnerPublicationConsentRepository";
 import { partnerSurfaceVisibility } from "../lib/partnerVisibility";
 import PartnerPublicationPreview from "./PartnerPublicationPreview";
@@ -68,6 +71,15 @@ export default function ProfileTab({
   const [publicationWriteRecorded, setPublicationWriteRecorded] = useState(false);
   const [preparationWriteRecorded, setPreparationWriteRecorded] = useState(false);
   const [preparationErrors, setPreparationErrors] = useState({});
+  const [withdrawalRequestKey, setWithdrawalRequestKey] = useState(() => createPartnerConsentRequestKey());
+  const [withdrawalWriteRecorded, setWithdrawalWriteRecorded] = useState(false);
+  const [withdrawalErrors, setWithdrawalErrors] = useState({});
+  const [withdrawalAuthorization, setWithdrawalAuthorization] = useState({
+    destinations: [],
+    representativeName: "",
+    representativeTitle: "",
+    withdrawalConfirmed: false,
+  });
   const permissionErrorPrefix = useId();
   const [preparationAuthorization, setPreparationAuthorization] = useState({
     destinations: [],
@@ -131,6 +143,26 @@ export default function ProfileTab({
   }, [isBusiness, user?.id]);
 
   const activeListing = ownedListing || listing;
+  const activeListingCategories = Array.isArray(activeListing?.categories) && activeListing.categories.length
+    ? activeListing.categories
+    : activeListing?.category
+    ? [activeListing.category]
+    : [];
+  const localPreparationSelected = preparationAuthorization.destinations.includes(
+    PARTNER_DESTINATIONS.local
+  );
+
+  useEffect(() => {
+    setWithdrawalAuthorization({
+      destinations: [],
+      representativeName: "",
+      representativeTitle: "",
+      withdrawalConfirmed: false,
+    });
+    setWithdrawalErrors({});
+    setWithdrawalRequestKey(createPartnerConsentRequestKey());
+    setWithdrawalWriteRecorded(false);
+  }, [activeListing?.id]);
 
   useEffect(() => {
     if (!isBusiness || !activeListing?.id) {
@@ -149,6 +181,7 @@ export default function ProfileTab({
           setPublicationStatusError(null);
           setPublicationWriteRecorded(false);
           setPreparationWriteRecorded(false);
+          setWithdrawalWriteRecorded(false);
         }
       } catch (error) {
         if (!cancelled) {
@@ -373,13 +406,8 @@ export default function ProfileTab({
   };
 
   const prepareExistingPartnerProfile = async () => {
-    const categories = Array.isArray(activeListing?.categories) && activeListing.categories.length
-      ? activeListing.categories
-      : activeListing?.category
-      ? [activeListing.category]
-      : [];
     const validation = validatePartnerDraftAuthorization({
-      categories,
+      categories: activeListingCategories,
       ...preparationAuthorization,
     });
     if (!validation.valid || !activeListing?.id) {
@@ -415,6 +443,76 @@ export default function ProfileTab({
       }
     } catch (error) {
       setProfileError(error.message || "Could not record profile preparation permission yet.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setWithdrawalField = (field, value) => {
+    setWithdrawalAuthorization((current) => ({ ...current, [field]: value }));
+    setWithdrawalErrors((current) => ({ ...current, [field]: null }));
+    setProfileError(null);
+  };
+
+  const toggleWithdrawalDestination = (destination) => {
+    setWithdrawalAuthorization((current) => ({
+      ...current,
+      destinations: current.destinations.includes(destination)
+        ? current.destinations.filter((value) => value !== destination)
+        : [...current.destinations, destination],
+      withdrawalConfirmed: false,
+    }));
+    setWithdrawalErrors((current) => ({
+      ...current,
+      destinations: null,
+      withdrawalConfirmed: null,
+    }));
+    setProfileError(null);
+  };
+
+  const withdrawCurrentPartnerPublication = async () => {
+    const validation = validatePartnerPublicationWithdrawal({
+      ...withdrawalAuthorization,
+      activeDestinations: publicationStatus?.publication_destinations || [],
+    });
+    if (!validation.valid || !activeListing?.id) {
+      setWithdrawalErrors(validation.errors);
+      setProfileError(Object.values(validation.errors)[0] || "Complete the withdrawal fields.");
+      return;
+    }
+
+    setBusy(true);
+    setProfileError(null);
+    setProfileMessage(null);
+    try {
+      await withdrawPartnerProfilePublication({
+        partnerId: activeListing.id,
+        destinations: validation.destinations,
+        representativeName: withdrawalAuthorization.representativeName,
+        representativeTitle: withdrawalAuthorization.representativeTitle,
+        requestKey: withdrawalRequestKey,
+      });
+      setWithdrawalWriteRecorded(true);
+      setWithdrawalErrors({});
+      setWithdrawalAuthorization({
+        destinations: [],
+        representativeName: "",
+        representativeTitle: "",
+        withdrawalConfirmed: false,
+      });
+      setWithdrawalRequestKey(createPartnerConsentRequestKey());
+      try {
+        const nextStatus = await getMyPartnerPublicationStatus(activeListing.id);
+        setPublicationStatus(nextStatus);
+        setPublicationStatusError(null);
+        setWithdrawalWriteRecorded(false);
+        setProfileMessage("Publication permission was withdrawn only for the selected destination(s).");
+      } catch {
+        setPublicationStatusError("The selected withdrawal was saved, but its status could not refresh.");
+        setProfileMessage("The selected withdrawal was saved. Use Retry status; do not submit it again.");
+      }
+    } catch (error) {
+      setProfileError(error.message || "Could not record the selected destination withdrawal yet.");
     } finally {
       setBusy(false);
     }
@@ -624,7 +722,7 @@ export default function ProfileTab({
               <p className="fine-print">Loading profile permission…</p>
             ) : publicationStatusError ? (
               <div className="wizard-note" role="status">
-                <p>{publicationStatusError} HEHA has not changed this listing’s public visibility.</p>
+                <p>{publicationStatusError}</p>
                 <button
                   className="secondary-button"
                   type="button"
@@ -720,12 +818,106 @@ export default function ProfileTab({
                     This exact version is approved for publication review. HEHA activation and HEHA Certified status remain separate.
                   </div>
                 )}
+                {publicationStatus.publication_destinations?.length > 0 && (
+                  <div className="wizard-note">
+                    <h4>Withdraw publication permission by destination</h4>
+                    <p>
+                      Select only the destination(s) you want to withdraw. An unselected destination keeps its current permission.
+                    </p>
+                    <div
+                      className="wizard-destination-list"
+                      role="group"
+                      aria-label="Destinations to withdraw"
+                      aria-describedby={withdrawalErrors.destinations ? `${permissionErrorPrefix}-withdraw-destinations` : undefined}
+                    >
+                      {publicationStatus.publication_destinations.map((destination) => (
+                        <label className="wizard-check-row" key={`withdraw-${destination}`}>
+                          <input
+                            type="checkbox"
+                            checked={withdrawalAuthorization.destinations.includes(destination)}
+                            onChange={() => toggleWithdrawalDestination(destination)}
+                            aria-invalid={withdrawalErrors.destinations ? "true" : undefined}
+                          />
+                          <span>
+                            <strong>
+                              {destination === PARTNER_DESTINATIONS.local ? "HEHA Local" : "HEHA Swipe"}
+                            </strong>
+                            <small>Withdraw this destination only.</small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    {withdrawalErrors.destinations && (
+                      <div className="wizard-error" id={`${permissionErrorPrefix}-withdraw-destinations`} role="alert">
+                        {withdrawalErrors.destinations}
+                      </div>
+                    )}
+
+                    <div className="profile-form">
+                      <label className="field-block">
+                        <span>Authorized representative</span>
+                        <input
+                          value={withdrawalAuthorization.representativeName}
+                          onChange={(event) => setWithdrawalField("representativeName", event.target.value)}
+                          placeholder="Full name"
+                          autoComplete="name"
+                          aria-invalid={withdrawalErrors.representativeName ? "true" : undefined}
+                          aria-describedby={withdrawalErrors.representativeName ? `${permissionErrorPrefix}-withdraw-name` : undefined}
+                        />
+                        {withdrawalErrors.representativeName && (
+                          <small className="wizard-error" id={`${permissionErrorPrefix}-withdraw-name`} role="alert">
+                            {withdrawalErrors.representativeName}
+                          </small>
+                        )}
+                      </label>
+                      <label className="field-block">
+                        <span>Role or title</span>
+                        <input
+                          value={withdrawalAuthorization.representativeTitle}
+                          onChange={(event) => setWithdrawalField("representativeTitle", event.target.value)}
+                          placeholder="Owner, founder, manager…"
+                          aria-invalid={withdrawalErrors.representativeTitle ? "true" : undefined}
+                          aria-describedby={withdrawalErrors.representativeTitle ? `${permissionErrorPrefix}-withdraw-title` : undefined}
+                        />
+                        {withdrawalErrors.representativeTitle && (
+                          <small className="wizard-error" id={`${permissionErrorPrefix}-withdraw-title`} role="alert">
+                            {withdrawalErrors.representativeTitle}
+                          </small>
+                        )}
+                      </label>
+                    </div>
+
+                    <label className="wizard-check-row">
+                      <input
+                        type="checkbox"
+                        checked={withdrawalAuthorization.withdrawalConfirmed}
+                        onChange={(event) => setWithdrawalField("withdrawalConfirmed", event.target.checked)}
+                        aria-invalid={withdrawalErrors.withdrawalConfirmed ? "true" : undefined}
+                        aria-describedby={withdrawalErrors.withdrawalConfirmed ? `${permissionErrorPrefix}-withdraw-confirmed` : undefined}
+                      />
+                      <span>
+                        <strong>I withdraw publication permission only for the destination(s) selected above.</strong>
+                        <small>This does not alter permission for any unselected destination.</small>
+                      </span>
+                    </label>
+                    {withdrawalErrors.withdrawalConfirmed && (
+                      <div className="wizard-error" id={`${permissionErrorPrefix}-withdraw-confirmed`} role="alert">
+                        {withdrawalErrors.withdrawalConfirmed}
+                      </div>
+                    )}
+
+                    <button
+                      className="danger-button"
+                      type="button"
+                      onClick={withdrawCurrentPartnerPublication}
+                      disabled={busy || withdrawalWriteRecorded}
+                    >
+                      {busy ? "Recording withdrawal…" : "Withdraw selected destination(s)"}
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : supportsHehaLocal(
-              Array.isArray(activeListing?.categories) && activeListing.categories.length
-                ? activeListing.categories
-                : [activeListing?.category]
-            ) ? (
+            ) : supportsHehaSwipe(activeListingCategories) ? (
               <div className="profile-publication-permission">
                 <p className="eyebrow">Start profile permission</p>
                 <h3>Choose where HEHA may prepare this profile</h3>
@@ -737,11 +929,7 @@ export default function ProfileTab({
                   aria-label="HEHA profile destinations"
                   aria-describedby={preparationErrors.destinations ? `${permissionErrorPrefix}-destinations` : undefined}
                 >
-                  {availablePartnerDestinations(
-                    Array.isArray(activeListing?.categories) && activeListing.categories.length
-                      ? activeListing.categories
-                      : [activeListing?.category]
-                  ).map((destination) => (
+                  {availablePartnerDestinations(activeListingCategories).map((destination) => (
                     <label key={destination.value} className="wizard-check-row">
                       <input
                         type="checkbox"
@@ -800,7 +988,9 @@ export default function ProfileTab({
                   ["authorityConfirmed", "I am authorized to represent this business."],
                   ["profileConfirmed", "HEHA may prepare a private draft for the destinations selected above."],
                   ["mediaPermissionConfirmed", "I own or have permission to use business media supplied to HEHA."],
-                  ["tampaBayServiceConfirmed", "This business accepts chef or catering requests in Tampa Bay."],
+                  ...(localPreparationSelected
+                    ? [["tampaBayServiceConfirmed", "This business accepts chef or catering requests in Tampa Bay."]]
+                    : []),
                 ].map(([field, label]) => (
                   <label className="wizard-check-row" key={field}>
                     <input
@@ -817,7 +1007,7 @@ export default function ProfileTab({
                   "authorityConfirmed",
                   "profileConfirmed",
                   "mediaPermissionConfirmed",
-                  "tampaBayServiceConfirmed",
+                  ...(localPreparationSelected ? ["tampaBayServiceConfirmed"] : []),
                 ].map((field) => preparationErrors[field] ? (
                   <div className="wizard-error" id={`${permissionErrorPrefix}-${field}`} role="alert" key={`${field}-error`}>
                     {preparationErrors[field]}
@@ -838,7 +1028,7 @@ export default function ProfileTab({
               </div>
             ) : (
               <div className="wizard-note">
-                No destination-specific profile permission is recorded. This Wave 1 permission flow currently covers Tampa Bay chefs and caterers only.
+                No destination-specific profile permission is recorded for a supported HEHA Swipe category.
               </div>
             )}
           </div>

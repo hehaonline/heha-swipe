@@ -16,6 +16,8 @@ Scope: Tampa Bay Catering and PrivateChef partners, with HEHA Swipe as the canon
 - A current owner can narrow or withdraw one destination without affecting another. Withdrawal appends a destination-specific `publish_profile/revoked` event; it never edits prior evidence.
 - Every Wave 1 profile is consent-managed from its first draft, even before an evidence event exists. Any other profile with consent history also stays consent-managed; changing categories cannot fall back into a legacy public route.
 - Owner consent is necessary but is not HEHA staff approval. HEHA Swipe visibility additionally requires a separate internal staff review of the exact current owner and profile hash. Revocation, ownership change, missing staff review, or profile drift fails closed even if a routing flag is changed directly.
+- A pending listing can reach approved/live only through that exact-current-hash HEHA staff review. Profile preparation or owner publication consent never performs the lifecycle transition by itself.
+- The website business directory is a separate publication destination. It remains disabled until HEHA implements explicit, versioned directory consent; HEHA Swipe consent cannot be reused for it.
 - Full address, phone, contact, account owner, consent evidence, analytics, routing notes, and internal pricing fields stay private.
 - Wave 1 item/per-portion prices and price ranges are suppressed. The public profile says “To be quoted”; the chef/caterer owns the food/service price in the later quote flow.
 - `PrivateChef` retains the internal `chef` lane and `Catering` retains the internal `group_orders` classification for future export mapping.
@@ -27,7 +29,7 @@ Profile permission is not partner-terms acceptance, a commercial contract, HEHA 
 
 ## Required gates before any database apply or UI deployment
 
-1. Founder/legal approval of versioned partner terms, privacy language, profile/media permission copy, and a withdrawal path. This branch deliberately does not manufacture a terms acceptance.
+1. Founder/legal approval of the exact versioned partner terms, privacy language, profile/media permission copy, and withdrawal copy, together with the matching acceptance predicate and evidence fields. This is a hard release blocker; the branch deliberately does not manufacture terms acceptance or substitute profile permission for it.
 2. Reconcile Swipe’s migration ledger and foundational schema. The repository has duplicate versions and does not reproduce the current production schema cleanly.
 3. Obtain a disposable Supabase branch or a current live-schema clone. There is no confirmed Swipe staging project today.
 4. Apply the complete integration RC only to that disposable target and run `supabase/tests/partner_publication_consent_proof.sql` with an owned test chef/caterer and a distinct super-admin test user. The proof covers JWT-role forgery, actual service-role authority, browser ledger denial, current/former-owner access, BOLA, exact-owner consent, destination narrowing, idempotency, unsupported routes, staff-review separation, and Local fail-closed behavior.

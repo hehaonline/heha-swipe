@@ -151,6 +151,26 @@ begin
   assert pg_catalog.to_regclass('public.partner_publication_consent_events') is not null;
   assert pg_catalog.to_regclass('public.partner_publication_review_events') is not null;
   assert (
+    select pg_catalog.bool_and(attnotnull)
+    from pg_catalog.pg_attribute
+    where attrelid = 'public.partner_publication_consent_events'::regclass
+      and attname = any(array[
+        'representative_authority_confirmed',
+        'profile_preparation_confirmed'
+      ]::text[])
+      and not attisdropped
+  ), 'authority/profile attestations must be durable non-null ledger fields';
+  assert (
+    select count(*) = 2
+    from pg_catalog.pg_attribute
+    where attrelid = 'public.partner_publication_consent_events'::regclass
+      and attname = any(array[
+        'representative_authority_confirmed',
+        'profile_preparation_confirmed'
+      ]::text[])
+      and not attisdropped
+  ), 'both authority/profile attestation fields must exist';
+  assert (
     select relrowsecurity
     from pg_catalog.pg_class
     where oid = 'public.partner_publication_consent_events'::regclass
@@ -195,6 +215,18 @@ begin
   assert pg_catalog.to_regprocedure(
     'public.record_partner_publication_review(uuid,uuid,text,text,text,uuid,text)'
   ) is not null;
+  assert pg_catalog.to_regprocedure(
+    'public.submit_partner_registration_with_consent(uuid,text,text[],text,text,text,text,text[],text,text,text,text,text,text,text[],jsonb,text,text,text[],text,text,boolean,boolean,boolean,boolean,text)'
+  ) is not null;
+  assert pg_catalog.to_regprocedure(
+    'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,boolean,boolean,uuid,text)'
+  ) is not null;
+  assert pg_catalog.to_regprocedure(
+    'public.record_verified_partner_publication_consent(uuid,text,text,text,text,text,text,text,uuid,text,text,boolean,boolean,boolean,boolean,text[])'
+  ) is not null;
+  assert pg_catalog.to_regprocedure(
+    'public.authorize_existing_partner_profile_preparation(uuid,text[],text,text,boolean,boolean,uuid,text)'
+  ) is null, 'obsolete preparation overload must be retired';
   assert not pg_catalog.has_function_privilege(
     'anon',
     'public.record_partner_publication_review(uuid,uuid,text,text,text,uuid,text)',
@@ -250,6 +282,13 @@ begin
       'authenticated', pg_catalog.format('public.%I', view_name), 'UPDATE'
     );
   end loop;
+
+  assert pg_catalog.strpos(
+    pg_catalog.lower(
+      pg_catalog.pg_get_viewdef('public.public_partner_directory'::regclass, true)
+    ),
+    'where false'
+  ) > 0, 'public partner directory must remain fail-closed';
 
   assert exists (
     select 1 from pg_catalog.pg_trigger
@@ -336,15 +375,55 @@ select pg_temp.expect_state(
 );
 reset role;
 
+-- The evidence-bound staff review RPC owns the only pending -> approved path.
+-- Failed attestations, forged authority, unauthorized reviewers and stale
+-- hashes must leave the lifecycle untouched.
+select pg_temp.clear_auth();
+update public.partners
+set status = 'pending', updated_at = pg_catalog.now()
+where id = '78787878-7878-4787-8787-787878787878';
+select pg_temp.assert_true(
+  'review fixture starts pending',
+  (select status = 'pending' from public.partners
+   where id = '78787878-7878-4787-8787-787878787878'),
+  'synthetic profile is pending before owner consent and staff review'
+);
+
 -- Owner grants both destination permissions for the exact current profile.
 select pg_temp.set_auth('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 set local role authenticated;
+select pg_temp.expect_state(
+  'representative authority attestation required',
+  '23514',
+  $$select public.authorize_existing_partner_profile_preparation(
+    '78787878-7878-4787-8787-787878787878',
+    array['heha_swipe','heha_local']::text[],
+    'Avery Owner', 'Founder',
+    false, true, true, true,
+    '70000000-0000-4000-8000-000000000021',
+    'wave1-profile-consent-2026-08-10'
+  )$$
+);
+select pg_temp.expect_state(
+  'profile preparation attestation required',
+  '23514',
+  $$select public.authorize_existing_partner_profile_preparation(
+    '78787878-7878-4787-8787-787878787878',
+    array['heha_swipe','heha_local']::text[],
+    'Avery Owner', 'Founder',
+    true, false, true, true,
+    '70000000-0000-4000-8000-000000000022',
+    'wave1-profile-consent-2026-08-10'
+  )$$
+);
 select (
   public.authorize_existing_partner_profile_preparation(
     '78787878-7878-4787-8787-787878787878',
     array['heha_swipe','heha_local']::text[],
     'Avery Owner',
     'Founder',
+    true,
+    true,
     true,
     true,
     '70000000-0000-4000-8000-000000000001',
@@ -387,6 +466,36 @@ begin
 end;
 $proof$;
 reset role;
+
+do $proof$
+begin
+  assert not exists (
+    select 1
+    from public.partner_publication_consent_events
+    where request_key = any(array[
+      '70000000-0000-4000-8000-000000000021'::uuid,
+      '70000000-0000-4000-8000-000000000022'::uuid
+    ])
+  ), 'failed authority/profile attestation requests must not append evidence';
+  assert (
+    select count(*) = 4
+    from public.partner_publication_consent_events
+    where request_key = any(array[
+      '70000000-0000-4000-8000-000000000001'::uuid,
+      '70000000-0000-4000-8000-000000000002'::uuid
+    ])
+      and state = 'granted'
+      and representative_authority_confirmed
+      and profile_preparation_confirmed
+      and media_permission_confirmed
+  ), 'both destination grants must persist authority/profile/media attestations';
+  insert into partner_publication_integration_results(label, ok, detail)
+  values (
+    'durable owner attestations', true,
+    'false authority/profile confirmations append nothing; all four current destination grant events persist true attestations'
+  );
+end;
+$proof$;
 
 -- Owner consent is necessary but is not a HEHA staff publication decision.
 set local role anon;
@@ -464,6 +573,13 @@ select pg_temp.expect_state(
   )$$
 );
 
+select pg_temp.assert_true(
+  'failed review attempts preserve pending',
+  (select status = 'pending' from public.partners
+   where id = '78787878-7878-4787-8787-787878787878'),
+  'forged authority, unauthorized reviewers and a stale hash do not advance lifecycle state'
+);
+
 select public.record_partner_publication_review(
     '70000000-0000-4000-8000-000000000007',
     '78787878-7878-4787-8787-787878787878',
@@ -486,6 +602,12 @@ select pg_temp.assert_true(
   'review idempotency',
   :'replay_review_id'::uuid = :'first_review_id'::uuid,
   'same request and evidence return the original append-only review identity'
+);
+select pg_temp.assert_true(
+  'exact approved review advances pending atomically',
+  (select status = 'approved' from public.partners
+   where id = '78787878-7878-4787-8787-787878787878'),
+  'the exact current-hash approved review advances pending to approved and replay leaves it approved'
 );
 
 -- Exact replay is historical evidence and remains stable after the reviewer is
@@ -690,31 +812,26 @@ begin
 end;
 $proof$;
 
--- Grant plus exact-hash staff review makes the safe Swipe/Directory card public.
+-- Grant plus exact-hash staff review records current evidence, but the legal
+-- hold keeps both public Swipe and website-directory projections empty until
+-- approved versioned terms/privacy evidence is implemented.
 set local role anon;
 select pg_temp.assert_public_state(
-  'grant and staff review visible',
+  'grant and staff review remain under legal hold',
   '78787878-7878-4787-8787-787878787878',
-  true,
-  true
+  false,
+  false
 );
 do $proof$
-declare card record;
 begin
-  select * into card
-  from public.public_swipe_partners
-  where id = '78787878-7878-4787-8787-787878787878';
-  assert card.local_eligible is false;
-  assert card.local_lane is null;
-  assert card.primary_cta_destination = 'swipe';
-  assert card.primary_cta_label = 'Discover Partner';
-  assert card.primary_cta_path = '/?partner=78787878-7878-4787-8787-787878787878';
-  assert card.items = '[]'::jsonb;
-  assert card.price_range is null;
+  assert not exists (select 1 from public.public_partner_directory),
+    'website directory must remain empty even after Swipe review';
+  assert not exists (select 1 from public.public_swipe_partners),
+    'Swipe must remain empty until approved terms/privacy evidence is bound';
   insert into partner_publication_integration_results(label, ok, detail)
   values (
-    'public card fail-closed routing', true,
-    'reviewed Wave 1 card suppresses items/pricing and exposes only the Swipe fallback CTA'
+    'public projections legal hold', true,
+    'current owner consent and exact-hash staff review do not bypass the empty Swipe and website-directory legal hold'
   );
 end;
 $proof$;
@@ -765,10 +882,10 @@ $proof$;
 
 set local role anon;
 select pg_temp.assert_public_state(
-  'local withdrawal preserves swipe',
+  'local withdrawal preserves private Swipe evidence under legal hold',
   '78787878-7878-4787-8787-787878787878',
-  true,
-  true
+  false,
+  false
 );
 reset role;
 
@@ -818,12 +935,12 @@ select pg_temp.assert_public_state(
 );
 reset role;
 
--- Restore only the non-consent listing inputs in this synthetic proof. The
--- latest owner authorization remains revoked, so this alone cannot publish.
+-- Restore only the independent Swipe-eligibility input. Withdrawal deliberately
+-- leaves the profile pending; only the next exact approved review may advance
+-- it back to approved.
 select pg_temp.clear_auth();
 update public.partners
-set status = 'approved',
-    swipe_eligible = true,
+set swipe_eligible = true,
     updated_at = pg_catalog.now()
 where id = '78787878-7878-4787-8787-787878787878';
 
@@ -837,6 +954,8 @@ select (
     'Founder',
     true,
     true,
+    true,
+    false,
     '70000000-0000-4000-8000-000000000011',
     'wave1-profile-consent-2026-08-10'
   ) ->> 'profile_snapshot_hash'
@@ -859,6 +978,12 @@ select pg_temp.assert_true(
   :'unchanged_profile_hash' = :'profile_hash_v1',
   'owner re-consented to the byte-identical public profile hash'
 );
+select pg_temp.assert_true(
+  'unchanged reconsent remains pending',
+  (select status = 'pending' from public.partners
+   where id = '78787878-7878-4787-8787-787878787878'),
+  'owner reconsent does not bypass the staff-owned pending-to-approved transition'
+);
 
 set local role anon;
 select pg_temp.assert_public_state(
@@ -880,14 +1005,20 @@ select public.record_partner_publication_review(
     'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
     null
 ) as unchanged_reconsent_review_id \gset
+select pg_temp.assert_true(
+  'fresh exact review re-approves pending profile',
+  (select status = 'approved' from public.partners
+   where id = '78787878-7878-4787-8787-787878787878'),
+  'fresh exact-hash review advances the withdrawn pending profile back to approved'
+);
 reset role;
 
 set local role anon;
 select pg_temp.assert_public_state(
-  'fresh review after unchanged reconsent visible',
+  'fresh review after unchanged reconsent remains under legal hold',
   '78787878-7878-4787-8787-787878787878',
-  true,
-  true
+  false,
+  false
 );
 reset role;
 
@@ -916,6 +1047,8 @@ select (
     'Founder',
     true,
     true,
+    true,
+    false,
     '70000000-0000-4000-8000-000000000014',
     'wave1-profile-consent-2026-08-10'
   ) ->> 'profile_snapshot_hash'
@@ -963,10 +1096,10 @@ reset role;
 
 set local role anon;
 select pg_temp.assert_public_state(
-  'profile drift fresh exact review visible',
+  'profile drift fresh exact review remains under legal hold',
   '78787878-7878-4787-8787-787878787878',
-  true,
-  true
+  false,
+  false
 );
 reset role;
 
@@ -998,6 +1131,8 @@ select (
     'Founder',
     true,
     true,
+    true,
+    false,
     '70000000-0000-4000-8000-000000000018',
     'wave1-profile-consent-2026-08-10'
   ) ->> 'profile_snapshot_hash'
@@ -1045,10 +1180,10 @@ reset role;
 
 set local role anon;
 select pg_temp.assert_public_state(
-  'category mutation fresh exact review visible',
+  'category mutation fresh exact review remains under legal hold',
   '78787878-7878-4787-8787-787878787878',
-  true,
-  true
+  false,
+  false
 );
 reset role;
 
@@ -1081,10 +1216,92 @@ reset role;
 
 set local role anon;
 select pg_temp.assert_public_state(
-  'independent listing relist visible',
+  'independent listing relist remains under legal hold',
   '78787878-7878-4787-8787-787878787878',
-  true,
-  true
+  false,
+  false
+);
+reset role;
+
+-- Swipe accepts every explicitly supported category, while the not-yet-enabled
+-- Local destination remains limited to Catering/PrivateChef. Restaurant is a
+-- supported Swipe category but deliberately outside that Wave 1 Local subset.
+select pg_temp.clear_auth();
+update public.partners
+set category = 'Restaurant',
+    categories = array['Restaurant']::text[],
+    updated_at = pg_catalog.now()
+where id = '78787878-7878-4787-8787-787878787878';
+
+select pg_temp.set_auth('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+set local role authenticated;
+select (
+  public.authorize_existing_partner_profile_preparation(
+    '78787878-7878-4787-8787-787878787878',
+    array['heha_swipe']::text[],
+    'Avery Owner',
+    'Founder',
+    true,
+    true,
+    true,
+    false,
+    '70000000-0000-4000-8000-000000000023',
+    'wave1-profile-consent-2026-08-10'
+  ) ->> 'profile_snapshot_hash'
+) as restaurant_swipe_hash \gset
+select pg_temp.expect_state(
+  'non-wave1 Local preparation denied',
+  '23514',
+  $$select public.authorize_existing_partner_profile_preparation(
+    '78787878-7878-4787-8787-787878787878',
+    array['heha_local']::text[],
+    'Avery Owner', 'Founder',
+    true, true, true, true,
+    '70000000-0000-4000-8000-000000000024',
+    'wave1-profile-consent-2026-08-10'
+  )$$
+);
+reset role;
+
+select pg_temp.assert_true(
+  'supported non-wave1 Swipe preparation',
+  :'restaurant_swipe_hash' ~ '^[0-9a-f]{64}$',
+  'Restaurant returned an exact Swipe preparation snapshot hash'
+);
+do $proof$
+begin
+  assert exists (
+    select 1
+    from public.partner_publication_consent_events
+    where request_key = '70000000-0000-4000-8000-000000000023'
+      and destination = 'heha_swipe'
+      and action = 'prepare_profile'
+      and state = 'granted'
+      and representative_authority_confirmed
+      and profile_preparation_confirmed
+      and media_permission_confirmed
+      and service_area_attested is false
+      and service_areas = array[]::text[]
+  );
+  assert not exists (
+    select 1
+    from public.partner_publication_consent_events
+    where request_key = '70000000-0000-4000-8000-000000000024'
+  );
+  insert into partner_publication_integration_results(label, ok, detail)
+  values (
+    'supported non-wave1 Swipe boundary', true,
+    'Restaurant preparation succeeds for Swipe with durable attestations and no service area; Local rejects it without recording evidence'
+  );
+end;
+$proof$;
+
+set local role anon;
+select pg_temp.assert_public_state(
+  'non-wave1 preparation alone hidden',
+  '78787878-7878-4787-8787-787878787878',
+  false,
+  false
 );
 reset role;
 
