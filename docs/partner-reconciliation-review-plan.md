@@ -45,8 +45,8 @@ Classification stops at the first applicable row:
 1. `non_partner_source` — either record is a shopping/source-only record. It cannot become claimable or Official Partner by inference.
 2. `ownership_conflict` — the candidates have different non-null owners and at least one matching identifier. Freeze claims and escalate.
 3. `strong_identifier_match` — exact Google Place ID, or at least two independent exact normalized signals from domain, phone, email-with-provenance, or Instagram plus similar name or exact address.
-4. `likely_match` — one normalized signal, or exact normalized name + address, without conflicting ownership.
-5. `separate_businesses` — same/similar name but conflicting place, domain, phone, email, Instagram, owner, or location evidence.
+4. `separate_businesses` — same/similar name with at least two conflicting place, domain, phone, provenance-qualified email, Instagram, owner, or location signals.
+5. `likely_match` — one normalized signal, or exact normalized name + address, without conflicting ownership or the separate-business conflict threshold.
 6. `insufficient_evidence` — no deterministic relationship can be supported.
 
 All six classes are fail-closed. Even `strong_identifier_match` means only “prepare a private dry run.” It never authorizes a canonical ID, mutation, claim, Official Partner status, routing, or publication.
