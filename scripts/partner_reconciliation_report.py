@@ -27,6 +27,8 @@ OWNER_RE = re.compile(r"^SYN-OWNER-[A-Z0-9-]+$")
 PLACE_RE = re.compile(r"^SYN-PLACE-[A-Z0-9-]+$")
 PHONE_RE = re.compile(r"^1?[2-9][0-9]{2}55501[0-9]{2}$")
 INSTAGRAM_RE = re.compile(r"^synthetic_[a-z0-9_]+$")
+TEST_HOST_RE = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+test$")
+EMAIL_LOCAL_RE = re.compile(r"^[a-z0-9][a-z0-9._+-]{0,63}$")
 
 STATIC_STRONG_FIELDS = (
     "google_place_id",
@@ -113,15 +115,20 @@ def normalize_domain(value: Any) -> str:
     if not raw:
         return ""
     _require(not any(ch.isspace() for ch in raw), "website must not contain whitespace")
-    parsed = urlsplit(raw if "://" in raw else f"https://{raw}")
-    _require(parsed.scheme in {"http", "https"}, "website must use http or https")
-    _require(bool(parsed.netloc and parsed.hostname), "website must contain a hostname")
-    _require(parsed.username is None and parsed.password is None, "website credentials are not allowed")
     try:
+        parsed = urlsplit(raw if "://" in raw else f"https://{raw}")
+    except ValueError as exc:
+        raise InputRejected("website URL is invalid") from exc
+    _require(parsed.scheme in {"http", "https"}, "website must use http or https")
+    _require(bool(parsed.netloc), "website must contain a hostname")
+    try:
+        parsed_hostname = parsed.hostname
         parsed.port
     except ValueError as exc:
-        raise InputRejected("website port is invalid") from exc
-    host = str(parsed.hostname).rstrip(".")
+        raise InputRejected("website hostname or port is invalid") from exc
+    _require(bool(parsed_hostname), "website must contain a hostname")
+    _require(parsed.username is None and parsed.password is None, "website credentials are not allowed")
+    host = str(parsed_hostname).rstrip(".")
     return host[4:] if host.startswith("www.") else host
 
 
@@ -142,11 +149,13 @@ def _require(condition: bool, message: str) -> None:
 
 def _validate_synthetic_record(record: dict[str, Any]) -> None:
     _require(set(record) == RECORD_KEYS, "record fields must match the declared synthetic schema exactly")
-    record_id = str(record.get("id", ""))
-    _require(record.get("synthetic") is True, f"{record_id or 'record'}: synthetic=true is required")
-    _require(bool(ID_RE.fullmatch(record_id)), f"{record_id or 'record'}: invalid synthetic id")
+    raw_record_id = record.get("id")
+    _require(isinstance(raw_record_id, str) and bool(ID_RE.fullmatch(raw_record_id)), "record: invalid synthetic id")
+    record_id = raw_record_id
+    _require(record.get("synthetic") is True, f"{record_id}: synthetic=true is required")
+    record_kind = record.get("record_kind")
     _require(
-        record.get("record_kind") in {"partner_candidate", "shopping_source"},
+        isinstance(record_kind, str) and record_kind in {"partner_candidate", "shopping_source"},
         f"{record_id}: unsupported record_kind",
     )
     _require(str(record.get("name", "")).startswith("Synthetic "), f"{record_id}: name must start with 'Synthetic '")
@@ -163,14 +172,17 @@ def _validate_synthetic_record(record: dict[str, Any]) -> None:
     email_provenance = str(record.get("email_provenance", ""))
     _require(email_provenance in EMAIL_PROVENANCE_VALUES, f"{record_id}: invalid email_provenance")
     if email:
-        _require("@" in email and email.rsplit("@", 1)[1].endswith(".test"), f"{record_id}: email must use a .test domain")
+        _require(email.count("@") == 1, f"{record_id}: email must contain one address separator")
+        local_part, email_domain = email.split("@", 1)
+        _require(bool(EMAIL_LOCAL_RE.fullmatch(local_part)), f"{record_id}: email local-part is invalid")
+        _require(bool(TEST_HOST_RE.fullmatch(email_domain)), f"{record_id}: email must use a valid .test DNS domain")
         _require(email_provenance != "not_applicable", f"{record_id}: email provenance is required")
     else:
         _require(email_provenance == "not_applicable", f"{record_id}: email_provenance must be not_applicable without email")
 
     domain = normalize_domain(record.get("website"))
     if domain:
-        _require(domain.endswith(".test"), f"{record_id}: website must use a .test domain")
+        _require(bool(TEST_HOST_RE.fullmatch(domain)), f"{record_id}: website must use a valid .test DNS domain")
 
     phone = re.sub(r"\D", "", str(record.get("phone", "")))
     if phone:
@@ -221,7 +233,11 @@ def validate_dataset(dataset: dict[str, Any]) -> list[dict[str, Any]]:
         candidate_key = expected.get("candidate_key")
         _require(isinstance(candidate_key, str) and candidate_key in valid_candidate_keys, "expected pair references an unknown candidate")
         _require(candidate_key not in seen_expected, f"duplicate expected candidate: {candidate_key}")
-        _require(expected.get("classification") in CLASSIFICATIONS, f"{candidate_key}: invalid expected classification")
+        classification = expected.get("classification")
+        _require(
+            isinstance(classification, str) and classification in CLASSIFICATIONS,
+            f"{candidate_key}: invalid expected classification",
+        )
         seen_expected.add(candidate_key)
     return ordered
 
@@ -327,19 +343,25 @@ def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]
             "retain_nonclaimable_source_and_review_any_link_separately",
         )
 
-    if owners_conflict and (matched or (name_equal and address_equal)):
+    if owners_conflict and (matched or unverified_email_matches or (name_equal and address_equal)):
         reason = (
             "At least one provenance-qualified strong identifier matches while owner-account evidence conflicts; "
             "ownership conflict overrides matching evidence."
             if matched
-            else "Normalized name and address match while owner-account evidence conflicts; ownership must be resolved by a named human."
+            else (
+                "An unverified email corroboration matches while owner-account evidence conflicts; ownership must be resolved by a named human."
+                if unverified_email_matches
+                else "Normalized name and address match while owner-account evidence conflicts; ownership must be resolved by a named human."
+            )
         )
         return _pair_result(
             left,
             right,
             "ownership_conflict",
             reason,
-            matched + unverified_email_matches,
+            matched
+            + unverified_email_matches
+            + (["normalized_name", "normalized_address"] if name_equal and address_equal else []),
             conflicts + ["owner_account_id"],
             "freeze_claim_and_escalate_to_named_human",
         )
@@ -372,17 +394,6 @@ def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]
             "prepare_private_dry_run_for_named_human_review",
         )
 
-    if name_equal and address_equal and not owners_conflict:
-        return _pair_result(
-            left,
-            right,
-            "likely_match",
-            "Normalized name and address match, but fewer than two provenance-qualified strong identifiers are present; corroboration is still required.",
-            matched + unverified_email_matches + ["normalized_name", "normalized_address"],
-            conflicts,
-            "collect_authorized_corroboration_for_named_human_review",
-        )
-
     separation_signals = len(conflicts) + int(owners_conflict) + int(bool(left_norm["address"] and right_norm["address"] and not address_equal))
     if name_similarity >= 0.82 and separation_signals >= 2:
         conflict_list = conflicts + (["owner_account_id"] if owners_conflict else [])
@@ -396,6 +407,17 @@ def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]
             [],
             conflict_list,
             "keep_separate_and_block_automatic_reconciliation",
+        )
+
+    if name_equal and address_equal and not owners_conflict:
+        return _pair_result(
+            left,
+            right,
+            "likely_match",
+            "Normalized name and address match, but fewer than two provenance-qualified strong identifiers are present; corroboration is still required.",
+            matched + unverified_email_matches + ["normalized_name", "normalized_address"],
+            conflicts,
+            "collect_authorized_corroboration_for_named_human_review",
         )
 
     if matched or unverified_email_matches:
