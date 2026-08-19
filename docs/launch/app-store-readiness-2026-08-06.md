@@ -1079,6 +1079,22 @@ Verified through GitHub: exact head/base/one-commit delta, all workflow job step
 
 Collision/scope: only #116 changes this readiness document. This update changes documentation only; it does not modify #127, donor branches, migrations, workflows, Auth/provider settings, partner data, environments, deployments, or external services.
 
+
+## Current Swipe SEC-002 source reconciliation — 2026-08-19
+
+This section supersedes the audit's earlier browser-side partner-review webhook source finding for PR #127 only. It does not claim that any external Make endpoint, environment, deployment, or historical credential was inspected or changed.
+
+- **Exact state:** Swipe PR #127 remains open, draft, and mergeable at `4d1314aeded0b5df6fb8b1e75de17e5cff51137d`, one commit after the reviewed passing proof head `3c0189e4a6d9c109e328a7ea7676f4bf7888df3c`.
+- **Source boundary repaired:** the exact three-file delta removes `VITE_MAKE_PARTNER_APPROVAL_WEBHOOK` from `.env.example` and `README.md`, deletes the browser `fetch` from `PartnerWizard.jsx`, and explicitly treats the durable database review-queue write as authoritative. Exact-head source contains no webhook variable, webhook URL, or `fetch(` call in Partner Wizard. This closes SEC-002's browser-visible bearer-endpoint/replay/payload path in the #127 source.
+- **Exact-head proof reran:** Partner Publication Integration Proof run [#32293579641](https://github.com/hehaonline/heha-swipe/actions/runs/32293579641) passes literal revision, complete migration/proof/replay/concurrency/JavaScript/build/exposure/evidence gates and cleanup. Vercel and Snyk also report success.
+- **What remains open:** all five exact-head review threads remain unresolved. The source still lacks a supported pending→approved/live publication transition, consent preparation for existing non-Wave-1 profiles, separate authorization for the website directory, and an owner-facing withdrawal action. The workflow path-filter finding also remains valid for a future standalone UI/repository change even though this cumulative PR still triggered the workflow because a filtered workflow path is part of its overall diff.
+
+**Safe release default:** accept removal of the browser webhook as source-level progress, but keep #127 draft and unapplied. Do not recreate the client endpoint. Any optional notification should be a separately reviewed server-owned, authenticated, idempotent consumer of the durable queue. Repair the five remaining publication-contract threads and rerun the complete exact-head proof before any merge or migration decision.
+
+Verified through GitHub: exact one-commit/three-file delta, current source, full PR patch references, exact workflow job steps, hosted statuses, draft/mergeable state, and unresolved-thread count. Not run independently: local tests/build, live Make/environment inspection, browser/authenticated partner flows, Supabase migrations/proofs, accessibility QA, deployment, or Production.
+
+Collision/scope: the refreshed sweep covered all 27 open Swipe PRs, including new PR #128; only #116 changes this readiness document. This audit update changes documentation only and does not modify #127, migrations, workflows, runtime code, database state, partner records, environments, deployments, or external services.
+
 ## Rollback
 
 This audit changes documentation only. Reverting its documentation commits removes the document. No application code, dependency, manifest, deployment, native project, signing material, store record, Supabase state, or external service is changed.
