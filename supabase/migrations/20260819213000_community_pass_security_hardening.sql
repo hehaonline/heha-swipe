@@ -1,12 +1,14 @@
 -- Community Pass Package A security and truthfulness hardening.
 --
--- Review-only follow-up. This closes four exact-head gaps found after the first
+-- Review-only follow-up. This closes exact-head gaps found after the first
 -- synthetic proof:
 --   1. benefit/status decisions are bound to a server-owned environment;
 --   2. prepaid acceptances record the exact $15/$25 amount;
 --   3. trial use is monotonic and cannot be reset;
 --   4. account deletion removes customer actor linkage and records a durable,
---      privacy-minimized unlink event.
+--      privacy-minimized unlink event;
+--   5. recovery/support/reconciliation states cannot be bypassed by activating
+--      another entitlement.
 --
 -- No provider, customer, billing, or Production action occurs when this file is
 -- merely committed. Apply only to disposable/current-schema review environments
@@ -40,9 +42,13 @@ end;
 $grant_auth_admin$;
 
 -- A prepaid clickwrap must preserve the exact one-time amount, just as the
--- recurring clickwrap preserves the selected monthly amount.
+-- recurring clickwrap preserves the selected monthly amount. Both constraint
+-- names are dropped so the forward migration is safe under repeatability proof.
 alter table public.community_pass_acceptances
   drop constraint if exists community_pass_acceptances_monthly_disclosure_check;
+
+alter table public.community_pass_acceptances
+  drop constraint if exists community_pass_acceptances_plan_disclosure_check;
 
 alter table public.community_pass_acceptances
   add constraint community_pass_acceptances_plan_disclosure_check check (
@@ -146,46 +152,46 @@ as $function$
   )
   select
     a.status as account_status,
-    e.state as entitlement_state,
-    e.source_type,
+    ent.state as entitlement_state,
+    ent.source_type,
     case
-      when e.source_type = 'free_trial' then 'community_pass_free_trial_v1'
-      when e.source_type = 'monthly_subscription' then 'community_pass_monthly_slider_v1'
-      when e.source_type = 'prepaid_purchase' then p.plan_code
+      when ent.source_type = 'free_trial' then 'community_pass_free_trial_v1'
+      when ent.source_type = 'monthly_subscription' then 'community_pass_monthly_slider_v1'
+      when ent.source_type = 'prepaid_purchase' then p.plan_code
       else null
     end as plan_code,
     case
-      when e.source_type = 'monthly_subscription' then s.selected_amount_cents
-      when e.source_type = 'prepaid_purchase' then p.amount_cents
+      when ent.source_type = 'monthly_subscription' then s.selected_amount_cents
+      when ent.source_type = 'prepaid_purchase' then p.amount_cents
       else null
     end as amount_cents,
     case
-      when e.source_type = 'monthly_subscription' then s.currency
-      when e.source_type = 'prepaid_purchase' then p.currency
+      when ent.source_type = 'monthly_subscription' then s.currency
+      when ent.source_type = 'prepaid_purchase' then p.currency
       else null
     end as currency,
-    coalesce(e.active_start_at, e.trial_start_at) as valid_from,
-    coalesce(e.retained_current_month_end_at, e.active_end_at, e.trial_end_at) as valid_until,
+    coalesce(ent.active_start_at, ent.trial_start_at) as valid_from,
+    coalesce(ent.retained_current_month_end_at, ent.active_end_at, ent.trial_end_at) as valid_until,
     (
-      e.source_type = 'monthly_subscription'
+      ent.source_type = 'monthly_subscription'
       and s.status in ('active', 'payment_recovery')
       and not coalesce(s.cancel_at_period_end, false)
     ) as renews_monthly,
     coalesce(s.cancel_at_period_end, false) as cancel_at_period_end,
     s.recovery_deadline_at as payment_recovery_deadline,
-    e.benefit_version,
-    e.offer_version
+    ent.benefit_version,
+    ent.offer_version
   from runtime_environment runtime
   join public.community_pass_accounts a
     on runtime.value in ('test', 'live')
   left join lateral (
-    select ce.*
-    from public.community_pass_entitlements ce
-    where ce.account_id = a.id
-      and ce.user_id = auth.uid()
-      and ce.environment = runtime.value
+    select e.*
+    from public.community_pass_entitlements e
+    where e.account_id = a.id
+      and e.user_id = auth.uid()
+      and e.environment = runtime.value
     order by
-      case ce.state
+      case e.state
         when 'trial_active' then 1
         when 'monthly_subscription_active' then 1
         when 'prepaid_term_active' then 1
@@ -198,12 +204,12 @@ as $function$
         when 'reserved' then 5
         else 6
       end,
-      ce.updated_at desc,
-      ce.created_at desc
+      e.updated_at desc,
+      e.created_at desc
     limit 1
-  ) e on true
-  left join public.community_pass_subscriptions s on s.id = e.subscription_id
-  left join public.community_pass_purchases p on p.id = e.purchase_id
+  ) ent on true
+  left join public.community_pass_subscriptions s on s.id = ent.subscription_id
+  left join public.community_pass_purchases p on p.id = ent.purchase_id
   where a.user_id = auth.uid()
     and a.status <> 'deleted'
   limit 1;
