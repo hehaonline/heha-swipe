@@ -128,6 +128,26 @@ class PartnerReconciliationTests(unittest.TestCase):
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(hostname_query_bypass)
 
+        for malformed_url in (
+            "https://evil.com\\good.test",
+            "https://evil.com%5cgood.test",
+            "https://[bad.test",
+        ):
+            malformed_domain = copy.deepcopy(self.dataset)
+            malformed_domain["records"][0]["website"] = malformed_url
+            with self.subTest(malformed_url=malformed_url), self.assertRaises(MODULE.InputRejected):
+                MODULE.build_report(malformed_domain)
+
+        for malformed_email in (
+            "person@example.com@synthetic.test",
+            "@synthetic.test",
+            "a b@synthetic.test",
+        ):
+            invalid_email = copy.deepcopy(self.dataset)
+            invalid_email["records"][0]["email"] = malformed_email
+            with self.subTest(malformed_email=malformed_email), self.assertRaises(MODULE.InputRejected):
+                MODULE.build_report(invalid_email)
+
     def test_duplicate_ids_and_incomplete_reference_inventory_are_rejected(self):
         duplicate = copy.deepcopy(self.dataset)
         duplicate["records"][1]["id"] = duplicate["records"][0]["id"]
@@ -170,6 +190,16 @@ class PartnerReconciliationTests(unittest.TestCase):
         duplicate["expected_pairs"].append(copy.deepcopy(duplicate["expected_pairs"][0]))
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(duplicate)
+
+        unhashable_class = copy.deepcopy(self.dataset)
+        unhashable_class["expected_pairs"][0]["classification"] = {}
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(unhashable_class)
+
+        unhashable_kind = copy.deepcopy(self.dataset)
+        unhashable_kind["records"][0]["record_kind"] = []
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(unhashable_kind)
 
     def test_classify_pair_revalidates_records_at_the_entry_point(self):
         left = copy.deepcopy(self.dataset["records"][0])
@@ -228,6 +258,55 @@ class PartnerReconciliationTests(unittest.TestCase):
         self.assertEqual("ownership_conflict", result["classification"])
         self.assertIn("Normalized name and address", result["reason"])
         self.assertNotIn("strong identifier matches", result["reason"])
+        self.assertIn("normalized_name", result["matched_fields"])
+        self.assertIn("normalized_address", result["matched_fields"])
+
+    def test_unverified_email_cannot_hide_a_conflicting_owner(self):
+        left = copy.deepcopy(self.dataset["records"][8])
+        right = copy.deepcopy(self.dataset["records"][9])
+        left["name"] = "Synthetic Alpha"
+        right["name"] = "Synthetic Omega"
+        left["address"] = "101 Example Alpha Way"
+        right["address"] = "202 Example Omega Way"
+        left["email"] = "shared@identity.test"
+        right["email"] = "shared@identity.test"
+        left["email_provenance"] = "unverified"
+        right["email_provenance"] = "unverified"
+        right["owner_account_id"] = "SYN-OWNER-OMEGA"
+
+        result = MODULE.classify_pair(left, right)
+        self.assertEqual("ownership_conflict", result["classification"])
+        self.assertIn("email_unverified", result["matched_fields"])
+        self.assertIn("owner_account_id", result["conflicting_fields"])
+        self.assertIn("unverified email", result["reason"])
+
+    def test_rejection_does_not_echo_an_unvalidated_record_id(self):
+        invalid = copy.deepcopy(self.dataset)
+        invalid["records"][0]["id"] = "person@example.com"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "invalid.json"
+            input_path.write_text(json.dumps(invalid), encoding="utf-8")
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = MODULE.main(["--input", str(input_path)])
+            self.assertNotEqual(0, exit_code)
+            self.assertNotIn("person@example.com", stderr.getvalue())
+
+    def test_exact_name_and_address_do_not_override_multiple_strong_conflicts(self):
+        left = copy.deepcopy(self.dataset["records"][0])
+        right = copy.deepcopy(self.dataset["records"][0])
+        right["id"] = "SYN-A-CONFLICT"
+        right["google_place_id"] = "SYN-PLACE-OTHER"
+        right["website"] = "https://other-kitchen.test"
+        right["phone"] = "813-555-0110"
+        right["email"] = "owner@other-kitchen.test"
+        right["email_provenance"] = "owner_confirmed"
+        right["instagram"] = "synthetic_other_kitchen"
+
+        result = MODULE.classify_pair(left, right)
+        self.assertEqual("separate_businesses", result["classification"])
+        for field in ("google_place_id", "domain", "phone", "email", "instagram"):
+            self.assertIn(field, result["conflicting_fields"])
 
     def test_conflicting_place_ids_override_composite_secondary_match(self):
         dataset = copy.deepcopy(self.dataset)
