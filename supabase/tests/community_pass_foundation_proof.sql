@@ -3,15 +3,9 @@
 -- Run after applying the matching migration to a disposable Supabase branch or
 -- current-schema clone. Never use real payment data.
 --
--- Required psql variables:
---   user_a_id - existing synthetic authenticated auth.users UUID
---   user_b_id - second existing synthetic authenticated auth.users UUID
---
--- Example:
--- psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
---   -v user_a_id=00000000-0000-0000-0000-0000000000a1 \
---   -v user_b_id=00000000-0000-0000-0000-0000000000b2 \
---   -f supabase/tests/community_pass_foundation_proof.sql
+-- This synthetic proof uses the two fixed, non-production Auth UUIDs seeded by
+-- supabase/tests/fixtures/community_pass_minimal_baseline.sql. A current-schema
+-- replay must create the same disposable users before running this file.
 
 begin;
 
@@ -163,20 +157,16 @@ $proof$;
 -- Fixture setup.
 do $fixtures$
 declare
-  v_user_a uuid := :'user_a_id'::uuid;
-  v_user_b uuid := :'user_b_id'::uuid;
+  v_user_a constant uuid := '00000000-0000-0000-0000-0000000000a1';
+  v_user_b constant uuid := '00000000-0000-0000-0000-0000000000b2';
   v_account_a uuid;
   v_account_b uuid;
   v_entitlement_a uuid;
   v_entitlement_b uuid;
 begin
-  if v_user_a = v_user_b then
-    raise exception 'user_a_id and user_b_id must be different';
-  end if;
-
   if not exists (select 1 from auth.users where id = v_user_a)
      or not exists (select 1 from auth.users where id = v_user_b) then
-    raise exception 'Both proof UUIDs must exist in auth.users';
+    raise exception 'Both fixed synthetic proof UUIDs must exist in auth.users';
   end if;
 
   perform pg_temp.set_auth_context('service_role', v_user_a);
@@ -256,7 +246,7 @@ $fixtures$;
 -- User A can see only A, activate once, and receive exactly 30 days.
 do $trial_a$
 declare
-  v_user_a uuid := :'user_a_id'::uuid;
+  v_user_a constant uuid := '00000000-0000-0000-0000-0000000000a1';
   v_status record;
   v_activation record;
   v_count integer;
@@ -316,8 +306,8 @@ $trial_a$;
 -- User B cannot see A; own record remains separate.
 do $isolation$
 declare
-  v_user_a uuid := :'user_a_id'::uuid;
-  v_user_b uuid := :'user_b_id'::uuid;
+  v_user_a constant uuid := '00000000-0000-0000-0000-0000000000a1';
+  v_user_b constant uuid := '00000000-0000-0000-0000-0000000000b2';
   v_status record;
   v_account_b uuid;
 begin
@@ -349,7 +339,7 @@ $isolation$;
 -- Monthly amount, one-active-subscription, and prepaid mapping invariants.
 do $money_invariants$
 declare
-  v_user_b uuid := :'user_b_id'::uuid;
+  v_user_b constant uuid := '00000000-0000-0000-0000-0000000000b2';
   v_account_b uuid;
   v_sub_id uuid;
 begin
@@ -446,7 +436,7 @@ $money_invariants$;
 -- Acceptance/event immutability with controlled privacy redaction.
 do $immutability$
 declare
-  v_user_b uuid := :'user_b_id'::uuid;
+  v_user_b constant uuid := '00000000-0000-0000-0000-0000000000b2';
   v_account_b uuid;
   v_acceptance_b uuid;
   v_event_b uuid;
@@ -509,8 +499,10 @@ $immutability$;
 
 -- Retry-safe event inbox uniqueness and processed-state contract.
 do $inbox$
+declare
+  v_user_a constant uuid := '00000000-0000-0000-0000-0000000000a1';
 begin
-  perform pg_temp.set_auth_context('service_role', :'user_a_id'::uuid);
+  perform pg_temp.set_auth_context('service_role', v_user_a);
 
   insert into public.community_pass_stripe_event_inbox (
     stripe_event_id, event_type, environment, livemode,
@@ -563,7 +555,7 @@ $inbox$;
 -- Account unlink/deletion automatically revokes reusable access and redacts links.
 do $deletion$
 declare
-  v_user_a uuid := :'user_a_id'::uuid;
+  v_user_a constant uuid := '00000000-0000-0000-0000-0000000000a1';
   v_account_a uuid;
   v_entitlement_state text;
   v_status_count integer;
