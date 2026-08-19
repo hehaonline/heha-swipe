@@ -147,6 +147,9 @@ begin
   assert not pg_catalog.has_table_privilege('anon', 'public.partners', 'INSERT');
   assert not pg_catalog.has_table_privilege('anon', 'public.partners', 'UPDATE');
   assert not pg_catalog.has_table_privilege('anon', 'public.partners', 'DELETE');
+  assert not pg_catalog.has_table_privilege('anon', 'public.partners', 'TRUNCATE');
+  assert not pg_catalog.has_table_privilege('anon', 'public.partners', 'REFERENCES');
+  assert not pg_catalog.has_table_privilege('anon', 'public.partners', 'TRIGGER');
   assert not pg_catalog.has_table_privilege('service_role', 'public.partners', 'SELECT');
   assert not pg_catalog.has_table_privilege('service_role', 'public.partners', 'INSERT');
   assert not pg_catalog.has_table_privilege('service_role', 'public.partners', 'UPDATE');
@@ -158,6 +161,21 @@ begin
   assert pg_catalog.has_table_privilege('authenticated', 'public.partners', 'INSERT');
   assert pg_catalog.has_table_privilege('authenticated', 'public.partners', 'UPDATE');
   assert not pg_catalog.has_table_privilege('authenticated', 'public.partners', 'DELETE');
+  assert not pg_catalog.has_table_privilege('authenticated', 'public.partners', 'TRUNCATE');
+  assert not pg_catalog.has_table_privilege('authenticated', 'public.partners', 'REFERENCES');
+  assert not pg_catalog.has_table_privilege('authenticated', 'public.partners', 'TRIGGER');
+  assert not exists (
+    select 1
+    from pg_catalog.pg_class relation_row
+    cross join lateral pg_catalog.aclexplode(
+      coalesce(
+        relation_row.relacl,
+        pg_catalog.acldefault('r',relation_row.relowner)
+      )
+    ) privilege_row
+    where relation_row.oid='public.partners'::regclass
+      and privilege_row.grantee=0
+  ), 'PUBLIC must not retain a raw public.partners table ACL';
   assert not pg_catalog.has_any_column_privilege('anon', 'public.partners', 'SELECT');
   assert not pg_catalog.has_any_column_privilege('anon', 'public.partners', 'INSERT');
   assert not pg_catalog.has_any_column_privilege('anon', 'public.partners', 'UPDATE');
