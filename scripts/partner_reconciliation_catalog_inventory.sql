@@ -116,6 +116,7 @@ SELECT
   idx.relname AS index_name,
   ind.indisunique AS is_unique,
   ind.indisprimary AS is_primary,
+  pg_catalog.pg_get_indexdef(ind.indexrelid, 0, true) AS index_definition,
   pg_catalog.pg_get_expr(ind.indexprs, ind.indrelid, true) AS index_expressions,
   pg_catalog.pg_get_expr(ind.indpred, ind.indrelid, true) AS index_predicate,
   array_agg(att.attname ORDER BY key.ord) FILTER (WHERE att.attname IS NOT NULL) AS columns
@@ -134,6 +135,7 @@ GROUP BY
   idx.relname,
   ind.indisunique,
   ind.indisprimary,
+  pg_catalog.pg_get_indexdef(ind.indexrelid, 0, true),
   pg_catalog.pg_get_expr(ind.indexprs, ind.indrelid, true),
   pg_catalog.pg_get_expr(ind.indpred, ind.indrelid, true)
 ORDER BY idx.relname;
