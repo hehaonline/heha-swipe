@@ -704,7 +704,7 @@ using (
   )
 );
 
-revoke all on table public.partners from public,anon,authenticated;
+revoke all on table public.partners from public,anon,authenticated,service_role;
 grant select,insert,update on table public.partners to authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -1240,6 +1240,18 @@ begin
      or pg_catalog.has_table_privilege('anon','public.partners','REFERENCES')
      or pg_catalog.has_table_privilege('anon','public.partners','TRIGGER') then
     raise exception using errcode='55000',message='anon retains a raw public.partners privilege.';
+  end if;
+
+  if pg_catalog.has_table_privilege('service_role','public.partners','SELECT')
+     or pg_catalog.has_table_privilege('service_role','public.partners','INSERT')
+     or pg_catalog.has_table_privilege('service_role','public.partners','UPDATE')
+     or pg_catalog.has_table_privilege('service_role','public.partners','DELETE')
+     or pg_catalog.has_table_privilege('service_role','public.partners','TRUNCATE')
+     or pg_catalog.has_table_privilege('service_role','public.partners','REFERENCES')
+     or pg_catalog.has_table_privilege('service_role','public.partners','TRIGGER') then
+    raise exception using
+      errcode='55000',
+      message='service_role retains a raw public.partners privilege.';
   end if;
 
   if exists (

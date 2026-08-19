@@ -259,13 +259,18 @@ jobs:
         run: |
           set -euo pipefail
           psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
-            -f supabase/migrations/20260817171238_partner_publication_integration_rc.sql \
+            -c 'grant select on table public.partners to service_role' \
             2>&1 | tee artifacts/partner-publication-integration-proof/final-reapply.txt
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20260817171238_partner_publication_integration_rc.sql \
+            2>&1 | tee -a artifacts/partner-publication-integration-proof/final-reapply.txt
           psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
             -f supabase/tests/partner_publication_integration_proof.sql \
             > artifacts/partner-publication-integration-proof/behavioral-proof-after-reapply.txt 2>&1
-          echo 'final_migration_reapply_and_post_final_proof=pass' \
-            | tee -a artifacts/partner-publication-integration-proof/final-reapply.txt
+          {
+            echo 'service_role_raw_partners_reapply_convergence=pass'
+            echo 'final_migration_reapply_and_post_final_proof=pass'
+          } | tee -a artifacts/partner-publication-integration-proof/final-reapply.txt
 
       - name: Execute genuine publication approve-withdraw concurrency proof
         shell: bash

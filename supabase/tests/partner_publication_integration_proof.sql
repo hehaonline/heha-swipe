@@ -143,6 +143,13 @@ begin
   assert not pg_catalog.has_table_privilege('anon', 'public.partners', 'INSERT');
   assert not pg_catalog.has_table_privilege('anon', 'public.partners', 'UPDATE');
   assert not pg_catalog.has_table_privilege('anon', 'public.partners', 'DELETE');
+  assert not pg_catalog.has_table_privilege('service_role', 'public.partners', 'SELECT');
+  assert not pg_catalog.has_table_privilege('service_role', 'public.partners', 'INSERT');
+  assert not pg_catalog.has_table_privilege('service_role', 'public.partners', 'UPDATE');
+  assert not pg_catalog.has_table_privilege('service_role', 'public.partners', 'DELETE');
+  assert not pg_catalog.has_table_privilege('service_role', 'public.partners', 'TRUNCATE');
+  assert not pg_catalog.has_table_privilege('service_role', 'public.partners', 'REFERENCES');
+  assert not pg_catalog.has_table_privilege('service_role', 'public.partners', 'TRIGGER');
   assert pg_catalog.has_table_privilege('authenticated', 'public.partners', 'SELECT');
   assert pg_catalog.has_table_privilege('authenticated', 'public.partners', 'INSERT');
   assert pg_catalog.has_table_privilege('authenticated', 'public.partners', 'UPDATE');
