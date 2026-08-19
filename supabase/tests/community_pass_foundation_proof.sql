@@ -116,7 +116,12 @@ begin
     raise exception 'get_my_community_pass_status must accept no user identifier';
   end if;
 
-  if not ('search_path=' = any (coalesce(v_config, array[]::text[]))) then
+  -- PostgreSQL serializes an explicitly empty search_path as either
+  -- `search_path=` or `search_path=""`, depending on version/tooling.
+  if not (
+    'search_path=' = any (coalesce(v_config, array[]::text[]))
+    or 'search_path=""' = any (coalesce(v_config, array[]::text[]))
+  ) then
     raise exception 'get_my_community_pass_status must pin empty search_path';
   end if;
 
