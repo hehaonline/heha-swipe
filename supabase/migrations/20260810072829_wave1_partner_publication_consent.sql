@@ -1995,7 +1995,8 @@ select
   local_eligible, local_lane, primary_cta_destination, primary_cta_label,
   primary_cta_path
 from app_private.partner_publication_projection
-where status = any (array['approved','live']::text[])
+where false
+  and status = any (array['approved','live']::text[])
   and coalesce(website_eligible, false) = true
   and publication_consent_managed is false
   and is_test_record = false;
@@ -2017,11 +2018,12 @@ select
   case when publication_consent_managed then 'Discover Partner' else primary_cta_label end as primary_cta_label,
   case when publication_consent_managed then '/?partner=' || id::text else primary_cta_path end as primary_cta_path
 from app_private.partner_publication_projection
-where status = any (array['approved','live']::text[])
+where false
+  and status = any (array['approved','live']::text[])
   and coalesce(swipe_eligible, false) = true
   -- Consent alone is never a staff publication decision. The integration RC
-  -- replaces this temporary deny-by-default predicate only after adding its
-  -- separate internal exact-hash review ledger.
+  -- preserves a public hold while adding its separate exact-hash staff-review
+  -- ledger and later legal-release gates.
   and publication_consent_managed is false
   and is_test_record = false;
 
@@ -2039,7 +2041,8 @@ select
   local_eligible, local_lane, primary_cta_destination, primary_cta_label,
   primary_cta_path
 from app_private.partner_publication_projection
-where status = any (array['approved','live']::text[])
+where false
+  and status = any (array['approved','live']::text[])
   and coalesce(local_eligible, false) = true
   and publication_consent_managed is false
   and local_lane is not null
@@ -2053,6 +2056,8 @@ grant select on table public.public_swipe_partners to anon, authenticated;
 grant select on table public.public_local_partners to anon, authenticated;
 
 comment on view public.public_swipe_partners is
-  'Public-safe HEHA Swipe partner projection. Private contact, owner, consent, analytics, routing notes, and pricing internals are intentionally excluded.';
+  'Public-safe HEHA Swipe partner projection, intentionally empty during the donor handoff until exact staff review and the final legal release gates are installed. Private contact, owner, consent, analytics, routing notes, and pricing internals are excluded.';
+comment on view public.public_partner_directory is
+  'Public-safe website directory projection, intentionally empty during the donor handoff until its own explicit destination consent and review contract exists.';
 comment on view public.public_local_partners is
-  'Public-safe HEHA Local bridge projection. Consent evidence stays private in HEHA Swipe.';
+  'Public-safe HEHA Local bridge projection, intentionally empty during the donor handoff until a least-privilege exporter is independently approved. Consent evidence stays private in HEHA Swipe.';

@@ -155,6 +155,9 @@ jobs:
             ]::text[];
             actual text[];
             actual_versions text[];
+            view_definition text;
+            normalized_view_definition text;
+            view_row_count bigint;
             view_name text;
           begin
             select array_agg(version order by version)
@@ -173,6 +176,20 @@ jobs:
               from information_schema.columns
               where table_schema='public' and table_name=view_name;
               assert actual=expected, format('%s does not have the exact 33-column contract',view_name);
+              select pg_get_viewdef(format('public.%I',view_name)::regclass,true)
+              into view_definition;
+              normalized_view_definition := regexp_replace(
+                lower(view_definition),
+                '\s+',
+                ' ',
+                'g'
+              );
+              assert position(' where false' in normalized_view_definition) > 0,
+                format('%s is not structurally held empty before the final migration',view_name);
+              execute format('select count(*) from public.%I',view_name)
+              into view_row_count;
+              assert view_row_count=0,
+                format('%s exposed rows before the final migration',view_name);
             end loop;
           end;
           $proof$;
