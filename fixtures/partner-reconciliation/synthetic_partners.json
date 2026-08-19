@@ -14,6 +14,7 @@
       "website": "https://citrus-kitchen.test/menu",
       "phone": "+1 813-555-0101",
       "email": "hello@citrus-kitchen.test",
+      "email_provenance": "owner_confirmed",
       "instagram": "@synthetic_citrus",
       "owner_account_id": "SYN-OWNER-CITRUS",
       "child_reference_counts": {
@@ -28,7 +29,8 @@
         "offers": 1,
         "readiness": 1,
         "platform_visibility": 1,
-        "crm_links": 1
+        "crm_links": 1,
+        "scout_links": 1
       }
     },
     {
@@ -41,6 +43,7 @@
       "website": "https://www.citrus-kitchen.test",
       "phone": "813-555-0101",
       "email": "hello@citrus-kitchen.test",
+      "email_provenance": "owner_confirmed",
       "instagram": "https://instagram.com/synthetic_citrus/",
       "owner_account_id": "SYN-OWNER-CITRUS",
       "child_reference_counts": {
@@ -55,7 +58,8 @@
         "offers": 0,
         "readiness": 1,
         "platform_visibility": 1,
-        "crm_links": 0
+        "crm_links": 0,
+        "scout_links": 0
       }
     },
     {
@@ -68,6 +72,7 @@
       "website": "https://green-north.test",
       "phone": "813-555-0102",
       "email": "hello@green-north.test",
+      "email_provenance": "authorized_business_contact",
       "instagram": "synthetic_green_north",
       "owner_account_id": "SYN-OWNER-GREEN-NORTH",
       "child_reference_counts": {
@@ -82,7 +87,8 @@
         "offers": 0,
         "readiness": 1,
         "platform_visibility": 1,
-        "crm_links": 1
+        "crm_links": 1,
+        "scout_links": 1
       }
     },
     {
@@ -95,6 +101,7 @@
       "website": "https://green-south.test",
       "phone": "813-555-0103",
       "email": "hello@green-south.test",
+      "email_provenance": "authorized_business_contact",
       "instagram": "synthetic_green_south",
       "owner_account_id": "SYN-OWNER-GREEN-SOUTH",
       "child_reference_counts": {
@@ -109,7 +116,8 @@
         "offers": 1,
         "readiness": 1,
         "platform_visibility": 1,
-        "crm_links": 1
+        "crm_links": 1,
+        "scout_links": 0
       }
     },
     {
@@ -122,6 +130,7 @@
       "website": "https://harbor-market.test",
       "phone": "813-555-0104",
       "email": "owner@harbor-market.test",
+      "email_provenance": "owner_confirmed",
       "instagram": "synthetic_harbor",
       "owner_account_id": "SYN-OWNER-HARBOR-A",
       "child_reference_counts": {
@@ -136,7 +145,8 @@
         "offers": 0,
         "readiness": 1,
         "platform_visibility": 1,
-        "crm_links": 1
+        "crm_links": 1,
+        "scout_links": 1
       }
     },
     {
@@ -149,6 +159,7 @@
       "website": "https://harbor-market.test",
       "phone": "813-555-0104",
       "email": "owner@harbor-market.test",
+      "email_provenance": "owner_confirmed",
       "instagram": "synthetic_harbor",
       "owner_account_id": "SYN-OWNER-HARBOR-B",
       "child_reference_counts": {
@@ -163,7 +174,8 @@
         "offers": 0,
         "readiness": 1,
         "platform_visibility": 1,
-        "crm_links": 0
+        "crm_links": 0,
+        "scout_links": 0
       }
     },
     {
@@ -176,6 +188,7 @@
       "website": "https://national-grocer.test",
       "phone": "813-555-0105",
       "email": "source@national-grocer.test",
+      "email_provenance": "unverified",
       "instagram": "synthetic_national_grocer",
       "owner_account_id": "",
       "child_reference_counts": {
@@ -190,7 +203,8 @@
         "offers": 0,
         "readiness": 0,
         "platform_visibility": 0,
-        "crm_links": 0
+        "crm_links": 0,
+        "scout_links": 1
       }
     },
     {
@@ -203,6 +217,7 @@
       "website": "https://national-grocer.test",
       "phone": "813-555-0105",
       "email": "source@national-grocer.test",
+      "email_provenance": "unverified",
       "instagram": "synthetic_national_grocer",
       "owner_account_id": "SYN-OWNER-GROCER",
       "child_reference_counts": {
@@ -217,7 +232,8 @@
         "offers": 0,
         "readiness": 0,
         "platform_visibility": 0,
-        "crm_links": 0
+        "crm_links": 0,
+        "scout_links": 0
       }
     },
     {
@@ -230,6 +246,7 @@
       "website": "",
       "phone": "",
       "email": "",
+      "email_provenance": "not_applicable",
       "instagram": "",
       "owner_account_id": "SYN-OWNER-SUNRISE",
       "child_reference_counts": {
@@ -244,7 +261,8 @@
         "offers": 0,
         "readiness": 1,
         "platform_visibility": 0,
-        "crm_links": 0
+        "crm_links": 0,
+        "scout_links": 0
       }
     },
     {
@@ -257,6 +275,7 @@
       "website": "",
       "phone": "",
       "email": "",
+      "email_provenance": "not_applicable",
       "instagram": "",
       "owner_account_id": "SYN-OWNER-SUNRISE",
       "child_reference_counts": {
@@ -271,15 +290,16 @@
         "offers": 0,
         "readiness": 1,
         "platform_visibility": 0,
-        "crm_links": 0
+        "crm_links": 0,
+        "scout_links": 0
       }
     }
   ],
   "expected_pairs": [
-    {"candidate_key": "SYN-A-ONE--SYN-A-TWO", "classification": "strong_identifier_match"},
-    {"candidate_key": "SYN-B-ONE--SYN-B-TWO", "classification": "separate_businesses"},
-    {"candidate_key": "SYN-C-ONE--SYN-C-TWO", "classification": "ownership_conflict"},
-    {"candidate_key": "SYN-D-PARTNER--SYN-D-SOURCE", "classification": "non_partner_source"},
-    {"candidate_key": "SYN-E-ONE--SYN-E-TWO", "classification": "likely_match"}
+    {"candidate_key": "SYN-PAIR|9:SYN-A-ONE|9:SYN-A-TWO", "classification": "strong_identifier_match"},
+    {"candidate_key": "SYN-PAIR|9:SYN-B-ONE|9:SYN-B-TWO", "classification": "separate_businesses"},
+    {"candidate_key": "SYN-PAIR|9:SYN-C-ONE|9:SYN-C-TWO", "classification": "ownership_conflict"},
+    {"candidate_key": "SYN-PAIR|13:SYN-D-PARTNER|12:SYN-D-SOURCE", "classification": "non_partner_source"},
+    {"candidate_key": "SYN-PAIR|9:SYN-E-ONE|9:SYN-E-TWO", "classification": "likely_match"}
   ]
 }
