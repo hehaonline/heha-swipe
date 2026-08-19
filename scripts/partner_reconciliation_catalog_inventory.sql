@@ -98,13 +98,44 @@ SELECT
   rel.relname AS table_name,
   con.conname AS constraint_name,
   con.contype AS constraint_type,
-  array_agg(att.attname ORDER BY key.ord) AS columns
+  array_agg(att.attname ORDER BY key.ord) AS columns,
+  referenced_ns.nspname AS referenced_schema,
+  referenced_rel.relname AS referenced_table,
+  array_agg(referenced_att.attname ORDER BY referenced_key.ord)
+    FILTER (WHERE con.contype = 'f') AS referenced_columns,
+  CASE WHEN con.contype = 'f' THEN
+    CASE con.confupdtype
+      WHEN 'a' THEN 'no_action'
+      WHEN 'r' THEN 'restrict'
+      WHEN 'c' THEN 'cascade'
+      WHEN 'n' THEN 'set_null'
+      WHEN 'd' THEN 'set_default'
+      ELSE con.confupdtype::text
+    END
+  END AS on_update,
+  CASE WHEN con.contype = 'f' THEN
+    CASE con.confdeltype
+      WHEN 'a' THEN 'no_action'
+      WHEN 'r' THEN 'restrict'
+      WHEN 'c' THEN 'cascade'
+      WHEN 'n' THEN 'set_null'
+      WHEN 'd' THEN 'set_default'
+      ELSE con.confdeltype::text
+    END
+  END AS on_delete
 FROM pg_catalog.pg_constraint AS con
 JOIN pg_catalog.pg_class AS rel ON rel.oid = con.conrelid
 JOIN pg_catalog.pg_namespace AS ns ON ns.oid = rel.relnamespace
 JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS key(attnum, ord) ON true
 JOIN pg_catalog.pg_attribute AS att
   ON att.attrelid = rel.oid AND att.attnum = key.attnum
+LEFT JOIN pg_catalog.pg_class AS referenced_rel ON referenced_rel.oid = con.confrelid
+LEFT JOIN pg_catalog.pg_namespace AS referenced_ns ON referenced_ns.oid = referenced_rel.relnamespace
+LEFT JOIN LATERAL unnest(con.confkey) WITH ORDINALITY AS referenced_key(attnum, ord)
+  ON referenced_key.ord = key.ord
+LEFT JOIN pg_catalog.pg_attribute AS referenced_att
+  ON referenced_att.attrelid = referenced_rel.oid
+  AND referenced_att.attnum = referenced_key.attnum
 WHERE ns.nspname = 'public'
   AND rel.relname = 'partners'
   AND EXISTS (
@@ -125,7 +156,15 @@ WHERE ns.nspname = 'public'
       'location'
     )
   )
-GROUP BY ns.nspname, rel.relname, con.conname, con.contype
+GROUP BY
+  ns.nspname,
+  rel.relname,
+  con.conname,
+  con.contype,
+  referenced_ns.nspname,
+  referenced_rel.relname,
+  con.confupdtype,
+  con.confdeltype
 ORDER BY con.conname;
 
 -- Index metadata for partner identity columns (never emits indexed values).

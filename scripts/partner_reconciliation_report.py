@@ -33,6 +33,8 @@ PLACE_RE = re.compile(r"^SYN-PLACE-[A-Z0-9-]+$")
 SCOUT_LEAD_RE = re.compile(r"^SYN-SCOUT-(?=.{1,64}$)[A-Z]+(?:-[A-Z]+)*$")
 SCOUT_ACTOR_RE = re.compile(r"^SYN-ACTOR-(?=.{1,64}$)[A-Z]+(?:-[A-Z]+)*$")
 SCOUT_TIMESTAMP_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
+SCOUT_SYNTHETIC_TIME_MIN = datetime(2099, 1, 1, tzinfo=timezone.utc)
+SCOUT_SYNTHETIC_TIME_MAX = datetime(2099, 1, 31, 23, 59, 59, tzinfo=timezone.utc)
 PHONE_RE = re.compile(r"^1?[2-9][0-9]{2}55501[0-9]{2}$")
 PHONE_FORMAT_RE = re.compile(r"^[0-9+(). -]+$")
 INSTAGRAM_RE = re.compile(r"^synthetic_[a-z0-9_]+$")
@@ -206,9 +208,14 @@ def _require(condition: bool, message: str) -> None:
 def _parse_scout_timestamp(value: str, record_id: str, field: str) -> datetime:
     _require(bool(SCOUT_TIMESTAMP_RE.fullmatch(value)), f"{record_id}: Scout {field} must be an RFC 3339 UTC timestamp")
     try:
-        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     except ValueError as exc:
         raise InputRejected(f"{record_id}: Scout {field} is not a real UTC timestamp") from exc
+    _require(
+        SCOUT_SYNTHETIC_TIME_MIN <= parsed <= SCOUT_SYNTHETIC_TIME_MAX,
+        f"{record_id}: Scout {field} must use the reserved January 2099 synthetic fixture window",
+    )
+    return parsed
 
 
 def _validate_scout_link_lineage(record: dict[str, Any], record_id: str) -> None:

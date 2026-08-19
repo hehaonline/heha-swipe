@@ -36,7 +36,7 @@ No real partner or customer identifiers belong in GitHub. Running the catalog in
 | Claim/agreement evidence | **[U]** related donor lanes contain claim/relationship concepts but are not merged into this base. | Inventory later; unresolved claim evidence blocks reconciliation and publication. |
 | Local bridge | **[U]** Order Hub #161 proposes storing the Swipe UUID value as `swipe_partner_id`; cross-project FK enforcement is neither present nor authorized here. | Never invent a cross-project FK. Inventory Local references separately and require a named cross-project decision. |
 
-The catalog-only SQL reports metadata that can refine this inventory in a disposable clone. For every relevant composite constraint it selects by the presence of an identity column but emits the complete ordered column list, so companion columns cannot disappear from the inventory. Any family absent from repository migrations remains unresolved rather than assumed absent.
+The catalog-only SQL reports metadata that can refine this inventory in a disposable clone. For every relevant composite constraint it selects by the presence of an identity column but emits the complete ordered column list, so companion columns cannot disappear from the inventory. Outgoing foreign keys also include the referenced schema/relation, complete ordered target-column list, and update/delete actions. Any family absent from repository migrations remains unresolved rather than assumed absent.
 
 ## Deterministic classification precedence
 
@@ -88,7 +88,7 @@ The v2 fixtures carry counts for every currently required family:
 
 `saves`, `swipes`, `analytics`, `requests`, `media`, `routing`, `local_bridge`, `profile_changes`, `offers`, `readiness`, `platform_visibility`, `crm_links`, and `scout_links`.
 
-The reporter copies those counts unchanged into each candidate pair. For every synthetic Scout link it also preserves the original partner-record link, lead ID, `source`, `source_detail`, creator/updater, creation/update timestamps, and a SHA-256 fingerprint over the canonical lineage entry **and its original partner-record link**. The strict fixture schema requires the Scout entry count to equal `child_reference_counts.scout_links`, rejects duplicate lead IDs across records, and accepts only declared synthetic provenance values. **[S]** Tests prove no count, family, or synthetic Scout lineage entry disappears and no canonical ID is emitted. This is not evidence that the live schema uses these exact table names; that remains **[U]**.
+The reporter copies those counts unchanged into each candidate pair. For every synthetic Scout link it also preserves the original partner-record link, lead ID, `source`, `source_detail`, creator/updater, creation/update timestamps, and a SHA-256 fingerprint over the canonical lineage entry **and its original partner-record link**. Before any timestamp can be emitted, it must be a real UTC value inside the reserved, inclusive January 1–31, 2099 synthetic fixture window, and `updated_at` cannot precede `created_at`; copied real-event times therefore fail closed. The strict fixture schema requires the Scout entry count to equal `child_reference_counts.scout_links`, rejects duplicate lead IDs across records, and accepts only declared synthetic provenance values. **[S]** Tests prove no count, family, or synthetic Scout lineage entry disappears and no canonical ID is emitted. This is not evidence that the live schema uses these exact table names; that remains **[U]**.
 
 ## Initial named-business checklists
 

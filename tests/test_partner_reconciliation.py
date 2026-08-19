@@ -195,7 +195,7 @@ class PartnerReconciliationTests(unittest.TestCase):
             MODULE.build_report(unsafe_source_detail)
 
         invalid_timestamp = copy.deepcopy(self.dataset)
-        invalid_timestamp["records"][0]["scout_link_lineage"][0]["updated_at"] = "2030-02-30T00:00:00Z"
+        invalid_timestamp["records"][0]["scout_link_lineage"][0]["updated_at"] = "2099-01-32T00:00:00Z"
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(invalid_timestamp)
 
@@ -205,6 +205,32 @@ class PartnerReconciliationTests(unittest.TestCase):
         )
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(duplicate_link)
+
+    def test_scout_timestamps_use_reserved_synthetic_window_and_order(self):
+        inclusive_boundaries = copy.deepcopy(self.dataset)
+        boundary_link = inclusive_boundaries["records"][0]["scout_link_lineage"][0]
+        boundary_link["created_at"] = "2099-01-01T00:00:00Z"
+        boundary_link["updated_at"] = "2099-01-31T23:59:59Z"
+        self.assertIsInstance(MODULE.build_report(inclusive_boundaries), dict)
+
+        for out_of_window in (
+            "2026-08-19T12:34:56Z",
+            "2098-12-31T23:59:59Z",
+            "2099-02-01T00:00:00Z",
+        ):
+            invalid = copy.deepcopy(self.dataset)
+            link = invalid["records"][0]["scout_link_lineage"][0]
+            link["created_at"] = out_of_window
+            link["updated_at"] = out_of_window
+            with self.subTest(out_of_window=out_of_window), self.assertRaises(MODULE.InputRejected):
+                MODULE.build_report(invalid)
+
+        reversed_times = copy.deepcopy(self.dataset)
+        reversed_link = reversed_times["records"][0]["scout_link_lineage"][0]
+        reversed_link["created_at"] = "2099-01-31T23:59:59Z"
+        reversed_link["updated_at"] = "2099-01-01T00:00:00Z"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(reversed_times)
 
     def test_pii_shaped_record_ids_are_rejected_before_report_emission(self):
         for record_id in ("SYN-8135559999", "SYN-813-555-9999"):
@@ -583,6 +609,29 @@ class PartnerReconciliationTests(unittest.TestCase):
         self.assertRegex(constraint_inventory, r"(?is)\bAND\s+EXISTS\s*\(")
         self.assertRegex(constraint_inventory, r"(?is)identity_att\.attname\s+IN\s*\(")
         self.assertNotRegex(constraint_inventory, r"(?is)\bAND\s+att\.attname\s+IN\s*\(")
+        self.assertIn("referenced_ns.nspname AS referenced_schema", constraint_inventory)
+        self.assertIn("referenced_rel.relname AS referenced_table", constraint_inventory)
+        self.assertRegex(
+            constraint_inventory,
+            r"(?is)referenced_rel\.oid\s*=\s*con\.confrelid",
+        )
+        self.assertRegex(
+            constraint_inventory,
+            r"(?is)unnest\s*\(\s*con\.confkey\s*\)\s+WITH\s+ORDINALITY\s+AS\s+referenced_key",
+        )
+        self.assertRegex(
+            constraint_inventory,
+            r"(?is)referenced_key\.ord\s*=\s*key\.ord",
+        )
+        self.assertRegex(
+            constraint_inventory,
+            r"(?is)array_agg\s*\(\s*referenced_att\.attname\s+ORDER\s+BY\s+referenced_key\.ord\s*\)"
+            r"\s*FILTER\s*\(\s*WHERE\s+con\.contype\s*=\s*'f'\s*\)\s+AS\s+referenced_columns",
+        )
+        self.assertIn("con.confupdtype", constraint_inventory)
+        self.assertIn("con.confdeltype", constraint_inventory)
+        self.assertIn("END AS on_update", constraint_inventory)
+        self.assertIn("END AS on_delete", constraint_inventory)
 
         without_comments = re.sub(r"--[^\n]*", "", sql)
         without_strings = re.sub(r"'(?:''|[^'])*'", "''", without_comments)
