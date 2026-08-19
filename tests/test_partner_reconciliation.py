@@ -36,7 +36,7 @@ class PartnerReconciliationTests(unittest.TestCase):
             self.assertEqual(expected["classification"], actual["classification"])
 
     def test_strong_match_still_selects_nothing_and_allows_nothing(self):
-        result = self.by_key["SYN-A-ONE--SYN-A-TWO"]
+        result = self.by_key[MODULE.candidate_key_for("SYN-A-ONE", "SYN-A-TWO")]
         self.assertEqual("strong_identifier_match", result["classification"])
         self.assertIsNone(result["canonical_partner_id"])
         self.assertTrue(result["manual_review_required"])
@@ -45,24 +45,24 @@ class PartnerReconciliationTests(unittest.TestCase):
         self.assertFalse(result["official_partner_allowed"])
 
     def test_wrong_owner_overrides_exact_business_identifiers(self):
-        result = self.by_key["SYN-C-ONE--SYN-C-TWO"]
+        result = self.by_key[MODULE.candidate_key_for("SYN-C-ONE", "SYN-C-TWO")]
         self.assertEqual("ownership_conflict", result["classification"])
         self.assertIn("owner_account_id", result["conflicting_fields"])
         self.assertIn("google_place_id", result["matched_fields"])
 
     def test_similar_name_businesses_remain_separate(self):
-        result = self.by_key["SYN-B-ONE--SYN-B-TWO"]
+        result = self.by_key[MODULE.candidate_key_for("SYN-B-ONE", "SYN-B-TWO")]
         self.assertEqual("separate_businesses", result["classification"])
         self.assertEqual("keep_separate_and_block_automatic_reconciliation", result["next_action"])
 
     def test_shopping_source_cannot_become_partner(self):
-        result = self.by_key["SYN-D-PARTNER--SYN-D-SOURCE"]
+        result = self.by_key[MODULE.candidate_key_for("SYN-D-PARTNER", "SYN-D-SOURCE")]
         self.assertEqual("non_partner_source", result["classification"])
         self.assertFalse(result["claim_allowed"])
         self.assertFalse(result["official_partner_allowed"])
 
     def test_partial_name_and_address_evidence_is_likely_only(self):
-        result = self.by_key["SYN-E-ONE--SYN-E-TWO"]
+        result = self.by_key[MODULE.candidate_key_for("SYN-E-ONE", "SYN-E-TWO")]
         self.assertEqual("likely_match", result["classification"])
         self.assertIsNone(result["canonical_partner_id"])
 
@@ -123,6 +123,11 @@ class PartnerReconciliationTests(unittest.TestCase):
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(real_phone)
 
+        hostname_query_bypass = copy.deepcopy(self.dataset)
+        hostname_query_bypass["records"][0]["website"] = "https://example.com?marker=.test"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(hostname_query_bypass)
+
     def test_duplicate_ids_and_incomplete_reference_inventory_are_rejected(self):
         duplicate = copy.deepcopy(self.dataset)
         duplicate["records"][1]["id"] = duplicate["records"][0]["id"]
@@ -133,6 +138,96 @@ class PartnerReconciliationTests(unittest.TestCase):
         del missing_family["records"][0]["child_reference_counts"]["media"]
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(missing_family)
+
+    def test_unknown_root_record_and_expected_pair_fields_are_rejected(self):
+        unknown_root = copy.deepcopy(self.dataset)
+        unknown_root["undeclared"] = True
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(unknown_root)
+
+        unknown_record = copy.deepcopy(self.dataset)
+        unknown_record["records"][0]["undeclared"] = True
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(unknown_record)
+
+        unknown_expected = copy.deepcopy(self.dataset)
+        unknown_expected["expected_pairs"][0]["undeclared"] = True
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(unknown_expected)
+
+    def test_expected_pairs_are_validated_for_target_class_and_uniqueness(self):
+        unknown_target = copy.deepcopy(self.dataset)
+        unknown_target["expected_pairs"][0]["candidate_key"] = "SYN-PAIR|1:X|1:Y"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(unknown_target)
+
+        invalid_class = copy.deepcopy(self.dataset)
+        invalid_class["expected_pairs"][0]["classification"] = "auto_merge"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(invalid_class)
+
+        duplicate = copy.deepcopy(self.dataset)
+        duplicate["expected_pairs"].append(copy.deepcopy(duplicate["expected_pairs"][0]))
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(duplicate)
+
+    def test_classify_pair_revalidates_records_at_the_entry_point(self):
+        left = copy.deepcopy(self.dataset["records"][0])
+        right = copy.deepcopy(self.dataset["records"][1])
+        left["synthetic"] = False
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.classify_pair(left, right)
+
+        left = copy.deepcopy(self.dataset["records"][0])
+        left["undeclared"] = True
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.classify_pair(left, right)
+
+    def test_email_is_strong_only_with_provenance_on_both_records(self):
+        left = copy.deepcopy(self.dataset["records"][8])
+        right = copy.deepcopy(self.dataset["records"][9])
+        for record in (left, right):
+            record["website"] = "https://sunrise-pantry.test"
+            record["email"] = "owner@sunrise-pantry.test"
+            record["email_provenance"] = "unverified"
+
+        unverified = MODULE.classify_pair(left, right)
+        self.assertEqual("likely_match", unverified["classification"])
+        self.assertIn("email_unverified", unverified["matched_fields"])
+        self.assertNotIn("email", unverified["matched_fields"])
+
+        left["email_provenance"] = "owner_confirmed"
+        right["email_provenance"] = "authorized_business_contact"
+        verified = MODULE.classify_pair(left, right)
+        self.assertEqual("strong_identifier_match", verified["classification"])
+        self.assertIn("email", verified["matched_fields"])
+
+    def test_candidate_key_is_order_independent_and_delimiter_collision_safe(self):
+        first = MODULE.candidate_key_for("SYN-A--B", "SYN-C")
+        reverse = MODULE.candidate_key_for("SYN-C", "SYN-A--B")
+        ambiguous_under_old_join = MODULE.candidate_key_for("SYN-A", "SYN-B--C")
+        self.assertEqual(first, reverse)
+        self.assertNotEqual(first, ambiguous_under_old_join)
+
+    def test_name_address_branch_preserves_matching_identifier_evidence(self):
+        left = copy.deepcopy(self.dataset["records"][8])
+        right = copy.deepcopy(self.dataset["records"][9])
+        left["website"] = "https://sunrise-pantry.test"
+        right["website"] = "https://www.sunrise-pantry.test/menu"
+        result = MODULE.classify_pair(left, right)
+        self.assertEqual("likely_match", result["classification"])
+        self.assertIn("domain", result["matched_fields"])
+        self.assertIn("normalized_name", result["matched_fields"])
+        self.assertIn("normalized_address", result["matched_fields"])
+
+    def test_name_address_only_owner_conflict_has_an_accurate_reason(self):
+        left = copy.deepcopy(self.dataset["records"][8])
+        right = copy.deepcopy(self.dataset["records"][9])
+        right["owner_account_id"] = "SYN-OWNER-SUNRISE-B"
+        result = MODULE.classify_pair(left, right)
+        self.assertEqual("ownership_conflict", result["classification"])
+        self.assertIn("Normalized name and address", result["reason"])
+        self.assertNotIn("strong identifier matches", result["reason"])
 
     def test_conflicting_place_ids_override_composite_secondary_match(self):
         dataset = copy.deepcopy(self.dataset)
