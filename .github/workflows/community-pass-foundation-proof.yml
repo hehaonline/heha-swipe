@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "supabase/migrations/20260819193000_community_pass_foundation_v1.sql"
+      - "supabase/migrations/20260819200500_community_pass_trial_activation_qualification.sql"
       - "supabase/tests/community_pass_foundation_proof.sql"
       - "supabase/tests/fixtures/community_pass_minimal_baseline.sql"
       - ".github/workflows/community-pass-foundation-proof.yml"
@@ -52,12 +53,15 @@ jobs:
           psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
           < supabase/tests/fixtures/community_pass_minimal_baseline.sql
 
-      - name: Apply Package A migration twice
+      - name: Apply Package A migration chain twice
         shell: bash
         run: |
           set -euo pipefail
-          docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819193000_community_pass_foundation_v1.sql
-          docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819193000_community_pass_foundation_v1.sql
+          for pass in 1 2; do
+            echo "Package A apply pass ${pass}"
+            docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819193000_community_pass_foundation_v1.sql
+            docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819200500_community_pass_trial_activation_qualification.sql
+          done
 
       - name: Run exact foundation proof
         shell: bash
@@ -72,6 +76,7 @@ jobs:
           set -euo pipefail
           files=(
             supabase/migrations/20260819193000_community_pass_foundation_v1.sql
+            supabase/migrations/20260819200500_community_pass_trial_activation_qualification.sql
             supabase/tests/community_pass_foundation_proof.sql
             supabase/tests/fixtures/community_pass_minimal_baseline.sql
           )
