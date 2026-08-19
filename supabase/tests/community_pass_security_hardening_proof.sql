@@ -1,5 +1,6 @@
 -- Exact-head proof for Community Pass Package A security hardening.
--- Run only after the complete Package A migration chain on a disposable database.
+-- Run only after the complete Package A migration chain and a disposable
+-- environment-specific runtime_config row have been installed.
 
 begin;
 
@@ -52,20 +53,37 @@ exception
 end;
 $function$;
 
--- Environment binding, one-time trial, customer actor minimization, and unlink audit.
+-- Private runtime configuration, one-time trial, environment isolation,
+-- customer actor minimization, and unlink audit.
 do $trial_environment_and_deletion$
 declare
   v_user_a constant uuid := '00000000-0000-0000-0000-0000000000a1';
   v_account_a uuid;
   v_entitlement_a uuid;
+  v_live_entitlement_a uuid;
   v_activation record;
+  v_status record;
   v_status_count integer;
   v_trial_event record;
   v_legacy_actor_event uuid;
   v_unlink_event record;
 begin
-  if pg_catalog.current_setting('app.community_pass_environment', true) <> 'test' then
-    raise exception 'Disposable proof database must be configured for test environment';
+  if public.community_pass_runtime_environment() <> 'test' then
+    raise exception 'Disposable proof database must have a private test runtime configuration';
+  end if;
+
+  if pg_catalog.has_schema_privilege('authenticated', 'community_pass_private', 'USAGE')
+     or pg_catalog.has_table_privilege(
+       'authenticated',
+       'community_pass_private.runtime_config',
+       'SELECT'
+     )
+     or pg_catalog.has_function_privilege(
+       'authenticated',
+       'public.community_pass_runtime_environment()',
+       'EXECUTE'
+     ) then
+    raise exception 'Browser roles can inspect the private Community Pass environment';
   end if;
 
   if pg_catalog.has_function_privilege(
@@ -75,6 +93,18 @@ begin
      ) then
     raise exception 'Authenticated role must not execute the trusted-role helper';
   end if;
+
+  perform pg_temp.expect_sqlstate(
+    'runtime environment cannot be changed after insertion',
+    '42501',
+    'update community_pass_private.runtime_config set environment = ''live'' where singleton'
+  );
+
+  perform pg_temp.expect_sqlstate(
+    'runtime configuration cannot be deleted',
+    '42501',
+    'delete from community_pass_private.runtime_config where singleton'
+  );
 
   perform pg_temp.set_auth_context('service_role', v_user_a);
 
@@ -139,21 +169,56 @@ begin
     raise exception 'Trial event retained a duplicate customer actor identifier';
   end if;
 
-  perform pg_catalog.set_config('app.community_pass_environment', 'live', true);
+  -- Add a simultaneously active live-only row, then expire the test row. The
+  -- private test configuration must ignore the live row for both customer status
+  -- and server benefit authorization.
+  insert into public.community_pass_entitlements (
+    account_id,
+    user_id,
+    source_type,
+    state,
+    environment,
+    trial_start_at,
+    trial_end_at,
+    active_start_at,
+    active_end_at,
+    offer_version,
+    benefit_version,
+    policy_bundle_version
+  ) values (
+    v_account_a,
+    v_user_a,
+    'free_trial',
+    'trial_active',
+    'live',
+    pg_catalog.now(),
+    pg_catalog.now() + interval '30 days',
+    pg_catalog.now(),
+    pg_catalog.now() + interval '30 days',
+    'founding-live-v1',
+    'live-beta-v1',
+    'policy-live-v1'
+  ) returning id into v_live_entitlement_a;
+
+  update public.community_pass_entitlements
+  set state = 'expired',
+      ended_at = pg_catalog.now()
+  where id = v_entitlement_a;
 
   if public.is_community_pass_active(v_user_a, pg_catalog.now()) then
-    raise exception 'Test entitlement crossed into the live environment';
+    raise exception 'A live-only entitlement crossed into the configured test environment';
   end if;
 
   perform pg_temp.set_auth_context('authenticated', v_user_a);
-  select count(*) into v_status_count
+  select * into v_status
   from public.get_my_community_pass_status();
 
-  if v_status_count <> 0 then
-    raise exception 'Test customer status crossed into the live environment';
+  if v_status.entitlement_state <> 'expired'
+     or v_status.benefit_version <> 'beta-v1'
+     or v_status.offer_version <> 'founding-v1' then
+    raise exception 'Customer status crossed into the live environment';
   end if;
 
-  perform pg_catalog.set_config('app.community_pass_environment', 'test', true);
   perform pg_temp.set_auth_context('service_role', v_user_a);
 
   perform pg_temp.expect_sqlstate(
@@ -200,8 +265,8 @@ begin
     'proof_fixture',
     'legacy-customer-actor-proof',
     'test',
-    'trial_active',
-    'trial_active'
+    'expired',
+    'expired'
   ) returning id into v_legacy_actor_event;
 
   update public.community_pass_accounts
@@ -245,9 +310,9 @@ begin
 
   insert into pg_temp.community_pass_security_results(label, ok, detail)
   values (
-    'environment, trial and deletion hardening',
+    'runtime config, trial, environment and deletion hardening',
     true,
-    'server environment binding, monotonic trial use, minimized customer actor data, local revocation and unlink audit passed'
+    'private immutable runtime config, test/live isolation, monotonic trial use, minimized customer actor data, local revocation and unlink audit passed'
   );
 end;
 $trial_environment_and_deletion$;
@@ -362,7 +427,6 @@ declare
   v_account_b uuid;
   v_subscription_b uuid;
 begin
-  perform pg_catalog.set_config('app.community_pass_environment', 'test', true);
   perform pg_temp.set_auth_context('service_role', v_user_b);
 
   select id into v_account_b
@@ -448,8 +512,8 @@ begin
   from pg_temp.community_pass_security_results
   where ok;
 
-  if v_total < 7 then
-    raise exception 'Security hardening proof expected at least 7 passing result rows, got %', v_total;
+  if v_total < 9 then
+    raise exception 'Security hardening proof expected at least 9 passing result rows, got %', v_total;
   end if;
 end;
 $final$;
