@@ -573,12 +573,14 @@ select pg_temp.expect_state(
   )$$
 );
 
+reset role;
 select pg_temp.assert_true(
   'failed review attempts preserve pending',
   (select status = 'pending' from public.partners
    where id = '78787878-7878-4787-8787-787878787878'),
   'forged authority, unauthorized reviewers and a stale hash do not advance lifecycle state'
 );
+set local role service_role;
 
 select public.record_partner_publication_review(
     '70000000-0000-4000-8000-000000000007',
@@ -603,6 +605,7 @@ select pg_temp.assert_true(
   :'replay_review_id'::uuid = :'first_review_id'::uuid,
   'same request and evidence return the original append-only review identity'
 );
+reset role;
 select pg_temp.assert_true(
   'exact approved review advances pending atomically',
   (select status = 'approved' from public.partners
@@ -612,7 +615,6 @@ select pg_temp.assert_true(
 
 -- Exact replay is historical evidence and remains stable after the reviewer is
 -- deactivated. A new decision may not be attributed to that inactive reviewer.
-reset role;
 update public.user_roles
 set active = false
 where user_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
@@ -1005,13 +1007,13 @@ select public.record_partner_publication_review(
     'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
     null
 ) as unchanged_reconsent_review_id \gset
+reset role;
 select pg_temp.assert_true(
   'fresh exact review re-approves pending profile',
   (select status = 'approved' from public.partners
    where id = '78787878-7878-4787-8787-787878787878'),
   'fresh exact-hash review advances the withdrawn pending profile back to approved'
 );
-reset role;
 
 set local role anon;
 select pg_temp.assert_public_state(

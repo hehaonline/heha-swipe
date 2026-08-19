@@ -186,6 +186,7 @@ psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 -qtA \
     echo 'begin;'
     echo 'set local role service_role;'
     echo "select 'integration_review_winner',public.record_partner_publication_review('71000000-0000-4000-8000-000000000007','${PARTNER}','heha_swipe','${HASH_TWO}','approved','${REVIEWER}',null);"
+    echo 'reset role;'
     echo "do \$proof\$ begin /* integration_review_winner */ if (select status from public.partners where id='${PARTNER}') is distinct from 'approved' then raise exception 'exact review did not atomically advance pending to approved'; end if; end; \$proof\$;"
     cat "${PROOF_TMP}/review_first_in"
   }) > "${PROOF_TMP}/review_first.out" 2>&1 &
