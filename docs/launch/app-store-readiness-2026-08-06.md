@@ -15,7 +15,7 @@
 | Local customer recovery | `hehaonline/heha-order-hub@6398fb423bf1c9f8000958ace5df203b67c8bc1c` (PR #230, based on main) | Independent draft; Realtime reconnect freshness is repaired in source and hosted install/lint/build are green. Focused Vitest, authenticated Supabase/Realtime, browser, and assistive-technology QA remain unexecuted; recompose only after #232 stabilizes |
 | Local driver recovery | `hehaonline/heha-order-hub@1648411d023a728a73f8bfb6162eb580adea31b1` (PR #231, based on main) | Independent Night Builder draft; timeout, Realtime-loss, stale-action false-success, and retry-target blockers unresolved |
 | Swipe hybrid-security successor | `hehaonline/heha-swipe@8a5ebee906fdf3b146974bb7e6031d214e888fa5` (PR #120) | Donor exact-head proof passed, but it is superseded for release composition by draft integration RC #127 and is not independently deployable |
-| Swipe publication integration RC | `hehaonline/heha-swipe@d8a8ce6d375bc86883bc10d1f216ced832db2e37` (PR #127) | Current composition draft. Donor lifecycle proof passes, but the final migration fails before downstream SQL/concurrency/build evidence because `pg_constraint.contype` is concatenated without `::text`; SEC-002 browser webhook remains open |
+| Swipe publication integration RC | `hehaonline/heha-swipe@abcf5c4296dc7db013a27d688ba7c8ae57b346d3` (PR #127) | Current composition draft. Donor lifecycle and final migration now pass; browser-role public-view access advances through consent/withdrawal checks, but the consent proof fails in its account-deletion block on a composite-row assignment. Combined SQL, replay, concurrency, JavaScript/build, exposure, and evidence gates remain skipped; SEC-002 browser webhook remains open |
 | Community Pass execution contract | `hehaonline/heha-swipe@59bf60d5b7ca3d0a30d265c59a66acc66a90c0dd` (PR #126) | Correct hybrid offer is documented: no-card free founding access, recurring $2–$100 monthly slider, and $15/$25 non-renewing prepaid passes. Implementation remains blocked by payment-finality, deletion/retention, cross-app trust, clickwrap/tax, and supersession-ledger corrections |
 
 GitHub inspection found no Capacitor configuration, Xcode project, Android/Gradle app project, Expo configuration, Apple privacy manifest, Android Digital Asset Links file, native bundle/package identifier, or store-build script in either audited RC. Searches also found no service-worker registration. The existing manifests and icons are useful web-install foundations, but they are not App Store or Play Store packages.
@@ -1025,6 +1025,23 @@ This section supersedes the Local PR #232 address-read status above while preser
 Exact-head hosted metadata: Vercel and Snyk report success for `57b1059…`; no GitHub Actions run is associated with the stacked evidence head. PR #232 has zero unresolved inline review threads. Local tests/build, authenticated Supabase fault injection, RLS, browser/shared-device, multi-tab, assistive-technology, deployment, and Production behavior were not independently run.
 
 Collision check before this documentation update: all 26 open Swipe PR file lists were refreshed; only PR #116 changes this readiness document. No Local branch, application code, migration, database, Auth setting, environment, deployment, or Production system was changed by this reconciliation.
+
+
+## Current Swipe publication proof reconciliation — 2026-08-19
+
+This section supersedes PR #127's earlier cast-failure status while preserving previous sections as dated evidence history.
+
+- **Exact state:** Swipe PR #127 remains open, draft, and mergeable on `main@82ec41a27150847f3d461716bc58636e24babfe6`, at exact head `abcf5c4296dc7db013a27d688ba7c8ae57b346d3` with 37 changed files and zero unresolved inline review threads.
+- **Progress genuinely proven:** exact-head Partner Publication Integration Proof run [#32147179755](https://github.com/hehaonline/heha-swipe/actions/runs/32147179755) passes literal-revision/syntax verification, disposable Supabase preparation/start, donor consent setup, all donor lifecycle migrations and proof, and the sole final integration migration. The earlier `pg_constraint.contype` cast failure is therefore superseded.
+- **Current deterministic failure:** the consent-specific post-final proof reaches its account-deletion durability block and fails at `partner_publication_consent_proof.sql:528` / workflow-reported line 564. `v_partner` is declared as `public.partners`, but `select p into v_partner from public.partners p ...` selects one composite-valued column; PL/pgSQL attempts to assign that composite to the row variable's first UUID field. The bounded harness repair is `select p.* into v_partner ...`, followed by a complete literal-head rerun.
+- **Evidence still missing:** the account-deletion assertion has not completed. Combined post-final behavioral SQL, idempotent final-migration replay, both concurrency proofs, focused JavaScript contracts/build, raw-anonymous-exposure negative control, sanitized-evidence scan, and evidence upload are all skipped. Green Vercel/Snyk do not replace these gates.
+- **Security boundary:** the earlier browser-role function-permission failure no longer blocks the public views at this stage, but the later raw-exposure/behavioral gates have not executed; this is progress, not a final ACL pass. The separate SEC-002 browser-side `VITE_MAKE_PARTNER_APPROVAL_WEBHOOK` blocker remains unresolved and must not be activated.
+
+Required next step: the #127 owner applies only the row-expansion harness repair, reruns the entire workflow on the exact pushed head, and preserves the full later gate sequence. Do not merge, apply migrations, publish partners, configure a browser webhook, deploy, or treat the draft as release-ready from the partial pass.
+
+Verified through GitHub: exact #127 head/base/files, hosted statuses, workflow/job/step conclusions, exact failing proof source, existing diagnosis, draft/mergeable state, and review-thread count. Not run locally: Supabase/PostgreSQL, migrations/proofs, concurrency, JavaScript tests/build, bundle scan, browser/accessibility QA, live Supabase, deployment, or Production.
+
+Collision check before this documentation write refreshed all 26 open Swipe PR file sets; only #116 changes this readiness document. No application code, migration, workflow, dependency, lockfile, manifest, native project, environment, database, partner state, deployment, or Production system was changed.
 
 ## Rollback
 
