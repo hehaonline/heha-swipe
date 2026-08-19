@@ -36,7 +36,7 @@ No real partner or customer identifiers belong in GitHub. Running the catalog in
 | Claim/agreement evidence | **[U]** related donor lanes contain claim/relationship concepts but are not merged into this base. | Inventory later; unresolved claim evidence blocks reconciliation and publication. |
 | Local bridge | **[U]** Order Hub #161 proposes storing the Swipe UUID value as `swipe_partner_id`; cross-project FK enforcement is neither present nor authorized here. | Never invent a cross-project FK. Inventory Local references separately and require a named cross-project decision. |
 
-The catalog-only SQL reports metadata that can refine this inventory in a disposable clone. Any family absent from repository migrations remains unresolved rather than assumed absent.
+The catalog-only SQL reports metadata that can refine this inventory in a disposable clone. For every relevant composite constraint it selects by the presence of an identity column but emits the complete ordered column list, so companion columns cannot disappear from the inventory. Any family absent from repository migrations remains unresolved rather than assumed absent.
 
 ## Deterministic classification precedence
 
@@ -55,14 +55,14 @@ All six classes are fail-closed. Even `strong_identifier_match` means only “pr
 
 The offline reporter uses deterministic standard-library normalization:
 
-- Unicode compatibility decomposition, lowercase, punctuation collapse and whitespace collapse for names/addresses;
+- removal of the required leading `Synthetic ` fixture marker before Unicode compatibility decomposition, lowercase, punctuation collapse and whitespace collapse for business names; addresses receive the same normalization without prefix removal;
 - the hostname returned by a strict HTTP(S) URL parse, with `www.` and a trailing dot removed, for domains; query/path text never counts as the host;
 - digits only, with a leading U.S. country code removed, for phones;
 - lowercase trim for email;
 - URL/`@` removal and lowercase for Instagram;
 - exact trimmed comparison for Google Place ID and owner ID.
 
-Normalization never changes source data. The fixture schema rejects undeclared root, record and expected-pair fields. Each pair uses an order-independent length-prefixed key so delimiter-like ID text cannot collide. The report includes only record IDs and matched/conflicting field names, not raw identifier values. Record IDs are bounded, hyphen-delimited uppercase fixture words; digits are forbidden so phone/account-like values cannot be emitted through an ID.
+Normalization never changes source data. The fixture schema rejects undeclared root, record, Scout-lineage and expected-pair fields. Each pair uses an order-independent length-prefixed key so delimiter-like ID text cannot collide. The report includes only synthetic record/Scout/actor IDs, synthetic Scout provenance, and matched/conflicting field names, not raw business contact identifiers. Record, Scout and actor IDs use bounded, role-specific uppercase fixture-word grammars; digits are forbidden where an emitted ID could otherwise hide phone/account-like values.
 
 ## Private reconciliation queue contract
 
@@ -84,11 +84,11 @@ The queue must be private by default, deny anonymous/authenticated partner acces
 
 ## Synthetic preservation manifest
 
-Fixtures carry counts for every currently required family:
+The v2 fixtures carry counts for every currently required family:
 
 `saves`, `swipes`, `analytics`, `requests`, `media`, `routing`, `local_bridge`, `profile_changes`, `offers`, `readiness`, `platform_visibility`, `crm_links`, and `scout_links`.
 
-The reporter copies those counts unchanged into each candidate pair. **[S]** Tests prove no count or family disappears and no canonical ID is emitted. This is not evidence that the live schema uses these exact table names; that remains **[U]**.
+The reporter copies those counts unchanged into each candidate pair. For every synthetic Scout link it also preserves the original partner-record link, lead ID, `source`, `source_detail`, creator/updater, creation/update timestamps, and a SHA-256 fingerprint over the canonical lineage entry **and its original partner-record link**. The strict fixture schema requires the Scout entry count to equal `child_reference_counts.scout_links`, rejects duplicate lead IDs across records, and accepts only declared synthetic provenance values. **[S]** Tests prove no count, family, or synthetic Scout lineage entry disappears and no canonical ID is emitted. This is not evidence that the live schema uses these exact table names; that remains **[U]**.
 
 ## Initial named-business checklists
 
@@ -131,7 +131,7 @@ These checklists intentionally contain no IDs, contacts, values, or conclusions.
 4. Generate candidate classifications and a preservation manifest.
 5. Stop. A named human either rejects, keeps separate, requests more evidence, or authorizes preparation of a distinct mutation plan.
 
-No output from this PR is executable approval.
+Before a report is emitted, every declared `expected_pairs` classification must equal the freshly generated classification; a disagreement rejects the complete build and the CLI creates no output. Each report also contains `generator_revision`, a SHA-256 digest of the exact reporter source file executed by the CLI, plus the canonical fixture digest in `source_sha256`. Reviewers must bind approval to both immutable digests. No output from this PR is executable approval.
 
 ## Future forward-only plan (not authorized here)
 

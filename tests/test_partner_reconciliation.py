@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import hashlib
 import importlib.util
 import io
 import json
@@ -66,16 +67,28 @@ class PartnerReconciliationTests(unittest.TestCase):
         self.assertEqual("likely_match", result["classification"])
         self.assertIsNone(result["canonical_partner_id"])
 
-    def test_reference_manifest_preserves_every_family_and_count(self):
+    def test_reference_manifest_preserves_every_family_count_and_scout_lineage(self):
         records = {record["id"]: record for record in self.dataset["records"]}
         for result in self.report["pairs"]:
-            self.assertEqual(set(MODULE.CHILD_REFERENCE_FAMILIES), set(result["reference_preservation_manifest"][result["left_record_id"]]))
-            self.assertEqual(set(MODULE.CHILD_REFERENCE_FAMILIES), set(result["reference_preservation_manifest"][result["right_record_id"]]))
             for record_id in (result["left_record_id"], result["right_record_id"]):
+                manifest = result["reference_preservation_manifest"][record_id]
+                self.assertEqual({"family_counts", "scout_links"}, set(manifest))
+                self.assertEqual(set(MODULE.CHILD_REFERENCE_FAMILIES), set(manifest["family_counts"]))
                 self.assertEqual(
                     records[record_id]["child_reference_counts"],
-                    result["reference_preservation_manifest"][record_id],
+                    manifest["family_counts"],
                 )
+                expected_links = sorted(
+                    records[record_id]["scout_link_lineage"],
+                    key=lambda link: link["scout_lead_id"],
+                )
+                self.assertEqual(len(expected_links), len(manifest["scout_links"]))
+                for expected_link, actual_link in zip(expected_links, manifest["scout_links"], strict=True):
+                    bound_link = {**expected_link, "original_partner_record_id": record_id}
+                    canonical = json.dumps(bound_link, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                    self.assertEqual(expected_link, {key: actual_link[key] for key in MODULE.SCOUT_LINK_KEYS})
+                    self.assertEqual(record_id, actual_link["original_partner_record_id"])
+                    self.assertEqual(hashlib.sha256(canonical).hexdigest(), actual_link["lineage_sha256"])
 
     def test_report_is_byte_stable_and_sorted(self):
         first = json.dumps(MODULE.build_report(self.dataset), indent=2, sort_keys=True) + "\n"
@@ -83,6 +96,11 @@ class PartnerReconciliationTests(unittest.TestCase):
         self.assertEqual(first, second)
         keys = [item["candidate_key"] for item in self.report["pairs"]]
         self.assertEqual(keys, sorted(keys))
+
+    def test_report_is_bound_to_exact_reporter_source_revision(self):
+        expected = "sha256:" + hashlib.sha256(SCRIPT_PATH.read_bytes()).hexdigest()
+        self.assertEqual(expected, self.report["generator_revision"])
+        self.assertRegex(self.report["generator_revision"], r"^sha256:[0-9a-f]{64}$")
 
     def test_report_contains_no_raw_contact_identifiers(self):
         serialized = json.dumps(self.report, sort_keys=True)
@@ -160,6 +178,34 @@ class PartnerReconciliationTests(unittest.TestCase):
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(missing_family)
 
+    def test_scout_lineage_is_strict_counted_and_uniquely_linked(self):
+        count_mismatch = copy.deepcopy(self.dataset)
+        count_mismatch["records"][0]["child_reference_counts"]["scout_links"] = 2
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(count_mismatch)
+
+        undeclared_provenance = copy.deepcopy(self.dataset)
+        undeclared_provenance["records"][0]["scout_link_lineage"][0]["email"] = "person@example.com"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(undeclared_provenance)
+
+        unsafe_source_detail = copy.deepcopy(self.dataset)
+        unsafe_source_detail["records"][0]["scout_link_lineage"][0]["source_detail"] = "person@example.com"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(unsafe_source_detail)
+
+        invalid_timestamp = copy.deepcopy(self.dataset)
+        invalid_timestamp["records"][0]["scout_link_lineage"][0]["updated_at"] = "2030-02-30T00:00:00Z"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(invalid_timestamp)
+
+        duplicate_link = copy.deepcopy(self.dataset)
+        duplicate_link["records"][2]["scout_link_lineage"][0]["scout_lead_id"] = (
+            duplicate_link["records"][0]["scout_link_lineage"][0]["scout_lead_id"]
+        )
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(duplicate_link)
+
     def test_pii_shaped_record_ids_are_rejected_before_report_emission(self):
         for record_id in ("SYN-8135559999", "SYN-813-555-9999"):
             invalid = copy.deepcopy(self.dataset)
@@ -231,6 +277,21 @@ class PartnerReconciliationTests(unittest.TestCase):
         hidden_name_pii["records"][0]["name"] = "Synthetic Citrus person@example.com"
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(hidden_name_pii)
+
+    def test_expected_pairs_are_an_enforced_oracle_in_library_and_cli(self):
+        contradicted = copy.deepcopy(self.dataset)
+        contradicted["expected_pairs"][0]["classification"] = "likely_match"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(contradicted)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "contradicted.json"
+            output_path = Path(temp_dir) / "report.json"
+            input_path.write_text(json.dumps(contradicted), encoding="utf-8")
+            with redirect_stderr(io.StringIO()):
+                exit_code = MODULE.main(["--input", str(input_path), "--output", str(output_path)])
+            self.assertEqual(2, exit_code)
+            self.assertFalse(output_path.exists())
 
     def test_classify_pair_revalidates_records_at_the_entry_point(self):
         left = copy.deepcopy(self.dataset["records"][0])
@@ -343,6 +404,8 @@ class PartnerReconciliationTests(unittest.TestCase):
         left = copy.deepcopy(self.dataset["records"][0])
         right = copy.deepcopy(self.dataset["records"][0])
         right["id"] = "SYN-A-CONFLICT"
+        right["child_reference_counts"]["scout_links"] = 0
+        right["scout_link_lineage"] = []
         right["google_place_id"] = "SYN-PLACE-OTHER"
         right["website"] = "https://other-kitchen.test"
         right["phone"] = "813-555-0110"
@@ -380,6 +443,8 @@ class PartnerReconciliationTests(unittest.TestCase):
         left = copy.deepcopy(self.dataset["records"][0])
         right = copy.deepcopy(self.dataset["records"][0])
         right["id"] = "SYN-A-CONFLICT"
+        right["child_reference_counts"]["scout_links"] = 0
+        right["scout_link_lineage"] = []
         right["website"] = "https://other-kitchen.test"
         right["phone"] = "813-555-0110"
         right["email"] = "owner@other-kitchen.test"
@@ -416,6 +481,69 @@ class PartnerReconciliationTests(unittest.TestCase):
         self.assertEqual("strong_identifier_match", address["classification"])
         self.assertIn("normalized_address", address["matched_fields"])
 
+    def test_shared_synthetic_marker_does_not_inflate_name_similarity(self):
+        left = copy.deepcopy(self.dataset["records"][8])
+        right = copy.deepcopy(self.dataset["records"][9])
+        left["name"] = "Synthetic A"
+        right["name"] = "Synthetic B"
+        left["address"] = "101 Example Alpha Way, Tampa, FL"
+        right["address"] = "202 Example Bravo Way, Tampa, FL"
+        for record in (left, right):
+            record["website"] = "https://shared-marker.test"
+            record["phone"] = "813-555-0111"
+
+        result = MODULE.classify_pair(left, right)
+        self.assertEqual("likely_match", result["classification"])
+        self.assertNotIn("normalized_name", result["matched_fields"])
+
+    def test_synthetic_name_payload_rejects_empty_or_repeated_fixture_markers(self):
+        for left_name, right_name in (
+            ("Synthetic --", "Synthetic .."),
+            ("Synthetic Synthetic A", "Synthetic Synthetic B"),
+        ):
+            dataset = copy.deepcopy(self.dataset)
+            for record_id, name, address in (
+                ("SYN-X-ONE", left_name, "601 Example Alpha Way, Tampa, FL"),
+                ("SYN-X-TWO", right_name, "602 Example Bravo Way, Tampa, FL"),
+            ):
+                record = copy.deepcopy(self.dataset["records"][8])
+                record["id"] = record_id
+                record["name"] = name
+                record["address"] = address
+                record["website"] = "https://shared-marker.test"
+                record["phone"] = "813-555-0111"
+                record["owner_account_id"] = "SYN-OWNER-MARKER"
+                record["child_reference_counts"] = {
+                    family: 0 for family in MODULE.CHILD_REFERENCE_FAMILIES
+                }
+                record["scout_link_lineage"] = []
+                dataset["records"].append(record)
+
+            with self.subTest(left_name=left_name, right_name=right_name), self.assertRaises(
+                MODULE.InputRejected
+            ):
+                # The new records are intentionally absent from expected_pairs. This
+                # proves validation rejects the bad payload before a false strong
+                # classification can be emitted, rather than relying on the oracle.
+                MODULE.build_report(dataset)
+
+    def test_pii_shaped_digit_run_is_rejected_from_synthetic_name_payload(self):
+        dataset = copy.deepcopy(self.dataset)
+        record = copy.deepcopy(self.dataset["records"][8])
+        record["id"] = "SYN-X-PII"
+        record["name"] = "Synthetic 8135559999"
+        record["address"] = "603 Example Charlie Way, Tampa, FL"
+        record["child_reference_counts"] = {
+            family: 0 for family in MODULE.CHILD_REFERENCE_FAMILIES
+        }
+        record["scout_link_lineage"] = []
+        dataset["records"].append(record)
+
+        with self.assertRaises(MODULE.InputRejected):
+            # This record is not covered by expected_pairs, so rejection is the
+            # synthetic-input boundary itself rather than an oracle mismatch.
+            MODULE.build_report(dataset)
+
     def test_invalid_cli_input_does_not_create_output(self):
         invalid = copy.deepcopy(self.dataset)
         invalid["data_classification"] = "real"
@@ -449,6 +577,12 @@ class PartnerReconciliationTests(unittest.TestCase):
         self.assertRegex(sql, r"(?is)pg_catalog\.pg_get_expr\s*\(\s*ind\.indexprs\s*,\s*ind\.indrelid")
         self.assertRegex(sql, r"(?is)pg_catalog\.pg_get_expr\s*\(\s*ind\.indpred\s*,\s*ind\.indrelid")
         self.assertNotRegex(sql, r"(?is)\b(?:from|join)\s+public\.")
+
+        constraint_inventory = sql.split("-- Constraints containing", 1)[1].split("-- Index metadata", 1)[0]
+        self.assertIn("array_agg(att.attname ORDER BY key.ord)", constraint_inventory)
+        self.assertRegex(constraint_inventory, r"(?is)\bAND\s+EXISTS\s*\(")
+        self.assertRegex(constraint_inventory, r"(?is)identity_att\.attname\s+IN\s*\(")
+        self.assertNotRegex(constraint_inventory, r"(?is)\bAND\s+att\.attname\s+IN\s*\(")
 
         without_comments = re.sub(r"--[^\n]*", "", sql)
         without_strings = re.sub(r"'(?:''|[^'])*'", "''", without_comments)

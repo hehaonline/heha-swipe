@@ -14,14 +14,15 @@ import json
 import re
 import sys
 import unicodedata
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 
-SCHEMA_VERSION = "heha.partner-reconciliation.synthetic/v1"
-REPORT_VERSION = "heha.partner-reconciliation.report/v1"
+SCHEMA_VERSION = "heha.partner-reconciliation.synthetic/v2"
+REPORT_VERSION = "heha.partner-reconciliation.report/v2"
 # Record IDs are emitted verbatim in the private review report, so accept only
 # hyphen-delimited fixture words. Digits are deliberately forbidden to prevent
 # phone/account-like values from being smuggled through an apparently synthetic
@@ -29,12 +30,15 @@ REPORT_VERSION = "heha.partner-reconciliation.report/v1"
 ID_RE = re.compile(r"^SYN-(?=.{1,76}$)[A-Z]+(?:-[A-Z]+)*$")
 OWNER_RE = re.compile(r"^SYN-OWNER-[A-Z0-9-]+$")
 PLACE_RE = re.compile(r"^SYN-PLACE-[A-Z0-9-]+$")
+SCOUT_LEAD_RE = re.compile(r"^SYN-SCOUT-(?=.{1,64}$)[A-Z]+(?:-[A-Z]+)*$")
+SCOUT_ACTOR_RE = re.compile(r"^SYN-ACTOR-(?=.{1,64}$)[A-Z]+(?:-[A-Z]+)*$")
+SCOUT_TIMESTAMP_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
 PHONE_RE = re.compile(r"^1?[2-9][0-9]{2}55501[0-9]{2}$")
 PHONE_FORMAT_RE = re.compile(r"^[0-9+(). -]+$")
 INSTAGRAM_RE = re.compile(r"^synthetic_[a-z0-9_]+$")
 TEST_HOST_RE = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+test$")
 EMAIL_LOCAL_RE = re.compile(r"^[a-z0-9][a-z0-9._+-]{0,63}$")
-SYNTHETIC_NAME_RE = re.compile(r"^Synthetic [A-Za-z0-9 .&'-]{1,140}$")
+SYNTHETIC_NAME_RE = re.compile(r"^Synthetic [A-Za-z .&'-]{1,140}$")
 SYNTHETIC_ADDRESS_RE = re.compile(
     r"^[0-9]{1,4} (?:(?:North|South|East|West) )?Example [A-Za-z ]{2,80}, Tampa, (?:FL|Florida)$"
 )
@@ -75,9 +79,29 @@ RECORD_KEYS = {
     "instagram",
     "owner_account_id",
     "child_reference_counts",
+    "scout_link_lineage",
 }
-STRING_RECORD_FIELDS = RECORD_KEYS - {"synthetic", "child_reference_counts"}
+STRING_RECORD_FIELDS = RECORD_KEYS - {"synthetic", "child_reference_counts", "scout_link_lineage"}
 EXPECTED_PAIR_KEYS = {"candidate_key", "classification"}
+SCOUT_LINK_KEYS = {
+    "scout_lead_id",
+    "source",
+    "source_detail",
+    "created_by",
+    "updated_by",
+    "created_at",
+    "updated_at",
+}
+SCOUT_SOURCE_VALUES = {
+    "synthetic_admin_import",
+    "synthetic_field_visit",
+    "synthetic_owner_referral",
+}
+SCOUT_SOURCE_DETAIL_VALUES = {
+    "synthetic_launch_walk",
+    "synthetic_partner_intro",
+    "synthetic_review_seed",
+}
 CLASSIFICATIONS = {
     "non_partner_source",
     "ownership_conflict",
@@ -121,6 +145,16 @@ def normalize_text(value: Any) -> str:
     text = unicodedata.normalize("NFKD", str(value or ""))
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     return " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
+
+
+def normalize_synthetic_name(value: Any) -> str:
+    """Normalize only the business-name payload, never the shared fixture marker."""
+    raw = str(value or "")
+    _require(bool(SYNTHETIC_NAME_RE.fullmatch(raw)), "name is not synthetic-safe")
+    normalized = normalize_text(raw.removeprefix("Synthetic "))
+    _require(bool(normalized), "name must contain a non-empty synthetic business payload")
+    _require(normalized.split()[0] != "synthetic", "name must contain exactly one leading Synthetic fixture marker")
+    return normalized
 
 
 def normalize_phone(value: Any) -> str:
@@ -169,6 +203,35 @@ def _require(condition: bool, message: str) -> None:
         raise InputRejected(message)
 
 
+def _parse_scout_timestamp(value: str, record_id: str, field: str) -> datetime:
+    _require(bool(SCOUT_TIMESTAMP_RE.fullmatch(value)), f"{record_id}: Scout {field} must be an RFC 3339 UTC timestamp")
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise InputRejected(f"{record_id}: Scout {field} is not a real UTC timestamp") from exc
+
+
+def _validate_scout_link_lineage(record: dict[str, Any], record_id: str) -> None:
+    lineage = record.get("scout_link_lineage")
+    _require(isinstance(lineage, list), f"{record_id}: scout_link_lineage must be a list")
+    seen_leads: set[str] = set()
+    for link in lineage:
+        _require(isinstance(link, dict), f"{record_id}: every Scout lineage entry must be an object")
+        _require(set(link) == SCOUT_LINK_KEYS, f"{record_id}: Scout lineage fields must match the declared schema exactly")
+        _require(all(isinstance(link.get(field), str) for field in SCOUT_LINK_KEYS), f"{record_id}: Scout lineage fields must be strings")
+        lead_id = link["scout_lead_id"]
+        _require(bool(SCOUT_LEAD_RE.fullmatch(lead_id)), f"{record_id}: Scout lead id is not synthetic-safe")
+        _require(lead_id not in seen_leads, f"{record_id}: duplicate Scout lead id")
+        seen_leads.add(lead_id)
+        _require(link["source"] in SCOUT_SOURCE_VALUES, f"{record_id}: Scout source is not synthetic-safe")
+        _require(link["source_detail"] in SCOUT_SOURCE_DETAIL_VALUES, f"{record_id}: Scout source_detail is not synthetic-safe")
+        _require(bool(SCOUT_ACTOR_RE.fullmatch(link["created_by"])), f"{record_id}: Scout creator is not synthetic-safe")
+        _require(bool(SCOUT_ACTOR_RE.fullmatch(link["updated_by"])), f"{record_id}: Scout updater is not synthetic-safe")
+        created_at = _parse_scout_timestamp(link["created_at"], record_id, "created_at")
+        updated_at = _parse_scout_timestamp(link["updated_at"], record_id, "updated_at")
+        _require(updated_at >= created_at, f"{record_id}: Scout updated_at precedes created_at")
+
+
 def _validate_synthetic_record(record: dict[str, Any]) -> None:
     _require(set(record) == RECORD_KEYS, "record fields must match the declared synthetic schema exactly")
     _require(
@@ -184,7 +247,7 @@ def _validate_synthetic_record(record: dict[str, Any]) -> None:
         isinstance(record_kind, str) and record_kind in {"partner_candidate", "shopping_source"},
         f"{record_id}: unsupported record_kind",
     )
-    _require(bool(SYNTHETIC_NAME_RE.fullmatch(record["name"])), f"{record_id}: name is not synthetic-safe")
+    normalize_synthetic_name(record["name"])
 
     owner = str(record.get("owner_account_id", ""))
     if owner:
@@ -230,6 +293,12 @@ def _validate_synthetic_record(record: dict[str, Any]) -> None:
     for family, count in counts.items():
         _require(isinstance(count, int) and not isinstance(count, bool) and count >= 0, f"{record_id}: invalid {family} count")
 
+    _validate_scout_link_lineage(record, record_id)
+    _require(
+        len(record["scout_link_lineage"]) == counts["scout_links"],
+        f"{record_id}: Scout lineage count does not match child_reference_counts",
+    )
+
 
 def validate_dataset(dataset: dict[str, Any]) -> list[dict[str, Any]]:
     _require(isinstance(dataset, dict), "input root must be an object")
@@ -241,11 +310,16 @@ def validate_dataset(dataset: dict[str, Any]) -> list[dict[str, Any]]:
     records = dataset.get("records")
     _require(isinstance(records, list) and len(records) >= 2, "at least two synthetic records are required")
     seen: set[str] = set()
+    seen_scout_leads: set[str] = set()
     for record in records:
         _require(isinstance(record, dict), "every record must be an object")
         _validate_synthetic_record(record)
         _require(record["id"] not in seen, f"duplicate record id: {record['id']}")
         seen.add(record["id"])
+        for link in record["scout_link_lineage"]:
+            lead_id = link["scout_lead_id"]
+            _require(lead_id not in seen_scout_leads, "a Scout lead cannot be linked to multiple records")
+            seen_scout_leads.add(lead_id)
     ordered = sorted(records, key=lambda item: item["id"])
     expected_pairs = dataset.get("expected_pairs")
     _require(isinstance(expected_pairs, list), "expected_pairs must be a list")
@@ -278,9 +352,33 @@ def normalized_identifiers(record: dict[str, Any]) -> dict[str, str]:
         "email": normalize_email(record.get("email")),
         "email_provenance": str(record.get("email_provenance", "")),
         "instagram": normalize_instagram(record.get("instagram")),
-        "name": normalize_text(record.get("name")),
+        "name": normalize_synthetic_name(record.get("name")),
         "address": normalize_text(record.get("address")),
         "owner_account_id": str(record.get("owner_account_id", "")).strip(),
+}
+
+
+def _scout_link_manifest(record: dict[str, Any]) -> list[dict[str, str]]:
+    manifest: list[dict[str, str]] = []
+    for source_link in sorted(record["scout_link_lineage"], key=lambda link: link["scout_lead_id"]):
+        bound_link = {**source_link, "original_partner_record_id": record["id"]}
+        canonical_link = json.dumps(bound_link, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        manifest.append(
+            {
+                **bound_link,
+                "lineage_sha256": hashlib.sha256(canonical_link).hexdigest(),
+            }
+        )
+    return manifest
+
+
+def _reference_manifest(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "family_counts": {
+            family: record["child_reference_counts"][family]
+            for family in CHILD_REFERENCE_FAMILIES
+        },
+        "scout_links": _scout_link_manifest(record),
     }
 
 
@@ -310,8 +408,8 @@ def _pair_result(
         "claim_allowed": False,
         "official_partner_allowed": False,
         "reference_preservation_manifest": {
-            left["id"]: {family: left["child_reference_counts"][family] for family in CHILD_REFERENCE_FAMILIES},
-            right["id"]: {family: right["child_reference_counts"][family] for family in CHILD_REFERENCE_FAMILIES},
+            left["id"]: _reference_manifest(left),
+            right["id"]: _reference_manifest(right),
         },
     }
 
@@ -327,6 +425,13 @@ def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]
     _validate_synthetic_record(left)
     _validate_synthetic_record(right)
     _require(left["id"] != right["id"], "pair records must have different ids")
+    _require(
+        not (
+            {link["scout_lead_id"] for link in left["scout_link_lineage"]}
+            & {link["scout_lead_id"] for link in right["scout_link_lineage"]}
+        ),
+        "a Scout lead cannot be linked to multiple records",
+    )
     left_norm = normalized_identifiers(left)
     right_norm = normalized_identifiers(right)
     matched = [field for field in STATIC_STRONG_FIELDS if left_norm[field] and left_norm[field] == right_norm[field]]
@@ -483,10 +588,17 @@ def build_report(dataset: dict[str, Any]) -> dict[str, Any]:
         (classify_pair(records[i], records[j]) for i in range(len(records)) for j in range(i + 1, len(records))),
         key=lambda item: item["candidate_key"],
     )
+    actual_classifications = {pair["candidate_key"]: pair["classification"] for pair in pairs}
+    for expected in dataset["expected_pairs"]:
+        _require(
+            actual_classifications[expected["candidate_key"]] == expected["classification"],
+            f"{expected['candidate_key']}: generated classification disagrees with expected_pairs",
+        )
     return {
         "schema_version": REPORT_VERSION,
         "source_schema_version": SCHEMA_VERSION,
         "source_sha256": hashlib.sha256(canonical_input).hexdigest(),
+        "generator_revision": "sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "synthetic_only": True,
         "record_count": len(records),
         "pair_count": len(pairs),

@@ -1,5 +1,5 @@
 {
-  "schema_version": "heha.partner-reconciliation.synthetic/v1",
+  "schema_version": "heha.partner-reconciliation.synthetic/v2",
   "data_classification": "synthetic",
   "synthetic": true,
   "mutation_mode": "disabled",
@@ -31,7 +31,18 @@
         "platform_visibility": 1,
         "crm_links": 1,
         "scout_links": 1
-      }
+      },
+      "scout_link_lineage": [
+        {
+          "scout_lead_id": "SYN-SCOUT-CITRUS",
+          "source": "synthetic_field_visit",
+          "source_detail": "synthetic_launch_walk",
+          "created_by": "SYN-ACTOR-ALPHA",
+          "updated_by": "SYN-ACTOR-ALPHA",
+          "created_at": "2030-01-01T00:00:00Z",
+          "updated_at": "2030-01-01T01:00:00Z"
+        }
+      ]
     },
     {
       "id": "SYN-A-TWO",
@@ -60,7 +71,8 @@
         "platform_visibility": 1,
         "crm_links": 0,
         "scout_links": 0
-      }
+      },
+      "scout_link_lineage": []
     },
     {
       "id": "SYN-B-ONE",
@@ -89,7 +101,18 @@
         "platform_visibility": 1,
         "crm_links": 1,
         "scout_links": 1
-      }
+      },
+      "scout_link_lineage": [
+        {
+          "scout_lead_id": "SYN-SCOUT-GREEN",
+          "source": "synthetic_owner_referral",
+          "source_detail": "synthetic_partner_intro",
+          "created_by": "SYN-ACTOR-BRAVO",
+          "updated_by": "SYN-ACTOR-BRAVO",
+          "created_at": "2030-01-02T00:00:00Z",
+          "updated_at": "2030-01-02T01:00:00Z"
+        }
+      ]
     },
     {
       "id": "SYN-B-TWO",
@@ -118,7 +141,8 @@
         "platform_visibility": 1,
         "crm_links": 1,
         "scout_links": 0
-      }
+      },
+      "scout_link_lineage": []
     },
     {
       "id": "SYN-C-ONE",
@@ -147,7 +171,18 @@
         "platform_visibility": 1,
         "crm_links": 1,
         "scout_links": 1
-      }
+      },
+      "scout_link_lineage": [
+        {
+          "scout_lead_id": "SYN-SCOUT-HARBOR",
+          "source": "synthetic_field_visit",
+          "source_detail": "synthetic_launch_walk",
+          "created_by": "SYN-ACTOR-CHARLIE",
+          "updated_by": "SYN-ACTOR-CHARLIE",
+          "created_at": "2030-01-03T00:00:00Z",
+          "updated_at": "2030-01-03T01:00:00Z"
+        }
+      ]
     },
     {
       "id": "SYN-C-TWO",
@@ -176,7 +211,8 @@
         "platform_visibility": 1,
         "crm_links": 0,
         "scout_links": 0
-      }
+      },
+      "scout_link_lineage": []
     },
     {
       "id": "SYN-D-SOURCE",
@@ -205,7 +241,18 @@
         "platform_visibility": 0,
         "crm_links": 0,
         "scout_links": 1
-      }
+      },
+      "scout_link_lineage": [
+        {
+          "scout_lead_id": "SYN-SCOUT-GROCER",
+          "source": "synthetic_admin_import",
+          "source_detail": "synthetic_review_seed",
+          "created_by": "SYN-ACTOR-DELTA",
+          "updated_by": "SYN-ACTOR-DELTA",
+          "created_at": "2030-01-04T00:00:00Z",
+          "updated_at": "2030-01-04T01:00:00Z"
+        }
+      ]
     },
     {
       "id": "SYN-D-PARTNER",
@@ -234,7 +281,8 @@
         "platform_visibility": 0,
         "crm_links": 0,
         "scout_links": 0
-      }
+      },
+      "scout_link_lineage": []
     },
     {
       "id": "SYN-E-ONE",
@@ -263,7 +311,8 @@
         "platform_visibility": 0,
         "crm_links": 0,
         "scout_links": 0
-      }
+      },
+      "scout_link_lineage": []
     },
     {
       "id": "SYN-E-TWO",
@@ -292,7 +341,8 @@
         "platform_visibility": 0,
         "crm_links": 0,
         "scout_links": 0
-      }
+      },
+      "scout_link_lineage": []
     }
   ],
   "expected_pairs": [

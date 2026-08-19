@@ -90,7 +90,9 @@ WHERE con.contype = 'f'
   AND parent.relname = 'partners'
 ORDER BY child_ns.nspname, child.relname, con.conname, child_key.ord;
 
--- Constraints on partner identity columns (names/types only; no row values).
+-- Constraints containing a partner identity column (names/types only; no row
+-- values). The EXISTS filter selects relevant constraints without removing the
+-- other columns from a composite constraint's ordered column inventory.
 SELECT
   ns.nspname AS table_schema,
   rel.relname AS table_name,
@@ -105,7 +107,24 @@ JOIN pg_catalog.pg_attribute AS att
   ON att.attrelid = rel.oid AND att.attnum = key.attnum
 WHERE ns.nspname = 'public'
   AND rel.relname = 'partners'
-  AND att.attname IN ('id', 'owner_id', 'google_place_id', 'website', 'phone', 'contact', 'instagram', 'name', 'location')
+  AND EXISTS (
+    SELECT 1
+    FROM unnest(con.conkey) AS identity_key(attnum)
+    JOIN pg_catalog.pg_attribute AS identity_att
+      ON identity_att.attrelid = rel.oid
+      AND identity_att.attnum = identity_key.attnum
+    WHERE identity_att.attname IN (
+      'id',
+      'owner_id',
+      'google_place_id',
+      'website',
+      'phone',
+      'contact',
+      'instagram',
+      'name',
+      'location'
+    )
+  )
 GROUP BY ns.nspname, rel.relname, con.conname, con.contype
 ORDER BY con.conname;
 
