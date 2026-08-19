@@ -662,16 +662,24 @@ begin
   status_payload := public.get_my_partner_publication_status(
     '78787878-7878-4787-8787-787878787878'
   );
-  assert status_payload -> 'public_destinations' = '["heha_swipe"]'::jsonb;
-  assert status_payload -> 'staff_review_destinations' = '["heha_swipe"]'::jsonb;
+  assert status_payload -> 'public_destinations' = '[]'::jsonb,
+    pg_catalog.format(
+      'public_destinations must stay empty under legal hold; got %s',
+      status_payload -> 'public_destinations'
+    );
+  assert status_payload -> 'staff_review_destinations' = '["heha_swipe"]'::jsonb,
+    pg_catalog.format(
+      'staff_review_destinations must retain exact Swipe review; got %s',
+      status_payload -> 'staff_review_destinations'
+    );
   assert not (status_payload ?| array[
     'authorized_account_contact','evidence_reference','reviewed_by','reviewer_id',
     'recorded_by','request_key','request_payload_hash'
-  ]::text[]);
+  ]::text[]), 'owner status leaked a private evidence identity field';
   insert into partner_publication_integration_results(label, ok, detail)
   values (
-    'redacted authoritative owner status after Swipe review', true,
-    'owner status reports only the exact reviewed public Swipe destination and no evidence identities'
+    'redacted authoritative owner status under legal hold', true,
+    'owner status reports exact Swipe staff review but no public destination or private evidence identities while the legal hold is active'
   );
 end;
 $proof$;
@@ -742,17 +750,25 @@ begin
   status_payload := public.get_my_partner_publication_status(
     '78787878-7878-4787-8787-787878787878'
   );
-  assert status_payload -> 'public_destinations' = '["heha_swipe"]'::jsonb;
+  assert status_payload -> 'public_destinations' = '[]'::jsonb,
+    pg_catalog.format(
+      'public_destinations must stay empty under Swipe/Local legal holds; got %s',
+      status_payload -> 'public_destinations'
+    );
   assert status_payload -> 'staff_review_destinations'
-    = '["heha_swipe", "heha_local"]'::jsonb;
+    = '["heha_swipe", "heha_local"]'::jsonb,
+    pg_catalog.format(
+      'staff_review_destinations must retain exact Swipe and Local reviews; got %s',
+      status_payload -> 'staff_review_destinations'
+    );
   assert not (status_payload ?| array[
     'authorized_account_contact','evidence_reference','reviewed_by','reviewer_id',
     'recorded_by','request_key','request_payload_hash'
-  ]::text[]);
+  ]::text[]), 'owner status leaked a private evidence identity field';
   insert into partner_publication_integration_results(label, ok, detail)
   values (
-    'disabled Local absent from authoritative public status', true,
-    'Local may be exact-review approved but is absent from public destinations while the bridge is disabled'
+    'legal hold absent from authoritative public status', true,
+    'Swipe and Local may be exact-review approved, but neither is reported public while their independent release gates remain disabled'
   );
 end;
 $proof$;
