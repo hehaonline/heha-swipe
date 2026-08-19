@@ -7,6 +7,7 @@ on:
       - "supabase/migrations/20260819200500_community_pass_trial_activation_qualification.sql"
       - "supabase/migrations/20260819202500_community_pass_account_unlink_fail_safe.sql"
       - "supabase/migrations/20260819213000_community_pass_security_hardening.sql"
+      - "supabase/migrations/20260819214500_community_pass_status_environment_row_gate.sql"
       - "supabase/tests/community_pass_foundation_proof.sql"
       - "supabase/tests/community_pass_account_unlink_proof.sql"
       - "supabase/tests/community_pass_security_hardening_proof.sql"
@@ -74,6 +75,7 @@ jobs:
             docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819200500_community_pass_trial_activation_qualification.sql
             docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819202500_community_pass_account_unlink_fail_safe.sql
             docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819213000_community_pass_security_hardening.sql
+            docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819214500_community_pass_status_environment_row_gate.sql
           done
 
       - name: Run exact foundation proof
@@ -106,6 +108,7 @@ jobs:
             supabase/migrations/20260819200500_community_pass_trial_activation_qualification.sql
             supabase/migrations/20260819202500_community_pass_account_unlink_fail_safe.sql
             supabase/migrations/20260819213000_community_pass_security_hardening.sql
+            supabase/migrations/20260819214500_community_pass_status_environment_row_gate.sql
             supabase/tests/community_pass_foundation_proof.sql
             supabase/tests/community_pass_account_unlink_proof.sql
             supabase/tests/community_pass_security_hardening_proof.sql
