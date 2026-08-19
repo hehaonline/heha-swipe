@@ -10,7 +10,7 @@
 | Local RC parent | `hehaonline/heha-order-hub@4b69774ef86a8133c7d623b010ca92ce3876ce7a` (PR #217) | Ancestor of #226; preserved for source evidence, not the current candidate |
 | HEHA Swipe RC | `hehaonline/heha-swipe@885461f55f64ea56a9366e6573b6002769820f06` (PR #113) | React/Vite web app with a Web App Manifest and 192/512 icons |
 | Swipe refresh sibling | `hehaonline/heha-swipe@e58de647de1f60e6546b972de11f75bf5da76552` (PR #114) | Separate draft; not part of the audited RC |
-| Local RC successor | `hehaonline/heha-order-hub@4712ec239a96ec5f4c9b898cad5837b1bfe4be23` (PR #232, stacked on #226) | Review-only successor; principal-isolation, accessibility/reflow, scheduling-truth, and bounded local-scope sign-out recovery are present in source. Vercel/Snyk are green, but no Actions run or independent authenticated/browser proof exists for this stacked head |
+| Local RC successor | `hehaonline/heha-order-hub@57b1059f84a880ae0876f304e819278dce8a06aa` (PR #232, stacked on #226; application head `e91e0006cd9f128e916abe7c6cb3815aa66d180b`) | Review-only successor; the address-read principal-isolation repair is coherent in source, but address loading is still presented as empty on Cart and the unbounded/non-atomic address write path remains unresolved. Vercel/Snyk are green; no Actions run or independent authenticated/browser proof exists |
 | Local RFQ composition checkpoint | `hehaonline/heha-order-hub@b511056e394449cedfc1f65619e66baf911cfabb` (PR #233, still based on former #232 head `3677407d6de2cbd1c8f900c31269b9a476d1bc7b`) | Exact PR #227 Chef/Catering delta on stale ancestry; diverged one commit ahead/12 behind current #232 and currently mergeable, but must be recomposed only after #232 is accepted and remains review-only/not launch-ready |
 | Local customer recovery | `hehaonline/heha-order-hub@6398fb423bf1c9f8000958ace5df203b67c8bc1c` (PR #230, based on main) | Independent draft; Realtime reconnect freshness is repaired in source and hosted install/lint/build are green. Focused Vitest, authenticated Supabase/Realtime, browser, and assistive-technology QA remain unexecuted; recompose only after #232 stabilizes |
 | Local driver recovery | `hehaonline/heha-order-hub@1648411d023a728a73f8bfb6162eb580adea31b1` (PR #231, based on main) | Independent Night Builder draft; timeout, Realtime-loss, stale-action false-success, and retry-target blockers unresolved |
@@ -1008,6 +1008,23 @@ This section supersedes older status statements for Local PRs #230/#232/#233 and
 - Native-store implication is unchanged: omit Community Pass purchase and paid-entitlement surfaces from the first iOS/Android binaries. Correct web Stripe behavior does not itself satisfy Apple/Google billing rules for digital benefits.
 
 No runtime code, migration, workflow, dependency, lockfile, manifest, native project, environment, database, payment, deployment, or Production system was changed by this reconciliation.
+
+
+## Current Local address-read reconciliation — 2026-08-19
+
+This section supersedes the Local PR #232 address-read status above while preserving prior sections as dated review history.
+
+- **Exact release state:** Local PR #232 is open, draft, and mergeable at evidence head `57b1059f84a880ae0876f304e819278dce8a06aa`, still stacked on #226 exact head `799b565ea3bda6197ce01fafe0a879650e6d110d`. The application change is `e91e0006cd9f128e916abe7c6cb3815aa66d180b`; the evidence commit changes no application file.
+- **Address-read privacy repair accepted in source:** each address record is owner-stamped and the rendered list is synchronously derived only when its owner equals the current user ID; every read carries a monotonic request token and `AbortController`; principal changes and unmount abort/orphan the departing read; failed reads publish an explicit `unavailable` state rather than an empty list. This closes the reviewed A→signed-out/B stale-result exposure at the client boundary.
+- **Regression shape reviewed:** ten component cases exercise A→signed-out, A→B, stale frames while B is pending/failed, unmount, same-principal out-of-order reads, stale settlement, unavailable-versus-empty behavior, and the global TopBar/Cart/AddressBook consumers together. The branch owner reports 287/287 Vitest, lint, TypeScript, build, and contained browser checks passing; those commands were not independently rerun by this connector-only review.
+- **Residual customer-journey gate:** Cart checks `unavailable`, then immediately treats `addresses.length === 0` as a genuine empty state. During every ordinary signed-in address load, `status === "loading"` and the owner-filtered list is empty, so Cart displays **+ Add a delivery address** before the query answers. That is a false empty state and can steer the customer into the already-recorded write-path defect.
+- **Write-path blocker remains:** `addAddress` still has no timeout, rejection handler, or in-flight guard. It first clears all defaults and then inserts in a separate operation; a stall/retry can duplicate an address, while a partial failure can leave no default. `updateAddress` has the same two-write default transition and ignores the first error. This was explicitly left out of the read-path repair.
+
+**Safe release default:** keep address state loading/empty/error distinct in Cart and disable add/edit/default mutations while a request is unresolved. Before enabling address saves for soft launch, bound every write, prevent concurrent submissions, surface outcome-unknown states, and make the default transition atomic on a reviewed server-owned path. Prove pending-load presentation, repeated taps, timeout/rejection, late success, insert-after-reset failure, and retry behavior without Production data.
+
+Exact-head hosted metadata: Vercel and Snyk report success for `57b1059…`; no GitHub Actions run is associated with the stacked evidence head. PR #232 has zero unresolved inline review threads. Local tests/build, authenticated Supabase fault injection, RLS, browser/shared-device, multi-tab, assistive-technology, deployment, and Production behavior were not independently run.
+
+Collision check before this documentation update: all 26 open Swipe PR file lists were refreshed; only PR #116 changes this readiness document. No Local branch, application code, migration, database, Auth setting, environment, deployment, or Production system was changed by this reconciliation.
 
 ## Rollback
 
