@@ -1,0 +1,81 @@
+name: Community Pass Foundation Proof
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20260819193000_community_pass_foundation_v1.sql"
+      - "supabase/tests/community_pass_foundation_proof.sql"
+      - "supabase/tests/fixtures/community_pass_minimal_baseline.sql"
+      - ".github/workflows/community-pass-foundation-proof.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community-pass-foundation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heha_community_pass_proof
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d heha_community_pass_proof"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGDATABASE: heha_community_pass_proof
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Apply synthetic baseline
+        run: >-
+          psql -X -v ON_ERROR_STOP=1
+          -f supabase/tests/fixtures/community_pass_minimal_baseline.sql
+
+      - name: Apply Package A migration twice
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20260819193000_community_pass_foundation_v1.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20260819193000_community_pass_foundation_v1.sql
+
+      - name: Run exact foundation proof
+        run: >-
+          psql -X -v ON_ERROR_STOP=1
+          -v user_a_id=00000000-0000-0000-0000-0000000000a1
+          -v user_b_id=00000000-0000-0000-0000-0000000000b2
+          -f supabase/tests/community_pass_foundation_proof.sql
+
+      - name: Scan proof sources for credential-like material
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            supabase/migrations/20260819193000_community_pass_foundation_v1.sql
+            supabase/tests/community_pass_foundation_proof.sql
+            supabase/tests/fixtures/community_pass_minimal_baseline.sql
+          )
+          if grep -EIn '(sk_live_|sk_test_|whsec_|service_role_key|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY)' "${files[@]}"; then
+            echo "Credential-like material detected" >&2
+            exit 1
+          fi
