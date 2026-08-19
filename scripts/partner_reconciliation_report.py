@@ -22,7 +22,11 @@ from urllib.parse import urlsplit
 
 SCHEMA_VERSION = "heha.partner-reconciliation.synthetic/v1"
 REPORT_VERSION = "heha.partner-reconciliation.report/v1"
-ID_RE = re.compile(r"^SYN-[A-Z0-9-]+$")
+# Record IDs are emitted verbatim in the private review report, so accept only
+# hyphen-delimited fixture words. Digits are deliberately forbidden to prevent
+# phone/account-like values from being smuggled through an apparently synthetic
+# ID (for example, SYN-813-555-9999).
+ID_RE = re.compile(r"^SYN-(?=.{1,76}$)[A-Z]+(?:-[A-Z]+)*$")
 OWNER_RE = re.compile(r"^SYN-OWNER-[A-Z0-9-]+$")
 PLACE_RE = re.compile(r"^SYN-PLACE-[A-Z0-9-]+$")
 PHONE_RE = re.compile(r"^1?[2-9][0-9]{2}55501[0-9]{2}$")
@@ -392,7 +396,7 @@ def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]
 
     identity_contradiction = (
         (place_conflict and len(secondary_matches) >= 2)
-        or (place_match and len(secondary_conflicts) >= 3 and left_norm["address"] and right_norm["address"] and not address_equal)
+        or (place_match and len(secondary_conflicts) >= 3)
     )
     if identity_contradiction:
         return _pair_result(
@@ -408,12 +412,18 @@ def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]
     strong_match = place_match or (len(secondary_matches) >= 2 and (name_similarity >= 0.82 or address_equal))
 
     if strong_match:
+        corroborating_context: list[str] = []
+        if not place_match:
+            if name_similarity >= 0.82:
+                corroborating_context.append("normalized_name")
+            if address_equal:
+                corroborating_context.append("normalized_address")
         return _pair_result(
             left,
             right,
             "strong_identifier_match",
             "An exact Google Place ID or at least two independent normalized signals match, but no canonical record is selected automatically.",
-            matched,
+            matched + corroborating_context,
             conflicts,
             "prepare_private_dry_run_for_named_human_review",
         )
