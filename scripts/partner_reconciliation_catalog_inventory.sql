@@ -116,6 +116,8 @@ SELECT
   idx.relname AS index_name,
   ind.indisunique AS is_unique,
   ind.indisprimary AS is_primary,
+  pg_catalog.pg_get_expr(ind.indexprs, ind.indrelid, true) AS index_expressions,
+  pg_catalog.pg_get_expr(ind.indpred, ind.indrelid, true) AS index_predicate,
   array_agg(att.attname ORDER BY key.ord) FILTER (WHERE att.attname IS NOT NULL) AS columns
 FROM pg_catalog.pg_index AS ind
 JOIN pg_catalog.pg_class AS rel ON rel.oid = ind.indrelid
@@ -126,7 +128,14 @@ LEFT JOIN pg_catalog.pg_attribute AS att
   ON att.attrelid = rel.oid AND att.attnum = key.attnum
 WHERE ns.nspname = 'public'
   AND rel.relname = 'partners'
-GROUP BY ns.nspname, rel.relname, idx.relname, ind.indisunique, ind.indisprimary
+GROUP BY
+  ns.nspname,
+  rel.relname,
+  idx.relname,
+  ind.indisunique,
+  ind.indisprimary,
+  pg_catalog.pg_get_expr(ind.indexprs, ind.indrelid, true),
+  pg_catalog.pg_get_expr(ind.indpred, ind.indrelid, true)
 ORDER BY idx.relname;
 
 -- Relations/views that declare a catalog dependency on public.partners.
