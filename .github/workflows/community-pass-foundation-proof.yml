@@ -8,6 +8,7 @@ on:
       - "supabase/migrations/20260819202500_community_pass_account_unlink_fail_safe.sql"
       - "supabase/migrations/20260819213000_community_pass_security_hardening.sql"
       - "supabase/migrations/20260819214500_community_pass_status_environment_row_gate.sql"
+      - "supabase/migrations/20260819221500_community_pass_runtime_config_and_indexes.sql"
       - "supabase/tests/community_pass_foundation_proof.sql"
       - "supabase/tests/community_pass_account_unlink_proof.sql"
       - "supabase/tests/community_pass_security_hardening_proof.sql"
@@ -58,13 +59,6 @@ jobs:
           psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
           < supabase/tests/fixtures/community_pass_minimal_baseline.sql
 
-      - name: Configure disposable Community Pass environment
-        shell: bash
-        run: >-
-          docker exec "${{ job.services.postgres.id }}"
-          psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
-          -c "alter database heha_community_pass_proof set app.community_pass_environment = 'test'"
-
       - name: Apply Package A migration chain twice
         shell: bash
         run: |
@@ -76,7 +70,17 @@ jobs:
             docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819202500_community_pass_account_unlink_fail_safe.sql
             docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819213000_community_pass_security_hardening.sql
             docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819214500_community_pass_status_environment_row_gate.sql
+            docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819221500_community_pass_runtime_config_and_indexes.sql
           done
+
+      - name: Configure disposable private runtime environment
+        shell: bash
+        run: >-
+          docker exec "${{ job.services.postgres.id }}"
+          psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
+          -c "insert into community_pass_private.runtime_config
+          (singleton, environment, config_version, configured_by, change_reference)
+          values (true, 'test', 'ci-proof-v1', 'github-actions', 'community-pass-foundation-proof')"
 
       - name: Run exact foundation proof
         shell: bash
@@ -109,6 +113,7 @@ jobs:
             supabase/migrations/20260819202500_community_pass_account_unlink_fail_safe.sql
             supabase/migrations/20260819213000_community_pass_security_hardening.sql
             supabase/migrations/20260819214500_community_pass_status_environment_row_gate.sql
+            supabase/migrations/20260819221500_community_pass_runtime_config_and_indexes.sql
             supabase/tests/community_pass_foundation_proof.sql
             supabase/tests/community_pass_account_unlink_proof.sql
             supabase/tests/community_pass_security_hardening_proof.sql
