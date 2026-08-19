@@ -428,7 +428,7 @@ def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]
             right,
             "separate_businesses",
             "Names are similar, but location, ownership, or strong identifiers conflict; keep the records separate.",
-            [],
+            matched + unverified_email_matches,
             conflict_list,
             "keep_separate_and_block_automatic_reconciliation",
         )
