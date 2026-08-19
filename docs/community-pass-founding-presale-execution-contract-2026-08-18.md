@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-18  
 **Canonical implementation issue:** [#125](https://github.com/hehaonline/heha-swipe/issues/125)  
-**HEHA-wide finance/tax/reward authority:** [heha-order-hub#234](https://github.com/hehaonline/hehaonline/heha-order-hub/issues/234)  
+**HEHA-wide finance/tax/reward authority:** [heha-order-hub#234](https://github.com/hehaonline/heha-order-hub/issues/234)  
 **Status:** REVIEW-ONLY / IMPLEMENTATION DESIGN AUTHORIZED / LIVE ACTION BLOCKED
 
 ## 1. Founder correction and authority
