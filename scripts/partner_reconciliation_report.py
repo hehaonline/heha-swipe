@@ -26,9 +26,15 @@ ID_RE = re.compile(r"^SYN-[A-Z0-9-]+$")
 OWNER_RE = re.compile(r"^SYN-OWNER-[A-Z0-9-]+$")
 PLACE_RE = re.compile(r"^SYN-PLACE-[A-Z0-9-]+$")
 PHONE_RE = re.compile(r"^1?[2-9][0-9]{2}55501[0-9]{2}$")
+PHONE_FORMAT_RE = re.compile(r"^[0-9+(). -]+$")
 INSTAGRAM_RE = re.compile(r"^synthetic_[a-z0-9_]+$")
 TEST_HOST_RE = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+test$")
 EMAIL_LOCAL_RE = re.compile(r"^[a-z0-9][a-z0-9._+-]{0,63}$")
+SYNTHETIC_NAME_RE = re.compile(r"^Synthetic [A-Za-z0-9 .&'-]{1,140}$")
+SYNTHETIC_ADDRESS_RE = re.compile(
+    r"^[0-9]{1,4} (?:(?:North|South|East|West) )?Example [A-Za-z ]{2,80}, Tampa, (?:FL|Florida)$"
+)
+TEST_PATH_RE = re.compile(r"^/[a-z0-9/_-]*$")
 
 STATIC_STRONG_FIELDS = (
     "google_place_id",
@@ -98,6 +104,15 @@ class InputRejected(ValueError):
     """Raised when an input is not provably synthetic."""
 
 
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise InputRejected("duplicate JSON keys are not allowed")
+        result[key] = value
+    return result
+
+
 def normalize_text(value: Any) -> str:
     text = unicodedata.normalize("NFKD", str(value or ""))
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
@@ -129,6 +144,8 @@ def normalize_domain(value: Any) -> str:
         raise InputRejected("website hostname or port is invalid") from exc
     _require(bool(parsed_hostname), "website must contain a hostname")
     _require(parsed.username is None and parsed.password is None, "website credentials are not allowed")
+    _require(not parsed.query and not parsed.fragment, "website query and fragment are not allowed in synthetic fixtures")
+    _require(not parsed.path or bool(TEST_PATH_RE.fullmatch(parsed.path)), "website path is not synthetic-safe")
     host = str(parsed_hostname).rstrip(".")
     return host[4:] if host.startswith("www.") else host
 
@@ -163,7 +180,7 @@ def _validate_synthetic_record(record: dict[str, Any]) -> None:
         isinstance(record_kind, str) and record_kind in {"partner_candidate", "shopping_source"},
         f"{record_id}: unsupported record_kind",
     )
-    _require(str(record.get("name", "")).startswith("Synthetic "), f"{record_id}: name must start with 'Synthetic '")
+    _require(bool(SYNTHETIC_NAME_RE.fullmatch(record["name"])), f"{record_id}: name is not synthetic-safe")
 
     owner = str(record.get("owner_account_id", ""))
     if owner:
@@ -189,17 +206,19 @@ def _validate_synthetic_record(record: dict[str, Any]) -> None:
     if domain:
         _require(bool(TEST_HOST_RE.fullmatch(domain)), f"{record_id}: website must use a valid .test DNS domain")
 
-    phone = re.sub(r"\D", "", str(record.get("phone", "")))
-    if phone:
+    phone_raw = record["phone"]
+    phone = re.sub(r"\D", "", phone_raw)
+    if phone_raw:
+        _require(bool(PHONE_FORMAT_RE.fullmatch(phone_raw)), f"{record_id}: phone formatting is not synthetic-safe")
         _require(bool(PHONE_RE.fullmatch(phone)), f"{record_id}: phone must use the reserved 555-01xx fixture range")
 
     instagram = normalize_instagram(record.get("instagram"))
     if instagram:
         _require(bool(INSTAGRAM_RE.fullmatch(instagram)), f"{record_id}: Instagram handle is not synthetic")
 
-    address = str(record.get("address", ""))
+    address = record["address"]
     if address:
-        _require("Example" in address, f"{record_id}: address must contain the synthetic marker 'Example'")
+        _require(bool(SYNTHETIC_ADDRESS_RE.fullmatch(address)), f"{record_id}: address is not synthetic-safe")
 
     counts = record.get("child_reference_counts", {})
     _require(isinstance(counts, dict), f"{record_id}: child_reference_counts must be an object")
@@ -478,7 +497,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        dataset = json.loads(args.input.read_text(encoding="utf-8"))
+        dataset = json.loads(
+            args.input.read_text(encoding="utf-8"),
+            object_pairs_hook=reject_duplicate_json_keys,
+        )
         report = build_report(dataset)
     except (OSError, json.JSONDecodeError, InputRejected) as exc:
         print(f"partner reconciliation input rejected: {exc}", file=sys.stderr)
