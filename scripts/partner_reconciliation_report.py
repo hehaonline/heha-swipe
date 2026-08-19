@@ -66,6 +66,7 @@ RECORD_KEYS = {
     "owner_account_id",
     "child_reference_counts",
 }
+STRING_RECORD_FIELDS = RECORD_KEYS - {"synthetic", "child_reference_counts"}
 EXPECTED_PAIR_KEYS = {"candidate_key", "classification"}
 CLASSIFICATIONS = {
     "non_partner_source",
@@ -149,6 +150,10 @@ def _require(condition: bool, message: str) -> None:
 
 def _validate_synthetic_record(record: dict[str, Any]) -> None:
     _require(set(record) == RECORD_KEYS, "record fields must match the declared synthetic schema exactly")
+    _require(
+        all(isinstance(record.get(field), str) for field in STRING_RECORD_FIELDS),
+        "record scalar fields must be strings",
+    )
     raw_record_id = record.get("id")
     _require(isinstance(raw_record_id, str) and bool(ID_RE.fullmatch(raw_record_id)), "record: invalid synthetic id")
     record_id = raw_record_id
