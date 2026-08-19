@@ -76,7 +76,7 @@ Canonical implementation remains blocked until:
 - `duplicate-compatibility-map.md` — duplicate identifier decisions
 - `canonical-baseline-decision.md` — approved strategy and PR separation
 - `production-preflight.md` — no-go conditions and future proof plan
-- `evidence-manifest.sha256` — historical evidence-file integrity manifest; a refreshed manifest must be generated and independently checked before this successor may merge
+- `evidence-manifest.sha256` — refreshed SHA-256 manifest for the historical and 2026-08-19 evidence files; it must be independently recalculated against the exact review head before merge
 
 ## Current conclusion
 
