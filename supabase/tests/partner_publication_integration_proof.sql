@@ -191,14 +191,13 @@ begin
   assert not exists (
     select 1
     from pg_catalog.pg_attribute attribute_row
-    cross join lateral pg_catalog.aclexplode(
-      coalesce(attribute_row.attacl,'{}'::pg_catalog.aclitem[])
-    ) privilege_row
+    cross join lateral pg_catalog.aclexplode(attribute_row.attacl) privilege_row
     left join pg_catalog.pg_roles role_row
       on role_row.oid=privilege_row.grantee
     where attribute_row.attrelid='public.partners'::regclass
       and attribute_row.attnum>0
       and not attribute_row.attisdropped
+      and attribute_row.attacl is not null
       and (
         privilege_row.grantee=0
         or role_row.rolname=any(array['anon','authenticated','service_role']::text[])
