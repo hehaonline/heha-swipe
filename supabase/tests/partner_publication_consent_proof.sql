@@ -525,7 +525,7 @@ begin
     now()
   );
 
-  select p into v_partner from public.partners p where p.id = v_partner_id;
+  select p.* into v_partner from public.partners p where p.id = v_partner_id;
   insert into public.partner_publication_consent_events (
     partner_id, owner_id, destination, action, state,
     authorized_representative_name, authorized_representative_title,
