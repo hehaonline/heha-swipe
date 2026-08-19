@@ -54,11 +54,22 @@ class PartnerReconciliationTests(unittest.TestCase):
     def test_similar_name_businesses_remain_separate(self):
         result = self.by_key[MODULE.candidate_key_for("SYN-B-ONE", "SYN-B-TWO")]
         self.assertEqual("separate_businesses", result["classification"])
+        self.assertIn("normalized_name", result["matched_fields"])
         self.assertEqual("keep_separate_and_block_automatic_reconciliation", result["next_action"])
 
     def test_shopping_source_cannot_become_partner(self):
         result = self.by_key[MODULE.candidate_key_for("SYN-D-PARTNER", "SYN-D-SOURCE")]
         self.assertEqual("non_partner_source", result["classification"])
+        self.assertEqual(
+            {
+                result["left_record_id"]: result["left_record_kind"],
+                result["right_record_id"]: result["right_record_kind"],
+            },
+            {
+                "SYN-D-PARTNER": "partner_candidate",
+                "SYN-D-SOURCE": "shopping_source",
+            },
+        )
         self.assertFalse(result["claim_allowed"])
         self.assertFalse(result["official_partner_allowed"])
 
@@ -156,6 +167,16 @@ class PartnerReconciliationTests(unittest.TestCase):
             malformed_domain["records"][0]["website"] = malformed_url
             with self.subTest(malformed_url=malformed_url), self.assertRaises(MODULE.InputRejected):
                 MODULE.build_report(malformed_domain)
+
+        for digit_bearing_path in (
+            "https://fixture.test/8135559999",
+            "https://fixture.test/813-555-9999",
+            "https://fixture.test/account/813_555_9999",
+        ):
+            unsafe_path = copy.deepcopy(self.dataset)
+            unsafe_path["records"][0]["website"] = digit_bearing_path
+            with self.subTest(digit_bearing_path=digit_bearing_path), self.assertRaises(MODULE.InputRejected):
+                MODULE.build_report(unsafe_path)
 
         for malformed_email in (
             "person@example.com@synthetic.test",
@@ -453,6 +474,7 @@ class PartnerReconciliationTests(unittest.TestCase):
         result = MODULE.classify_pair(left, right)
         self.assertEqual("separate_businesses", result["classification"])
         self.assertIn("phone", result["matched_fields"])
+        self.assertIn("normalized_name", result["matched_fields"])
         for field in ("google_place_id", "domain", "email", "instagram", "normalized_address"):
             self.assertIn(field, result["conflicting_fields"])
 

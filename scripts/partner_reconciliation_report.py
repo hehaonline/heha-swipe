@@ -44,7 +44,9 @@ SYNTHETIC_NAME_RE = re.compile(r"^Synthetic [A-Za-z .&'-]{1,140}$")
 SYNTHETIC_ADDRESS_RE = re.compile(
     r"^[0-9]{1,4} (?:(?:North|South|East|West) )?Example [A-Za-z ]{2,80}, Tampa, (?:FL|Florida)$"
 )
-TEST_PATH_RE = re.compile(r"^/[a-z0-9/_-]*$")
+# Website paths are fixture-only context and never classification evidence.
+# Digits are forbidden so phone/account-shaped payloads cannot hide in them.
+TEST_PATH_RE = re.compile(r"^/[a-z/_-]*$")
 
 STATIC_STRONG_FIELDS = (
     "google_place_id",
@@ -403,6 +405,8 @@ def _pair_result(
         "candidate_key": candidate_key,
         "left_record_id": left["id"],
         "right_record_id": right["id"],
+        "left_record_kind": left["record_kind"],
+        "right_record_kind": right["record_kind"],
         "classification": classification,
         "reason": reason,
         "matched_fields": sorted(matched_fields),
@@ -550,7 +554,7 @@ def classify_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]
             right,
             "separate_businesses",
             "Names are similar, but location, ownership, or strong identifiers conflict; keep the records separate.",
-            matched + unverified_email_matches,
+            matched + unverified_email_matches + ["normalized_name"],
             conflict_list,
             "keep_separate_and_block_automatic_reconciliation",
         )

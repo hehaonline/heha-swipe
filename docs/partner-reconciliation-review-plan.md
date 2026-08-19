@@ -56,13 +56,13 @@ All six classes are fail-closed. Even `strong_identifier_match` means only “pr
 The offline reporter uses deterministic standard-library normalization:
 
 - removal of the required leading `Synthetic ` fixture marker before Unicode compatibility decomposition, lowercase, punctuation collapse and whitespace collapse for business names; addresses receive the same normalization without prefix removal;
-- the hostname returned by a strict HTTP(S) URL parse, with `www.` and a trailing dot removed, for domains; query/path text never counts as the host;
+- the hostname returned by a strict HTTP(S) URL parse, with `www.` and a trailing dot removed, for domains; query/path text never counts as the host, queries/fragments are rejected, and fixture paths cannot contain digits that could conceal phone/account-shaped payloads;
 - digits only, with a leading U.S. country code removed, for phones;
 - lowercase trim for email;
 - URL/`@` removal and lowercase for Instagram;
 - exact trimmed comparison for Google Place ID and owner ID.
 
-Normalization never changes source data. The fixture schema rejects undeclared root, record, Scout-lineage and expected-pair fields. Each pair uses an order-independent length-prefixed key so delimiter-like ID text cannot collide. The report includes only synthetic record/Scout/actor IDs, synthetic Scout provenance, and matched/conflicting field names, not raw business contact identifiers. Record, Scout and actor IDs use bounded, role-specific uppercase fixture-word grammars; digits are forbidden where an emitted ID could otherwise hide phone/account-like values.
+Normalization never changes source data. The fixture schema rejects undeclared root, record, Scout-lineage and expected-pair fields. Each pair uses an order-independent length-prefixed key so delimiter-like ID text cannot collide. The report includes only synthetic record/Scout/actor IDs, validated record-kind enums, synthetic Scout provenance, and matched/conflicting field names, not raw business contact identifiers. Every classification predicate that depends on name similarity emits the safe `normalized_name` evidence marker. Record, Scout and actor IDs use bounded, role-specific uppercase fixture-word grammars; digits are forbidden where an emitted ID could otherwise hide phone/account-like values.
 
 ## Private reconciliation queue contract
 
