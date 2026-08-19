@@ -398,6 +398,8 @@ class PartnerReconciliationTests(unittest.TestCase):
         self.assertRegex(sql, r"(?is)\bBEGIN\s+TRANSACTION\s+READ\s+ONLY\b")
         self.assertRegex(sql, r"(?is)\bROLLBACK\s*;")
         self.assertNotIn("pg_get_functiondef", sql.lower())
+        self.assertRegex(sql, r"(?is)pg_catalog\.pg_get_expr\s*\(\s*ind\.indexprs\s*,\s*ind\.indrelid")
+        self.assertRegex(sql, r"(?is)pg_catalog\.pg_get_expr\s*\(\s*ind\.indpred\s*,\s*ind\.indrelid")
         self.assertNotRegex(sql, r"(?is)\b(?:from|join)\s+public\.")
 
         without_comments = re.sub(r"--[^\n]*", "", sql)
