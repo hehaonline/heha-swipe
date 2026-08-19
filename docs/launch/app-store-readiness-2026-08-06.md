@@ -1043,6 +1043,22 @@ Verified through GitHub: exact #127 head/base/files, hosted statuses, workflow/j
 
 Collision check before this documentation write refreshed all 26 open Swipe PR file sets; only #116 changes this readiness document. No application code, migration, workflow, dependency, lockfile, manifest, native project, environment, database, partner state, deployment, or Production system was changed.
 
+## Current Swipe auth-start recovery reconciliation — 2026-08-19
+
+This section adds the RC #113 authentication-start failure gate to the downloadable-app decision package. It does not supersede the separate shared-client auth-listener deadlock, principal-switch, sign-out, account-deletion, or return-navigation findings.
+
+- **Exact source state:** Swipe RC #113 remains open and draft at `885461f55f64ea56a9366e6573b6002769820f06`. `src/components/AuthScreen.jsx` offers password, secure-email, Google, Apple, and Facebook paths. The presence of the Apple option means this source review did not find a missing equivalent-login control; provider enablement, callback configuration, credentials, native redirect behavior, and successful device execution remain unverified.
+- **P1 provider-start dead end:** `signInWithProvider()` sets `authPending.current = true` and `loading = true`, then awaits `supabase.auth.signInWithOAuth()` outside `try/catch/finally`. A rejected SDK/network call leaves an unhandled rejection, the controls disabled, the re-entry guard set, and no error/retry message. A never-settling call has the same visible result. All three provider buttons share this path.
+- **P1 app-bootstrap dead end:** `App.jsx` starts `supabase.auth.getSession().then(...)` without a rejection handler or application-owned watchdog. The fulfilled callback is the only bootstrap path that clears `loading`; the splash timer changes only splash readiness, and the auth-state listener does not independently release the bootstrap gate. A rejected or stalled session lookup can therefore keep the entire app on the splash screen indefinitely.
+- **Safe repair contract:** give bootstrap and provider initiation explicit pending, timeout, failure, and retry states; isolate late attempts with a generation token; restore the provider guard only for the current failed attempt; preserve a real successful redirect; and make auth-state reconciliation able to release or replace a failed bootstrap without publishing stale principal data. Keep provider credentials and callback changes approval-gated and outside client-visible source.
+- **Required proof before packaging:** rejected and never-settling `getSession`; session event before/after timeout; retry success; stale first attempt after a second attempt; rejected/returned-error/hung OAuth start for Google, Apple, and Facebook; rapid double activation; provider redirect success; return/cancel/error deep links; offline-to-online recovery; and keyboard/screen-reader announcement and focus recovery. Execute on the exact repaired web head, then repeat on signed iOS/Android internal builds with non-production Auth/provider configuration.
+
+Evidence: [RC #113 auth-start review](https://github.com/hehaonline/heha-swipe/pull/113#issuecomment-5332526018) and exact source at `885461f55f64ea56a9366e6573b6002769820f06`.
+
+Verified through GitHub: exact RC source for `AuthScreen.jsx` and the audit's previous provider/native gap coverage; existing #113 review history was checked to avoid a duplicate finding. Not run: local tests/build, provider sign-in, live Supabase/Auth configuration, browser/network fault injection, device/deep-link testing, assistive technology, signing, submission, deployment, or Production.
+
+Collision/scope: the refreshed open-PR sweep found only #116 changing this audit path. This update changes documentation only; it does not modify #113, Auth code, provider configuration, credentials, native projects, environments, deployments, or external state.
+
 ## Rollback
 
 This audit changes documentation only. Reverting its documentation commits removes the document. No application code, dependency, manifest, deployment, native project, signing material, store record, Supabase state, or external service is changed.
