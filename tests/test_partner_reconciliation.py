@@ -1,0 +1,186 @@
+from __future__ import annotations
+
+import ast
+import copy
+import importlib.util
+import io
+import json
+import re
+import tempfile
+import unittest
+from contextlib import redirect_stderr
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT_PATH = ROOT / "scripts" / "partner_reconciliation_report.py"
+FIXTURE_PATH = ROOT / "fixtures" / "partner-reconciliation" / "synthetic_partners.json"
+SQL_PATH = ROOT / "scripts" / "partner_reconciliation_catalog_inventory.sql"
+
+SPEC = importlib.util.spec_from_file_location("partner_reconciliation_report", SCRIPT_PATH)
+MODULE = importlib.util.module_from_spec(SPEC)
+assert SPEC and SPEC.loader
+SPEC.loader.exec_module(MODULE)
+
+
+class PartnerReconciliationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.dataset = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+        cls.report = MODULE.build_report(cls.dataset)
+        cls.by_key = {item["candidate_key"]: item for item in cls.report["pairs"]}
+
+    def test_target_pairs_match_expected_fail_closed_classes(self):
+        for expected in self.dataset["expected_pairs"]:
+            actual = self.by_key[expected["candidate_key"]]
+            self.assertEqual(expected["classification"], actual["classification"])
+
+    def test_strong_match_still_selects_nothing_and_allows_nothing(self):
+        result = self.by_key["SYN-A-ONE--SYN-A-TWO"]
+        self.assertEqual("strong_identifier_match", result["classification"])
+        self.assertIsNone(result["canonical_partner_id"])
+        self.assertTrue(result["manual_review_required"])
+        self.assertFalse(result["mutation_allowed"])
+        self.assertFalse(result["claim_allowed"])
+        self.assertFalse(result["official_partner_allowed"])
+
+    def test_wrong_owner_overrides_exact_business_identifiers(self):
+        result = self.by_key["SYN-C-ONE--SYN-C-TWO"]
+        self.assertEqual("ownership_conflict", result["classification"])
+        self.assertIn("owner_account_id", result["conflicting_fields"])
+        self.assertIn("google_place_id", result["matched_fields"])
+
+    def test_similar_name_businesses_remain_separate(self):
+        result = self.by_key["SYN-B-ONE--SYN-B-TWO"]
+        self.assertEqual("separate_businesses", result["classification"])
+        self.assertEqual("keep_separate_and_block_automatic_reconciliation", result["next_action"])
+
+    def test_shopping_source_cannot_become_partner(self):
+        result = self.by_key["SYN-D-PARTNER--SYN-D-SOURCE"]
+        self.assertEqual("non_partner_source", result["classification"])
+        self.assertFalse(result["claim_allowed"])
+        self.assertFalse(result["official_partner_allowed"])
+
+    def test_partial_name_and_address_evidence_is_likely_only(self):
+        result = self.by_key["SYN-E-ONE--SYN-E-TWO"]
+        self.assertEqual("likely_match", result["classification"])
+        self.assertIsNone(result["canonical_partner_id"])
+
+    def test_reference_manifest_preserves_every_family_and_count(self):
+        records = {record["id"]: record for record in self.dataset["records"]}
+        for result in self.report["pairs"]:
+            self.assertEqual(set(MODULE.CHILD_REFERENCE_FAMILIES), set(result["reference_preservation_manifest"][result["left_record_id"]]))
+            self.assertEqual(set(MODULE.CHILD_REFERENCE_FAMILIES), set(result["reference_preservation_manifest"][result["right_record_id"]]))
+            for record_id in (result["left_record_id"], result["right_record_id"]):
+                self.assertEqual(
+                    records[record_id]["child_reference_counts"],
+                    result["reference_preservation_manifest"][record_id],
+                )
+
+    def test_report_is_byte_stable_and_sorted(self):
+        first = json.dumps(MODULE.build_report(self.dataset), indent=2, sort_keys=True) + "\n"
+        second = json.dumps(MODULE.build_report(copy.deepcopy(self.dataset)), indent=2, sort_keys=True) + "\n"
+        self.assertEqual(first, second)
+        keys = [item["candidate_key"] for item in self.report["pairs"]]
+        self.assertEqual(keys, sorted(keys))
+
+    def test_report_contains_no_raw_contact_identifiers(self):
+        serialized = json.dumps(self.report, sort_keys=True)
+        for record in self.dataset["records"]:
+            for field in ("phone", "email", "website", "instagram", "google_place_id", "address"):
+                value = str(record.get(field, ""))
+                if value:
+                    self.assertNotIn(value, serialized)
+
+    def test_non_synthetic_and_real_looking_inputs_are_rejected(self):
+        non_synthetic = copy.deepcopy(self.dataset)
+        non_synthetic["synthetic"] = False
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(non_synthetic)
+
+        mislabeled = copy.deepcopy(self.dataset)
+        mislabeled["data_classification"] = "real"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(mislabeled)
+
+        mutation_enabled = copy.deepcopy(self.dataset)
+        mutation_enabled["mutation_mode"] = "enabled"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(mutation_enabled)
+
+        real_email = copy.deepcopy(self.dataset)
+        real_email["records"][0]["email"] = "person@example.com"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(real_email)
+
+        real_domain = copy.deepcopy(self.dataset)
+        real_domain["records"][0]["website"] = "https://example.com"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(real_domain)
+
+        real_phone = copy.deepcopy(self.dataset)
+        real_phone["records"][0]["phone"] = "+1 813-555-9999"
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(real_phone)
+
+    def test_duplicate_ids_and_incomplete_reference_inventory_are_rejected(self):
+        duplicate = copy.deepcopy(self.dataset)
+        duplicate["records"][1]["id"] = duplicate["records"][0]["id"]
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(duplicate)
+
+        missing_family = copy.deepcopy(self.dataset)
+        del missing_family["records"][0]["child_reference_counts"]["media"]
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(missing_family)
+
+    def test_conflicting_place_ids_override_composite_secondary_match(self):
+        dataset = copy.deepcopy(self.dataset)
+        left = dataset["records"][0]
+        right = dataset["records"][1]
+        right["google_place_id"] = "SYN-PLACE-CITRUS-CONFLICT"
+        result = MODULE.classify_pair(left, right)
+        self.assertEqual("ownership_conflict", result["classification"])
+        self.assertIn("identity_contradiction", result["conflicting_fields"])
+
+    def test_invalid_cli_input_does_not_create_output(self):
+        invalid = copy.deepcopy(self.dataset)
+        invalid["data_classification"] = "real"
+        invalid["synthetic"] = False
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "invalid.json"
+            output_path = Path(temp_dir) / "report.json"
+            input_path.write_text(json.dumps(invalid), encoding="utf-8")
+            with redirect_stderr(io.StringIO()):
+                exit_code = MODULE.main(["--input", str(input_path), "--output", str(output_path)])
+            self.assertNotEqual(0, exit_code)
+            self.assertFalse(output_path.exists())
+
+    def test_reporter_has_no_database_network_or_subprocess_import(self):
+        tree = ast.parse(SCRIPT_PATH.read_text(encoding="utf-8"))
+        imports = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.update(alias.name.split(".", 1)[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imports.add(node.module.split(".", 1)[0])
+        forbidden = {"requests", "httpx", "urllib3", "socket", "subprocess", "psycopg", "psycopg2", "sqlalchemy", "supabase"}
+        self.assertFalse(imports & forbidden)
+
+    def test_catalog_sql_is_static_read_only_metadata(self):
+        sql = SQL_PATH.read_text(encoding="utf-8")
+        self.assertRegex(sql, r"(?is)\bBEGIN\s+TRANSACTION\s+READ\s+ONLY\b")
+        self.assertRegex(sql, r"(?is)\bROLLBACK\s*;")
+        self.assertNotIn("pg_get_functiondef", sql.lower())
+        self.assertNotRegex(sql, r"(?is)\b(?:from|join)\s+public\.")
+
+        without_comments = re.sub(r"--[^\n]*", "", sql)
+        without_strings = re.sub(r"'(?:''|[^'])*'", "''", without_comments)
+        self.assertNotRegex(
+            without_strings,
+            r"(?is)\b(?:insert|update|delete|merge|truncate|alter|create|drop|grant|revoke|copy|call|do)\b",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
