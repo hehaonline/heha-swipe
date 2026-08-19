@@ -24,7 +24,7 @@ No real partner or customer identifiers belong in GitHub. Running the catalog in
 | Canonical profile | **[RP]** `public.partners.id` is the permanent Swipe identifier. | Never replace it by inference; a named human must identify the surviving ID. |
 | Owner/account | **[RP]** `partners.owner_id` links an authenticated owner. Owner-scoped policies and change requests depend on it. | Two different non-null owners are a conflict and override matching business signals. Never move ownership in this lane. |
 | Strong signals | **[RP]** `google_place_id`, `website`, `phone`/`contact`, and `instagram` exist in current partner flows. | Normalize only for comparison. An exact Place ID or at least two independent exact normalized signals forms a strong candidate, still manual-only. |
-| Email provenance | **[RP]** Scout ingestion maps `scout_leads.email` into `partners.contact`; current repository evidence does not prove that every `contact` is an email or an owner-controlled address. | Treat normalized email as strong only with provenance; otherwise mark **[U]**. |
+| Email provenance | **[RP]** Scout ingestion maps `scout_leads.email` into `partners.contact`; current repository evidence does not prove that every `contact` is an email or an owner-controlled address. | Treat normalized email as strong only when both records declare `owner_confirmed` or `authorized_business_contact`; an unverified equality is displayed only as weak corroboration. |
 | Name and location | **[RP]** `name`, `location`, `neighborhood`; Scout also holds address/city/state/postal code. | Name + location alone is only a likely match. Similar names with conflicting locations stay separate. |
 | Scout link | **[RP]** `scout_leads.partner_id` and Scout-triggered readiness/HubSpot artifacts. | Preserve the lead link and provenance; never create a partner automatically during reconciliation. |
 | Customer interest | **[RP]** the app uses `saves`; **[U]** the complete live event lineage is not proven here. Current app/donor vocabulary includes `swipe_events` and `swipes`, which must not be silently treated as the same table. | Inventory and preserve saves, swipe history, and analytics/event rows by their actual catalog names before any approved action. |
@@ -56,13 +56,13 @@ All six classes are fail-closed. Even `strong_identifier_match` means only “pr
 The offline reporter uses deterministic standard-library normalization:
 
 - Unicode compatibility decomposition, lowercase, punctuation collapse and whitespace collapse for names/addresses;
-- lowercase host only, with `www.` and trailing dot removed, for domains;
+- the hostname returned by a strict HTTP(S) URL parse, with `www.` and a trailing dot removed, for domains; query/path text never counts as the host;
 - digits only, with a leading U.S. country code removed, for phones;
 - lowercase trim for email;
 - URL/`@` removal and lowercase for Instagram;
 - exact trimmed comparison for Google Place ID and owner ID.
 
-Normalization never changes source data. The report includes only record IDs and matched/conflicting field names, not raw identifier values.
+Normalization never changes source data. The fixture schema rejects undeclared root, record and expected-pair fields. Each pair uses an order-independent length-prefixed key so delimiter-like ID text cannot collide. The report includes only record IDs and matched/conflicting field names, not raw identifier values.
 
 ## Private reconciliation queue contract
 
@@ -86,7 +86,7 @@ The queue must be private by default, deny anonymous/authenticated partner acces
 
 Fixtures carry counts for every currently required family:
 
-`saves`, `swipes`, `analytics`, `requests`, `media`, `routing`, `local_bridge`, `profile_changes`, `offers`, `readiness`, `platform_visibility`, and `crm_links`.
+`saves`, `swipes`, `analytics`, `requests`, `media`, `routing`, `local_bridge`, `profile_changes`, `offers`, `readiness`, `platform_visibility`, `crm_links`, and `scout_links`.
 
 The reporter copies those counts unchanged into each candidate pair. **[S]** Tests prove no count or family disappears and no canonical ID is emitted. This is not evidence that the live schema uses these exact table names; that remains **[U]**.
 
