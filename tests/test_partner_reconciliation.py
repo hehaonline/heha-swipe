@@ -348,6 +348,18 @@ class PartnerReconciliationTests(unittest.TestCase):
         for field in ("google_place_id", "domain", "phone", "email", "instagram"):
             self.assertIn(field, result["conflicting_fields"])
 
+    def test_separate_businesses_preserves_real_matching_evidence(self):
+        left = copy.deepcopy(self.dataset["records"][2])
+        right = copy.deepcopy(self.dataset["records"][3])
+        right["phone"] = left["phone"]
+        right["owner_account_id"] = left["owner_account_id"]
+
+        result = MODULE.classify_pair(left, right)
+        self.assertEqual("separate_businesses", result["classification"])
+        self.assertIn("phone", result["matched_fields"])
+        for field in ("google_place_id", "domain", "email", "instagram", "normalized_address"):
+            self.assertIn(field, result["conflicting_fields"])
+
     def test_conflicting_place_ids_override_composite_secondary_match(self):
         dataset = copy.deepcopy(self.dataset)
         left = dataset["records"][0]
