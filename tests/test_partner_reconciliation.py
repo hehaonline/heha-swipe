@@ -201,6 +201,14 @@ class PartnerReconciliationTests(unittest.TestCase):
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(unhashable_kind)
 
+        nested_scalar = copy.deepcopy(self.dataset)
+        nested_scalar["records"][0]["address"] = {
+            "marker": "Example",
+            "real_email": "person@example.com",
+        }
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(nested_scalar)
+
     def test_classify_pair_revalidates_records_at_the_entry_point(self):
         left = copy.deepcopy(self.dataset["records"][0])
         right = copy.deepcopy(self.dataset["records"][1])
