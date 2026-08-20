@@ -28,11 +28,14 @@ do $proof$
 declare
   v_user constant uuid := '00000000-0000-0000-0000-0000000000a1';
   v_account uuid;
+  v_empty_account uuid;
   v_entitlement uuid;
   v_acceptance uuid;
   v_event uuid;
   v_purchase uuid;
   v_reference text;
+  v_empty_reference text;
+  v_empty_event_count integer;
   v_status_count integer;
   v_subscription record;
   v_purchase_row record;
@@ -335,6 +338,89 @@ begin
     raise exception 'Account unlink erased or rewrote lifecycle audit facts';
   end if;
 
+  -- Regression: an account can be deleted before trial invitation, purchase,
+  -- subscription, or entitlement creation. The private runtime row must still
+  -- select exactly one environment for the privacy-minimized unlink event.
+  insert into public.community_pass_accounts (
+    user_id,
+    status,
+    offer_version,
+    benefit_version,
+    policy_bundle_version
+  ) values (
+    v_user,
+    'inactive',
+    'founding-v1',
+    'beta-v1',
+    'policy-v1'
+  ) returning id into v_empty_account;
+
+  if exists (
+    select 1
+    from public.community_pass_entitlements e
+    where e.account_id = v_empty_account
+  ) or exists (
+    select 1
+    from public.community_pass_subscriptions s
+    where s.account_id = v_empty_account
+  ) or exists (
+    select 1
+    from public.community_pass_purchases p
+    where p.account_id = v_empty_account
+  ) then
+    raise exception 'Empty-account unlink fixture unexpectedly has financial or entitlement children';
+  end if;
+
+  update public.community_pass_accounts a
+  set user_id = null
+  where a.id = v_empty_account;
+
+  select a.account_reference_hash
+  into v_empty_reference
+  from public.community_pass_accounts a
+  where a.id = v_empty_account
+    and a.status = 'deleted'
+    and a.deleted_at is not null
+    and a.account_reference_hash_version = 'random_tombstone_v1';
+
+  if v_empty_reference is null or char_length(v_empty_reference) < 24 then
+    raise exception 'Empty-account unlink did not create an opaque random tombstone';
+  end if;
+
+  select count(*)
+  into v_empty_event_count
+  from public.community_pass_events ce
+  where ce.account_id = v_empty_account
+    and ce.event_type = 'account_unlinked';
+
+  if v_empty_event_count <> 1 then
+    raise exception 'Empty-account unlink must append exactly one event, got %', v_empty_event_count;
+  end if;
+
+  if not exists (
+    select 1
+    from public.community_pass_events ce
+    where ce.account_id = v_empty_account
+      and ce.user_id is null
+      and ce.entity_type = 'account'
+      and ce.entity_id = v_empty_account
+      and ce.event_type = 'account_unlinked'
+      and ce.actor_type = 'system'
+      and ce.actor_reference = 'auth_account_unlink'
+      and ce.reason_code = 'account_deleted'
+      and ce.idempotency_key =
+        'community-pass-account-unlinked:' || v_empty_account::text || ':test'
+      and ce.environment = 'test'
+      and ce.before_state = 'inactive'
+      and ce.after_state = 'deleted'
+      and ce.event_data = pg_catalog.jsonb_build_object(
+        'provider_reconciliation_required', false,
+        'prepaid_liability_open', false
+      )
+  ) then
+    raise exception 'Empty-account unlink event is missing or not privacy-minimized';
+  end if;
+
   perform pg_temp.set_auth_context('authenticated', v_user);
   select count(*)
   into v_status_count
@@ -354,6 +440,6 @@ $proof$;
 select
   'account unlink fail-safe' as label,
   true as ok,
-  'opaque tombstone, local revocation, open provider reconciliation, prepaid liability survival and immutable-evidence redaction passed' as detail;
+  'opaque tombstones, empty-account audit coverage, local revocation, open provider reconciliation, prepaid liability survival and immutable-evidence redaction passed' as detail;
 
 rollback;

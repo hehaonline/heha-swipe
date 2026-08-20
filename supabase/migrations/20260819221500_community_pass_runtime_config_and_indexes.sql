@@ -380,6 +380,166 @@ revoke all on function public.start_my_community_pass_trial() from anon;
 revoke all on function public.start_my_community_pass_trial() from authenticated;
 grant execute on function public.start_my_community_pass_trial() to authenticated;
 
+-- The final unlink trigger must use the same private runtime authority as the
+-- customer and benefit RPCs above. Child rows remain useful evidence when they
+-- exist, while the private runtime row guarantees one privacy-minimized event
+-- for an account that is deleted before it has any entitlement or payment row.
+create or replace function public.cascade_community_pass_account_unlink()
+returns trigger
+language plpgsql
+set search_path = ''
+as $function$
+begin
+  if old.user_id is not null and new.user_id is null then
+    update public.community_pass_subscriptions s
+    set user_id = null,
+        status = case
+          when s.status in ('active', 'payment_recovery', 'cancel_scheduled')
+            then 'reconciliation_exception'
+          else s.status
+        end,
+        reconciliation_state = case
+          when s.status in ('active', 'payment_recovery', 'cancel_scheduled')
+            then 'exception'
+          else s.reconciliation_state
+        end,
+        metadata = case
+          when s.status in ('active', 'payment_recovery', 'cancel_scheduled')
+            then coalesce(s.metadata, '{}'::jsonb) || pg_catalog.jsonb_build_object(
+              'account_unlinked_at', pg_catalog.now(),
+              'account_unlink_reason', 'provider_reconciliation_required'
+            )
+          else s.metadata
+        end
+    where s.account_id = new.id;
+
+    update public.community_pass_purchases p
+    set user_id = null
+    where p.account_id = new.id;
+
+    update public.community_pass_entitlements e
+    set user_id = null,
+        state = case
+          when e.state in (
+            'trial_active',
+            'monthly_subscription_active',
+            'prepaid_term_active',
+            'payment_recovery',
+            'cancel_scheduled',
+            'support_review',
+            'reconciliation_exception'
+          ) then 'revoked_account_deleted'
+          else e.state
+        end,
+        ended_at = case
+          when e.state in (
+            'trial_active',
+            'monthly_subscription_active',
+            'prepaid_term_active',
+            'payment_recovery',
+            'cancel_scheduled',
+            'support_review',
+            'reconciliation_exception'
+          ) then coalesce(e.ended_at, pg_catalog.now())
+          else e.ended_at
+        end
+    where e.account_id = new.id;
+
+    update public.community_pass_acceptances ca
+    set user_id = null,
+        account_reference_hash = new.account_reference_hash,
+        redacted_at = coalesce(ca.redacted_at, pg_catalog.now())
+    where ca.account_id = new.id
+      and ca.user_id is not null;
+
+    update public.community_pass_events ce
+    set user_id = null,
+        actor_reference = case
+          when ce.actor_type = 'customer' then null
+          else ce.actor_reference
+        end
+    where ce.account_id = new.id
+      and (
+        ce.user_id is not null
+        or (ce.actor_type = 'customer' and ce.actor_reference is not null)
+      );
+
+    insert into public.community_pass_events (
+      account_id,
+      user_id,
+      entity_type,
+      entity_id,
+      event_type,
+      actor_type,
+      actor_reference,
+      reason_code,
+      idempotency_key,
+      environment,
+      before_state,
+      after_state,
+      event_data,
+      occurred_at
+    )
+    select
+      new.id,
+      null,
+      'account',
+      new.id,
+      'account_unlinked',
+      'system',
+      'auth_account_unlink',
+      'account_deleted',
+      'community-pass-account-unlinked:' || new.id::text || ':' || env.environment,
+      env.environment,
+      old.status,
+      new.status,
+      pg_catalog.jsonb_build_object(
+        'provider_reconciliation_required', exists (
+          select 1
+          from public.community_pass_subscriptions s
+          where s.account_id = new.id
+            and s.environment = env.environment
+            and s.status = 'reconciliation_exception'
+        ),
+        'prepaid_liability_open', exists (
+          select 1
+          from public.community_pass_purchases p
+          where p.account_id = new.id
+            and p.environment = env.environment
+            and p.refundable_unearned_cents > 0
+            and p.payment_state not in ('refunded', 'payment_failed', 'checkout_expired')
+        )
+      ),
+      pg_catalog.now()
+    from (
+      select e.environment
+      from public.community_pass_entitlements e
+      where e.account_id = new.id
+      union
+      select s.environment
+      from public.community_pass_subscriptions s
+      where s.account_id = new.id
+      union
+      select p.environment
+      from public.community_pass_purchases p
+      where p.account_id = new.id
+      union
+      select public.community_pass_runtime_environment()
+    ) env
+    where env.environment in ('test', 'live')
+    on conflict (environment, idempotency_key)
+      where idempotency_key is not null
+    do nothing;
+  end if;
+
+  return null;
+end;
+$function$;
+
+revoke all on function public.cascade_community_pass_account_unlink() from public;
+revoke all on function public.cascade_community_pass_account_unlink() from anon;
+revoke all on function public.cascade_community_pass_account_unlink() from authenticated;
+
 -- Cover every foreign-key access path flagged by the managed Supabase advisor.
 create index if not exists community_pass_subscriptions_account_idx
   on public.community_pass_subscriptions(account_id);
