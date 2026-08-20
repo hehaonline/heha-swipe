@@ -37,6 +37,7 @@ create table if not exists auth.users (
 -- user. Referential actions and the Community Pass unlink triggers must work
 -- from this role rather than relying on the PostgreSQL owner session.
 grant usage on schema auth to supabase_auth_admin;
+grant select (id) on table auth.users to supabase_auth_admin;
 grant delete on table auth.users to supabase_auth_admin;
 
 create or replace function auth.uid()
