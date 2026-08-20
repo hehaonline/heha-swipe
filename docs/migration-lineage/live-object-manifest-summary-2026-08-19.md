@@ -1,22 +1,22 @@
 # HEHA Swipe Live Object Manifest Summary — 2026-08-19
 
-Status: **READ-ONLY PRODUCTION METADATA / NO PRODUCTION CHANGE**  
+Status: **REPORTED READ-ONLY METADATA / INDEPENDENT ARTIFACT MISSING**
 Task: `SWP-016`  
 Related: issue #85, PR #69, PR #128, PR #131
 
 ## Evidence boundary
 
-An authorized read-only Supabase connector query inspected `pg_catalog`, `information_schema`, `pg_policies`, and extension metadata for the canonical HEHA Swipe Production project at approximately `2026-08-19 23:14 UTC`.
+A prior authorized read-only Supabase connector session reported results from `pg_catalog`, `information_schema`, `pg_policies`, and extension metadata for the canonical HEHA Swipe Production project at approximately `2026-08-19 23:14 UTC`.
 
 The query did **not** read customer, partner, payment, profile, order, waitlist, contact, message, review, save, or other business rows. It did not read secrets, raw webhook payloads, Auth tokens, storage objects, or provider credentials.
 
-No DDL, DML, configuration, function, policy, grant, migration-ledger, Auth, storage, cron, Edge Function, or provider mutation occurred.
+No DDL, DML, configuration, function, policy, grant, migration-ledger, Auth, storage, cron, Edge Function, or provider mutation was reported.
 
-This file is a sanitized object-name/count checkpoint. It is not a schema dump, an executable baseline, or proof that a fresh environment reproduces Production behavior.
+The normalized catalog rows and exact query used by that session were not committed. The claims below therefore remain a **reported checkpoint**, not independently reproducible live evidence. This file is not a schema dump, an executable baseline, or proof that a fresh environment reproduces Production behavior.
 
-## Top-level inventory
+## Reported top-level inventory
 
-| Object class | Live count | Notes |
+| Object class | Reported count | Notes |
 |---|---:|---|
 | Public base tables | 45 | All 45 report RLS enabled; none report `FORCE ROW LEVEL SECURITY` |
 | Public views/materialized views | 5 | All five are ordinary views; no public materialized view was returned |
@@ -24,6 +24,16 @@ This file is a sanitized object-name/count checkpoint. It is not a schema dump, 
 | Non-internal triggers on public tables | 46 | Spread across operational, partner, Scout, supporter, profile, order, and messaging tables |
 | Public RLS policies | 133 | Policy expressions and table grants require separate exact capture/review |
 | Installed extensions | 6 | Includes Supabase-managed and application-used extensions |
+
+## Reproducibility tooling — 2026-08-20
+
+This branch now commits two no-live-data tools:
+
+- `queries/live-object-manifest-capture.sql` fixes the bounded, read-only catalog query and deterministic JSONL serialization for the six object classes below. It deliberately excludes function bodies, policy expressions, ACLs, business/Auth/storage rows, Vault values and provider/configuration secrets.
+- `verify-live-object-manifest.mjs` validates the allowed sanitized row schema, strict ordering and unique identities, then recomputes the six claimed counts, 45/45 RLS, 0/45 FORCE RLS and zero materialized-view totals. Its `--self-test` is synthetic only.
+- `live-object-tooling-manifest.sha256` binds the summary, readiness plan, query contract and verifier bytes; it intentionally has no live-artifact entry.
+
+No sanitized live artifact was generated or inferred for this repair. A normal verifier run fails closed unless an artifact path is supplied. The six reported counts and listed names therefore remain **UNKNOWN for independent evidence** until a separately authorized capture is committed, hashed and reviewed.
 
 ## Public base tables — 45
 
@@ -75,7 +85,7 @@ user_roles
 vibe_settings
 ```
 
-### RLS checkpoint
+### Reported RLS checkpoint
 
 - RLS enabled: **45 / 45 tables**
 - FORCE RLS enabled: **0 / 45 tables**
@@ -139,7 +149,7 @@ sync_scout_swipe_card_fields()
 update_updated_at()
 ```
 
-The metadata query found both invoker and SECURITY DEFINER functions. A later exact manifest must record function body hash, language, volatility, owner, `proconfig`/search path, EXECUTE ACL, dependencies, and intended caller role. This summary does not approve any existing function boundary.
+The prior metadata receipt reported both invoker and SECURITY DEFINER functions. A later exact manifest must record function body hash, language, volatility, owner, `proconfig`/search path, EXECUTE ACL, dependencies, and intended caller role. This summary does not approve any existing function boundary.
 
 ## Trigger coverage
 
@@ -181,7 +191,7 @@ The canonical manifest must preserve trigger order, timing, event, function depe
 
 ## RLS policies — 133
 
-The live database returned 133 public-table RLS policies. The set includes:
+The prior connector receipt reported 133 public-table RLS policies. The set includes:
 
 - public/anonymous insert or read paths for founding waitlists and selected public content;
 - customer-owned profile, notification, message, order, review, save, and swipe paths;
@@ -190,7 +200,7 @@ The live database returned 133 public-table RLS policies. The set includes:
 - supporter payment/subscription self-read paths;
 - community-offer issue/confirmation/read paths.
 
-Names and command/role metadata were captured in the connector receipt, but this summary intentionally does not reproduce every expression. The next exact evidence file must include `USING`, `WITH CHECK`, role arrays, permissive/restrictive mode, and matching table grants. Policy names or role labels alone are not sufficient to prove BOLA resistance.
+Names and command/role metadata were reported in an uncommitted connector receipt, but are not independently available in this branch. The next exact evidence file must include `USING`, `WITH CHECK`, role arrays, permissive/restrictive mode, and matching table grants. Policy names or role labels alone are not sufficient to prove BOLA resistance.
 
 ## Installed extensions — 6
 
@@ -243,5 +253,6 @@ Do not use this summary to:
 - merge PR #128 or begin Package B;
 - alter existing RLS, grants, functions, views, triggers, Auth, storage, cron, or provider settings;
 - create another paid branch without a separate cost estimate and Geronimo approval.
+- claim that the reported counts, names, RLS totals or extension versions are independently verified before the sanitized JSONL artifact is committed and hashed.
 
 Production impact: **NONE**.

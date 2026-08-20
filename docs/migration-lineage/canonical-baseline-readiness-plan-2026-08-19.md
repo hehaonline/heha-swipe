@@ -14,12 +14,12 @@ The baseline exists to answer one practical question:
 
 ## Current evidence
 
-1. Production currently records **96 migration versions** and **45 public base tables**.
+1. Prior read-only receipts report **96 migration versions** and **45 public base tables**; repository consistency is reproducible, but independent live provenance remains blocked on committed sanitized capture artifacts.
 2. The repository migration tree is corrective rather than a complete zero-build history.
 3. A founder-approved ordinary Supabase branch inherited **zero application migration rows** and **zero initial application public tables**.
 4. Community Pass Package A passed as an isolated additive contract on managed Supabase, but not against a lineage-faithful 45-table clone.
-5. PR #69 semantically matches the live supporter/vibe object family and is a source-restoration candidate, not a complete baseline.
-6. PR #131 preserves the refreshed live-ledger evidence and remains under independent review.
+5. PR #69 contains a source-restoration candidate, but its claimed semantic match to the live supporter/vibe object family is **UNKNOWN** until normalized sanitized catalog bytes and an offline comparison are committed.
+6. PR #131 preserves the reported live-ledger evidence and now carries exact read-only capture contracts plus a repository-only verifier; live provenance remains a separate gate.
 7. The approved architecture direction is immutable history + reviewed canonical baseline + untouched Production ledger.
 
 ## Required deliverables before executable SQL
@@ -179,8 +179,8 @@ Stop and escalate if:
 ## Immediate no-cost next actions
 
 1. Independently review PRs #128, #131 and #69 at their exact heads.
-2. Capture columns/constraints/indexes for the 45-table manifest in sanitized chunks.
-3. Capture views/functions/triggers/policies/grants with normalized definitions and hashes.
+2. Run the committed top-level object query only in a separately authorized read-only session, commit its sanitized JSONL bytes and verify the six reported counts/RLS totals offline.
+3. Capture columns/constraints/indexes, then views/functions/triggers/policies/grants, in separately reviewed sanitized chunks with normalized definitions and hashes.
 4. Refresh repository↔96-row compatibility mapping.
 5. Prepare a complete PR D evidence manifest and request independent review.
 6. Only then prepare the exact executable PR B file plan and paid-branch estimate.
