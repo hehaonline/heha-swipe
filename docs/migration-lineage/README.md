@@ -75,6 +75,7 @@ Canonical implementation remains blocked until:
 - `queries/live-ledger-capture.sql` — exact read-only ledger query and deterministic CSV capture contract
 - `queries/pr69-supporter-catalog-capture.sql` — bounded read-only PR #69 catalog query and deterministic JSONL contract
 - `verify-evidence.mjs` — dependency-free offline ledger/delta/duplicate/manifest verifier; repository evidence only
+- `verify-pr69-catalog.mjs` — fail-closed two-artifact comparator for a future sanitized live capture and a separately generated PR #69 recovered-source catalog; synthetic self-test only until both artifacts exist
 - `object-dependency-map.md` — missing baseline/object families, rechecked against the historical 35-file tree
 - `duplicate-compatibility-map.md` — duplicate identifier decisions
 - `canonical-baseline-decision.md` — approved strategy and PR separation

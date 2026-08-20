@@ -169,6 +169,6 @@ console.log(JSON.stringify({
   manifestEntries,
   blocked: [
     'independent live-source provenance until a new authorized capture is committed',
-    'PR #69 semantic catalog equality until sanitized live and recovered-source artifacts are committed'
+    'PR #69 semantic catalog equality until sanitized live and recovered-source artifacts pass verify-pr69-catalog.mjs'
   ]
 }, null, 2));

@@ -94,8 +94,9 @@ This exact branch now includes only no-live-data evidence tooling:
 - `queries/live-ledger-capture.sql` — exact sorted, read-only ledger query and CSV capture contract;
 - `queries/pr69-supporter-catalog-capture.sql` — exact sanitized PR #69 catalog query and JSONL ordering contract;
 - `verify-evidence.mjs` — dependency-free offline verification of both committed ledgers, the 92→96 delta, the duplicate-name result and every manifest-listed SHA-256.
+- `verify-pr69-catalog.mjs` — fail-closed exact-row comparator for two future artifacts produced with the same query contract: one separately authorized sanitized live capture and one recovered-source catalog generated without real data.
 
-The verifier deliberately reports a repository-consistency PASS and the two remaining provenance blockers separately. It does not convert old prose or a digest without bytes into live evidence. No Production, Supabase, Auth, storage, provider or business-row access was used for this repair.
+The repository verifier deliberately reports a repository-consistency PASS and the two remaining provenance blockers separately. The catalog comparator passes only its synthetic self-test until both real artifacts are supplied; it does not convert old prose or a digest without bytes into live evidence. No Production, Supabase, Auth, storage, provider or business-row access was used for this repair.
 
 ## Architecture consequence
 
