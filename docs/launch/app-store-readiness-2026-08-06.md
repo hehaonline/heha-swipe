@@ -1130,6 +1130,25 @@ Verified through GitHub: exact four-commit delta from `806b99f017c1c22c0c7abd456
 Collision/scope: only PR #116 changes this audit document. This reconciliation changes documentation only; it does not modify PR #127, runtime code, workflows, migrations, data, Auth, HubSpot, environments, deployments, or external services.
 
 
+## Current Community Pass and migration-lineage packaging gate — 2026-08-20
+
+This section supersedes earlier Community Pass staging-readiness and migration-lineage statements where they conflict. It does not supersede PR #127's separately proved publication-security result.
+
+- **Package A exact state:** PR #128 remains open, draft, and mergeable at `f68ed23277ec44f8e13102f62455f25385b4504b`, based directly on `main@82ec41a27150847f3d461716bc58636e24babfe6`. Its isolated six-migration PostgreSQL workflow and genuine managed-Supabase additive replay are useful evidence, but they are not a current-schema collision pass: the temporary branch began with zero application migration rows and zero application public tables, while Production reports 45 public base tables.
+- **Account-unlink repair still absent:** the final unlink trigger still consults the unsupported `app.community_pass_environment` GUC. An account with no entitlement, subscription, or purchase can therefore be deleted without the required privacy-minimized `account_unlinked` event even when the private runtime row exists. Geronimo approved the narrow draft-only repair and empty-account regression, but #128 has not advanced beyond `f68ed232…`; approval is not implementation or proof.
+- **Ledger evidence is internally consistent but live semantic parity is not reproducible:** PR #131 at `849ee84ee58654cd9d25fffa3208f9163c3070f2` has a strictly ordered 96-row/96-version ledger, the exact four-row delta from the preserved 92-row snapshot, the recorded duplicate-name result, and 9/9 independently matching SHA-256 manifest entries. However, its claimed semantic Production match for PR #69 cannot be recalculated because the normalized catalog artifact, exact catalog queries/normalization rules, and offline verifier behind MD5 `63eeb777fea4a31a6ebf6ea97ae0113f` are not committed.
+- **Object-summary evidence is also blocked:** PR #132 at `98d4119366d385a59f4a52a0581b0ded9a50b8f9` safely remains documentation-only, but its 45-table/5-view/39-function/46-trigger/133-policy/6-extension and RLS/FORCE-RLS claims lack the sanitized sorted source rows, immutable query receipt, hashes, and offline count verifier needed for independent repository evidence.
+- **Canonical-baseline implication:** #69 source restoration, an executable canonical baseline, and #128's representative current-schema replay remain blocked until the sanitized evidence artifacts and deterministic verifiers are committed and reviewed. The Production ledger must remain untouched; the already-recorded #69 migration must never be manually reapplied.
+- **Downloadable-app implication:** the first iOS/Android binaries should continue to omit Community Pass purchase, trial, entitlement, benefit, and billing surfaces. A web-first soft launch can proceed only through separately validated non-billing journeys; green isolated SQL or preview checks do not establish native-store readiness, live billing eligibility, or Production safety.
+
+**Safe release default:** keep #128, #131, and #132 draft. Repair #128's unlink runtime authority and prove empty-account deletion on an exact head. For #131/#132, commit metadata-only deterministic source artifacts, exact read-only queries, normalization/order rules, hashes, and an offline verifier before allowing any executable baseline or new current-schema proof environment. Continue to require a separate founder decision for merge, migration, deployment, billing, store submission, or Production action.
+
+Verified through GitHub: exact heads/base relationships and full scopes for #128/#131/#132; #131's 96/92 row counts, ordering, version uniqueness, four-row delta, duplicate name, and every manifest SHA-256; #128's remaining final unlink-trigger definition and focused proof coverage gap; #132's two-file evidence boundary; draft/mergeable state; zero review threads; and current Vercel/Snyk statuses. All 30 open Swipe PR file sets were refreshed immediately before this write; only #116 changes this audit path.
+
+Not run independently: live Supabase/catalog queries, SQL/migration replay, Auth deletion, generated types, security/performance advisors, Stripe, local Node tests/build, browser/device/accessibility QA, native packaging/signing, deployment, or Production.
+
+Collision/scope: this update changes one documentation file only on the existing `codex/closer/swipe-app-store-gap-audit` branch. It does not modify #128, #131, #132, migrations, workflows, runtime code, billing, data, environments, deployments, or external services.
+
 ## Rollback
 
 This audit changes documentation only. Reverting its documentation commits removes the document. No application code, dependency, manifest, deployment, native project, signing material, store record, Supabase state, or external service is changed.
