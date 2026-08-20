@@ -384,9 +384,14 @@ grant execute on function public.start_my_community_pass_trial() to authenticate
 -- customer and benefit RPCs above. Child rows remain useful evidence when they
 -- exist, while the private runtime row guarantees one privacy-minimized event
 -- for an account that is deleted before it has any entitlement or payment row.
+-- SECURITY DEFINER is required because Supabase Auth initiates the FK action as
+-- supabase_auth_admin while canonical tables and the private runtime row remain
+-- closed to that role. The empty search_path and fixed object references bound
+-- the elevated work to this trigger's deletion cleanup contract.
 create or replace function public.cascade_community_pass_account_unlink()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $function$
 begin

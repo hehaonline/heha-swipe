@@ -27,6 +27,7 @@ $function$;
 do $proof$
 declare
   v_user constant uuid := '00000000-0000-0000-0000-0000000000a1';
+  v_empty_user constant uuid := '00000000-0000-0000-0000-0000000000b2';
   v_account uuid;
   v_empty_account uuid;
   v_entitlement uuid;
@@ -43,8 +44,12 @@ declare
   v_acceptance_row record;
   v_event_row record;
 begin
-  if not exists (select 1 from auth.users where id = v_user) then
-    raise exception 'Synthetic Auth user is missing';
+  if (
+    select count(*)
+    from auth.users au
+    where au.id in (v_user, v_empty_user)
+  ) <> 2 then
+    raise exception 'Synthetic Auth users are missing';
   end if;
 
   perform pg_temp.set_auth_context('service_role', v_user);
@@ -348,7 +353,7 @@ begin
     benefit_version,
     policy_bundle_version
   ) values (
-    v_user,
+    v_empty_user,
     'inactive',
     'founding-v1',
     'beta-v1',
@@ -371,9 +376,47 @@ begin
     raise exception 'Empty-account unlink fixture unexpectedly has financial or entitlement children';
   end if;
 
-  update public.community_pass_accounts a
-  set user_id = null
-  where a.id = v_empty_account;
+  if pg_catalog.has_function_privilege(
+    'supabase_auth_admin',
+    'public.community_pass_runtime_environment()',
+    'EXECUTE'
+  ) or pg_catalog.has_function_privilege(
+    'authenticated',
+    'public.community_pass_runtime_environment()',
+    'EXECUTE'
+  ) or pg_catalog.has_function_privilege(
+    'anon',
+    'public.community_pass_runtime_environment()',
+    'EXECUTE'
+  ) then
+    raise exception 'Private runtime lookup must not be directly executable outside service_role';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_proc proc
+    join pg_catalog.pg_namespace n on n.oid = proc.pronamespace
+    where n.nspname = 'public'
+      and proc.proname = 'cascade_community_pass_account_unlink'
+      and proc.prosecdef
+      and (
+        'search_path=' = any (coalesce(proc.proconfig, array[]::text[]))
+        or 'search_path=""' = any (coalesce(proc.proconfig, array[]::text[]))
+      )
+  ) then
+    raise exception 'Account-unlink cascade must be a pinned SECURITY DEFINER trigger';
+  end if;
+
+  -- Exercise the real FK-driven Supabase Auth boundary, not a direct owner
+  -- update with request-role text set to service_role.
+  perform pg_temp.set_auth_context('supabase_auth_admin', v_empty_user);
+  execute 'set local role supabase_auth_admin';
+  delete from auth.users au where au.id = v_empty_user;
+  execute 'reset role';
+
+  if exists (select 1 from auth.users au where au.id = v_empty_user) then
+    raise exception 'Synthetic Auth user was not deleted by the auth-admin path';
+  end if;
 
   select a.account_reference_hash
   into v_empty_reference

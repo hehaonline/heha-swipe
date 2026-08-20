@@ -33,6 +33,12 @@ create table if not exists auth.users (
   created_at timestamptz not null default pg_catalog.now()
 );
 
+-- Model the narrow permission used by Supabase Auth when it deletes an Auth
+-- user. Referential actions and the Community Pass unlink triggers must work
+-- from this role rather than relying on the PostgreSQL owner session.
+grant usage on schema auth to supabase_auth_admin;
+grant delete on table auth.users to supabase_auth_admin;
+
 create or replace function auth.uid()
 returns uuid
 language sql
