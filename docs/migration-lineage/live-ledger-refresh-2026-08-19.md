@@ -41,7 +41,7 @@ The previous committed `live-ledger-2026-07-19.csv` contains 92 rows and ended a
 3. `20260805123842,sec002_revoke_public_execute_on_trigger_functions`
 4. `20260812220624,update_founding_neighbor_pass_preferences`
 
-`live-ledger-2026-08-19.csv` records the complete current 96-row result with evidence label `LP` because it was reproduced through direct authorized live access.
+`live-ledger-2026-08-19.csv` records the reported complete 96-row result with evidence label `LP`. The committed artifact is internally reproducible; independent live-source provenance remains blocked until a separately authorized recapture uses the exact query and byte contract in `queries/live-ledger-capture.sql`.
 
 ## Disposable-branch finding
 
@@ -79,13 +79,23 @@ Direct live inventory:
 - 3 RLS-state entries;
 - 1 supporting function entry.
 
-Deterministic catalog-manifest MD5 for those normalized live definitions:
+Historically reported catalog-manifest MD5 for those normalized live definitions:
 
 `63eeb777fea4a31a6ebf6ea97ae0113f`
 
-The live columns/defaults/nullability, checks, primary/foreign/unique constraints, indexes, three updated-at triggers, five authenticated-user policies, enabled RLS state and `heha_set_updated_at()` definition match the PR #69 recovered source semantically.
+The prior connector review reported that the live columns/defaults/nullability, checks, primary/foreign/unique constraints, indexes, three updated-at triggers, five authenticated-user policies, enabled RLS state and `heha_set_updated_at()` definition match the PR #69 recovered source semantically.
 
-This supports a read-only verdict of **PASS FOR SOURCE-LINEAGE RESTORATION** on PR #69. It does not authorize manually applying the already-recorded migration, rewriting the Production ledger or treating PR #69 alone as a complete rebuild baseline.
+The digest was not accompanied by its normalized rows, so repository evidence cannot independently reproduce that semantic comparison. The PR #69 live-equality conclusion is therefore **UNKNOWN / BLOCKED FOR INDEPENDENT EVIDENCE**, not a current PASS. `queries/pr69-supporter-catalog-capture.sql` now fixes the future read-only capture boundary and deterministic row format, but no live artifact has been created or claimed in this PR. This does not authorize manually applying the already-recorded migration, rewriting the Production ledger or treating PR #69 alone as a complete rebuild baseline.
+
+## Reproducibility repair — 2026-08-20
+
+This exact branch now includes only no-live-data evidence tooling:
+
+- `queries/live-ledger-capture.sql` — exact sorted, read-only ledger query and CSV capture contract;
+- `queries/pr69-supporter-catalog-capture.sql` — exact sanitized PR #69 catalog query and JSONL ordering contract;
+- `verify-evidence.mjs` — dependency-free offline verification of both committed ledgers, the 92→96 delta, the duplicate-name result and every manifest-listed SHA-256.
+
+The verifier deliberately reports a repository-consistency PASS and the two remaining provenance blockers separately. It does not convert old prose or a digest without bytes into live evidence. No Production, Supabase, Auth, storage, provider or business-row access was used for this repair.
 
 ## Architecture consequence
 

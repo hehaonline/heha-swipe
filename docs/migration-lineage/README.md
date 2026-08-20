@@ -31,7 +31,7 @@ The evidence package and this refresh are documentation-only. They must not:
 
 The committed `live-ledger-2026-07-19.csv` is a historical 92-row snapshot whose live provenance was originally `U`. It remains preserved rather than rewritten.
 
-A new authorized read-only connector session on 2026-08-19 independently reproduced the current live migration ledger. `live-ledger-2026-08-19.csv` records 96 rows with evidence label `LP`; `live-ledger-refresh-2026-08-19.md` records the query boundary, counts, duplicate-name result, PR #69 catalog comparison and zero-Production-impact receipt.
+A new authorized read-only connector session on 2026-08-19 reported the current live migration ledger. `live-ledger-2026-08-19.csv` records 96 internally consistent rows with evidence label `LP`; `live-ledger-refresh-2026-08-19.md` records the evidence boundary, counts, duplicate-name result, prior PR #69 catalog claim and zero-Production-impact receipt. The exact query contract and offline verifier were added on 2026-08-20. Independent live provenance and PR #69 semantic equality remain blocked until sanitized capture artifacts can be committed and checked.
 
 Neither ledger snapshot is a schema dump or a complete canonical rebuild chain. Ledger presence proves recorded ordering/name metadata, not that every historical SQL body is available or safe to replay.
 
@@ -49,7 +49,7 @@ Direct live evidence now establishes:
   - `20260812220624_update_founding_neighbor_pass_preferences`; **[LP]**
 - Production has 45 public base tables; **[LP]**
 - a founder-approved disposable Supabase branch inherited zero application migration rows and zero initial application public tables; **[LP]**
-- PR #69's recovered supporter/vibe migration matches the corresponding live columns, constraints, indexes, triggers, policies, RLS state and supporting function semantically; **[LP + RP]**
+- a prior connector receipt reported that PR #69's recovered supporter/vibe migration matched live definitions, but the normalized rows behind its digest are not committed; independent equality is **[U]** pending a new sanitized capture;
 - the approved canonical-baseline strategy remains necessary because restoring PR #69 alone cannot reproduce the 45-table Production schema. **[DR + LP]**
 
 ## Accepted architecture decision
@@ -72,6 +72,9 @@ Canonical implementation remains blocked until:
 - `live-ledger-2026-07-19.csv` — preserved 92-row historical snapshot; original provenance remains `U`
 - `live-ledger-2026-08-19.csv` — directly reproduced current 96-row live ledger; evidence `LP`
 - `live-ledger-refresh-2026-08-19.md` — read-only live refresh, disposable-branch finding and PR #69 semantic catalog verification
+- `queries/live-ledger-capture.sql` — exact read-only ledger query and deterministic CSV capture contract
+- `queries/pr69-supporter-catalog-capture.sql` — bounded read-only PR #69 catalog query and deterministic JSONL contract
+- `verify-evidence.mjs` — dependency-free offline ledger/delta/duplicate/manifest verifier; repository evidence only
 - `object-dependency-map.md` — missing baseline/object families, rechecked against the historical 35-file tree
 - `duplicate-compatibility-map.md` — duplicate identifier decisions
 - `canonical-baseline-decision.md` — approved strategy and PR separation
@@ -83,7 +86,7 @@ Canonical implementation remains blocked until:
 - The 2026-08-19 live ledger contains 96 rows / 96 distinct versions. **[LP]**
 - The live ledger still begins with corrective migrations rather than a complete initial-schema baseline. **[LP + DR]**
 - The repository tree remains corrective rather than a complete rebuild history. **[RP]**
-- PR #69 is semantically consistent with its corresponding live supporter/vibe object family and is suitable for source-lineage restoration after its own exact-head review. **[LP + RP]**
+- PR #69's repository source exists, but semantic equality with the live supporter/vibe object family is **UNKNOWN** until the sanitized catalog bytes and recovered-source comparison are independently reproducible. **[U + RP]**
 - PR #69 must not be manually applied to the already-recorded Production project. **[LP]**
 - A normal disposable branch did not reproduce the live migration ledger or application schema. **[LP]**
 - The smallest safe path remains: preserve history, restore verified missing source, create a separately reviewed canonical baseline for new environments, prove it in a disposable branch, and leave Production history untouched. **[DR]**
