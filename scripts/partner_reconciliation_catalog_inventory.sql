@@ -204,10 +204,14 @@ SELECT DISTINCT
   dependent.relname AS dependent_relation,
   dependent.relkind AS dependent_kind
 FROM pg_catalog.pg_depend AS dep
-JOIN pg_catalog.pg_rewrite AS rewrite ON rewrite.oid = dep.objid
+JOIN pg_catalog.pg_rewrite AS rewrite
+  ON rewrite.oid = dep.objid
+  AND dep.classid = 'pg_rewrite'::regclass
 JOIN pg_catalog.pg_class AS dependent ON dependent.oid = rewrite.ev_class
 JOIN pg_catalog.pg_namespace AS dependent_ns ON dependent_ns.oid = dependent.relnamespace
-JOIN pg_catalog.pg_class AS referenced ON referenced.oid = dep.refobjid
+JOIN pg_catalog.pg_class AS referenced
+  ON referenced.oid = dep.refobjid
+  AND dep.refclassid = 'pg_class'::regclass
 JOIN pg_catalog.pg_namespace AS referenced_ns ON referenced_ns.oid = referenced.relnamespace
 WHERE referenced_ns.nspname = 'public'
   AND referenced.relname = 'partners'

@@ -38,7 +38,10 @@ SCOUT_SYNTHETIC_TIME_MAX = datetime(2099, 1, 31, 23, 59, 59, tzinfo=timezone.utc
 PHONE_RE = re.compile(r"^1?[2-9][0-9]{2}55501[0-9]{2}$")
 PHONE_FORMAT_RE = re.compile(r"^[0-9+(). -]+$")
 INSTAGRAM_RE = re.compile(r"^synthetic_[a-z0-9_]+$")
-TEST_HOST_RE = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+test$")
+# Fixture host labels deliberately exclude digits. Synthetic domains do not need
+# them, and accepting them would let phone/account-shaped runs cross the strict
+# input boundary through an otherwise valid `.test` hostname.
+TEST_HOST_RE = re.compile(r"^(?=.{1,253}$)(?:[a-z](?:[a-z-]{0,61}[a-z])?\.)+test$")
 EMAIL_LOCAL_RE = re.compile(r"^[a-z0-9][a-z0-9._+-]{0,63}$")
 SYNTHETIC_NAME_RE = re.compile(r"^Synthetic [A-Za-z .&'-]{1,140}$")
 SYNTHETIC_ADDRESS_RE = re.compile(
@@ -130,6 +133,7 @@ CHILD_REFERENCE_FAMILIES = (
     "crm_links",
     "scout_links",
 )
+MAX_SYNTHETIC_CHILD_REFERENCE_COUNT = 999
 
 
 class InputRejected(ValueError):
@@ -189,7 +193,9 @@ def normalize_domain(value: Any) -> str:
     _require(not parsed.query and not parsed.fragment, "website query and fragment are not allowed in synthetic fixtures")
     _require(not parsed.path or bool(TEST_PATH_RE.fullmatch(parsed.path)), "website path is not synthetic-safe")
     host = str(parsed_hostname).rstrip(".")
-    return host[4:] if host.startswith("www.") else host
+    normalized_host = host[4:] if host.startswith("www.") else host
+    _require(not any(character.isdigit() for character in normalized_host), "website hostname must not contain digits")
+    return normalized_host
 
 
 def normalize_email(value: Any) -> str:
@@ -300,7 +306,12 @@ def _validate_synthetic_record(record: dict[str, Any]) -> None:
     _require(isinstance(counts, dict), f"{record_id}: child_reference_counts must be an object")
     _require(set(counts) == set(CHILD_REFERENCE_FAMILIES), f"{record_id}: child-reference family inventory is incomplete")
     for family, count in counts.items():
-        _require(isinstance(count, int) and not isinstance(count, bool) and count >= 0, f"{record_id}: invalid {family} count")
+        _require(
+            isinstance(count, int)
+            and not isinstance(count, bool)
+            and 0 <= count <= MAX_SYNTHETIC_CHILD_REFERENCE_COUNT,
+            f"{record_id}: invalid {family} count",
+        )
 
     _validate_scout_link_lineage(record, record_id)
     _require(

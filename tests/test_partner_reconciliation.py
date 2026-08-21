@@ -212,6 +212,28 @@ class PartnerReconciliationTests(unittest.TestCase):
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(missing_family)
 
+    def test_child_reference_counts_enforce_a_fixture_safe_upper_bound(self):
+        boundary = copy.deepcopy(self.dataset)
+        boundary["records"][0]["child_reference_counts"]["analytics"] = (
+            MODULE.MAX_SYNTHETIC_CHILD_REFERENCE_COUNT
+        )
+        report = MODULE.build_report(boundary)
+        boundary_manifest = next(
+            pair["reference_preservation_manifest"]["SYN-A-ONE"]
+            for pair in report["pairs"]
+            if "SYN-A-ONE" in pair["reference_preservation_manifest"]
+        )
+        self.assertEqual(
+            MODULE.MAX_SYNTHETIC_CHILD_REFERENCE_COUNT,
+            boundary_manifest["family_counts"]["analytics"],
+        )
+
+        too_large = copy.deepcopy(self.dataset)
+        too_large["records"][0]["child_reference_counts"]["analytics"] = (
+            MODULE.MAX_SYNTHETIC_CHILD_REFERENCE_COUNT + 1
+        )
+        self._assert_library_and_cli_reject_without_report(too_large)
+
     def test_scout_lineage_is_strict_counted_and_uniquely_linked(self):
         count_mismatch = copy.deepcopy(self.dataset)
         count_mismatch["records"][0]["child_reference_counts"]["scout_links"] = 2
@@ -265,6 +287,19 @@ class PartnerReconciliationTests(unittest.TestCase):
         reversed_link["updated_at"] = "2099-01-01T00:00:00Z"
         with self.assertRaises(MODULE.InputRejected):
             MODULE.build_report(reversed_times)
+
+    def test_digit_bearing_website_hosts_are_rejected_in_library_and_cli(self):
+        for website in (
+            "https://8135550101.test",
+            "https://fixture-813-555-0101.test",
+            "https://account-123456.test/menu",
+        ):
+            with self.subTest(website=website):
+                with self.assertRaises(MODULE.InputRejected):
+                    MODULE.normalize_domain(website)
+                invalid = copy.deepcopy(self.dataset)
+                invalid["records"][0]["website"] = website
+                self._assert_library_and_cli_reject_without_report(invalid)
 
     def test_pii_shaped_record_ids_are_rejected_before_report_emission(self):
         for record_id in ("SYN-8135559999", "SYN-813-555-9999"):
@@ -692,6 +727,20 @@ class PartnerReconciliationTests(unittest.TestCase):
         self.assertIn("con.confdeltype", constraint_inventory)
         self.assertIn("END AS on_update", constraint_inventory)
         self.assertIn("END AS on_delete", constraint_inventory)
+
+        dependency_inventory = sql.split("-- Relations/views", 1)[1].split("-- Trigger and function", 1)[0]
+        self.assertRegex(
+            dependency_inventory,
+            r"(?is)JOIN\s+pg_catalog\.pg_rewrite\s+AS\s+rewrite\s+"
+            r"ON\s+rewrite\.oid\s*=\s*dep\.objid\s+"
+            r"AND\s+dep\.classid\s*=\s*'pg_rewrite'\s*::\s*regclass",
+        )
+        self.assertRegex(
+            dependency_inventory,
+            r"(?is)JOIN\s+pg_catalog\.pg_class\s+AS\s+referenced\s+"
+            r"ON\s+referenced\.oid\s*=\s*dep\.refobjid\s+"
+            r"AND\s+dep\.refclassid\s*=\s*'pg_class'\s*::\s*regclass",
+        )
 
         without_comments = re.sub(r"--[^\n]*", "", sql)
         without_strings = re.sub(r"'(?:''|[^'])*'", "''", without_comments)
