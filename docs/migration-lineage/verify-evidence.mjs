@@ -166,9 +166,14 @@ console.log(JSON.stringify({
     rows: historical.length,
     distinctVersions: new Set(historical.map((row) => row.version)).size
   },
+  historicalArchive: {
+    pr69MergeCommit: '955ae8842df66fb7639b78aa5ecf54850b00d06d',
+    executionStatus: 'non-executable',
+    sqlSha256: '6b0e1a03e3bf09661d47391c84a262526690d1c54aebe8d5f0e54d487ec08284'
+  },
   manifestEntries,
   blocked: [
-    'independent live-source provenance until a new authorized capture is committed',
-    'PR #69 semantic catalog equality until sanitized live and recovered-source artifacts pass verify-pr69-catalog.mjs'
+    'independent live-ledger provenance until a new authorized capture is committed',
+    'canonical-baseline use of the archived supporter/vibe semantics until sanitized live and recovered-source artifacts pass verify-pr69-catalog.mjs'
   ]
 }, null, 2));
