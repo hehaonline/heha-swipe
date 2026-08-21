@@ -350,6 +350,10 @@ def validate_dataset(dataset: dict[str, Any]) -> list[dict[str, Any]]:
             f"{candidate_key}: invalid expected classification",
         )
         seen_expected.add(candidate_key)
+    _require(
+        seen_expected == valid_candidate_keys,
+        "expected_pairs must exactly cover every generated candidate pair",
+    )
     return ordered
 
 

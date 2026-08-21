@@ -31,6 +31,19 @@ class PartnerReconciliationTests(unittest.TestCase):
         cls.report = MODULE.build_report(cls.dataset)
         cls.by_key = {item["candidate_key"]: item for item in cls.report["pairs"]}
 
+    def _assert_library_and_cli_reject_without_report(self, dataset):
+        with self.assertRaises(MODULE.InputRejected):
+            MODULE.build_report(dataset)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "invalid-oracle.json"
+            output_path = Path(temp_dir) / "report.json"
+            input_path.write_text(json.dumps(dataset), encoding="utf-8")
+            with redirect_stderr(io.StringIO()):
+                exit_code = MODULE.main(["--input", str(input_path), "--output", str(output_path)])
+            self.assertEqual(2, exit_code)
+            self.assertFalse(output_path.exists())
+
     def test_target_pairs_match_expected_fail_closed_classes(self):
         for expected in self.dataset["expected_pairs"]:
             actual = self.by_key[expected["candidate_key"]]
@@ -328,17 +341,42 @@ class PartnerReconciliationTests(unittest.TestCase):
     def test_expected_pairs_are_an_enforced_oracle_in_library_and_cli(self):
         contradicted = copy.deepcopy(self.dataset)
         contradicted["expected_pairs"][0]["classification"] = "likely_match"
-        with self.assertRaises(MODULE.InputRejected):
-            MODULE.build_report(contradicted)
+        self._assert_library_and_cli_reject_without_report(contradicted)
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            input_path = Path(temp_dir) / "contradicted.json"
-            output_path = Path(temp_dir) / "report.json"
-            input_path.write_text(json.dumps(contradicted), encoding="utf-8")
-            with redirect_stderr(io.StringIO()):
-                exit_code = MODULE.main(["--input", str(input_path), "--output", str(output_path)])
-            self.assertEqual(2, exit_code)
-            self.assertFalse(output_path.exists())
+    def test_oracle_rejects_a_deleted_pair_in_library_and_cli(self):
+        incomplete = copy.deepcopy(self.dataset)
+        del incomplete["expected_pairs"][0]
+        self._assert_library_and_cli_reject_without_report(incomplete)
+
+    def test_oracle_rejects_an_unknown_extra_pair_in_library_and_cli(self):
+        extra = copy.deepcopy(self.dataset)
+        extra["expected_pairs"].append(
+            {
+                "candidate_key": "SYN-PAIR|13:SYN-UNKNOWN-A|13:SYN-UNKNOWN-B",
+                "classification": "insufficient_evidence",
+            }
+        )
+        self._assert_library_and_cli_reject_without_report(extra)
+
+    def test_new_record_requires_every_new_pair_expectation_in_library_and_cli(self):
+        incomplete = copy.deepcopy(self.dataset)
+        new_record = copy.deepcopy(incomplete["records"][8])
+        new_record["id"] = "SYN-F-ONE"
+        new_record["name"] = "Synthetic Future Pantry"
+        new_record["address"] = "601 Example Future Way, Tampa, FL"
+        new_record["owner_account_id"] = "SYN-OWNER-FUTURE"
+        new_record["child_reference_counts"] = {
+            family: 0 for family in MODULE.CHILD_REFERENCE_FAMILIES
+        }
+        new_record["scout_link_lineage"] = []
+        incomplete["records"].append(new_record)
+        incomplete["expected_pairs"].append(
+            {
+                "candidate_key": MODULE.candidate_key_for("SYN-D-SOURCE", "SYN-F-ONE"),
+                "classification": "non_partner_source",
+            }
+        )
+        self._assert_library_and_cli_reject_without_report(incomplete)
 
     def test_classify_pair_revalidates_records_at_the_entry_point(self):
         left = copy.deepcopy(self.dataset["records"][0])

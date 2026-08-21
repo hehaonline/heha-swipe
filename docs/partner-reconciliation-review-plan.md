@@ -131,7 +131,7 @@ These checklists intentionally contain no IDs, contacts, values, or conclusions.
 4. Generate candidate classifications and a preservation manifest.
 5. Stop. A named human either rejects, keeps separate, requests more evidence, or authorizes preparation of a distinct mutation plan.
 
-Before a report is emitted, every declared `expected_pairs` classification must equal the freshly generated classification; a disagreement rejects the complete build and the CLI creates no output. Each report also contains `generator_revision`, a SHA-256 digest of the exact reporter source file executed by the CLI, plus the canonical fixture digest in `source_sha256`. Reviewers must bind approval to both immutable digests. No output from this PR is executable approval.
+Before a report is emitted, `expected_pairs` must be a complete oracle whose key set exactly equals every pair generated from the fixture records (`n * (n - 1) / 2` entries). A missing pair, unknown extra pair, duplicate, or classification disagreement rejects the complete build and the CLI creates no output. The committed ten-record fixture therefore declares all 45 pair expectations. Each report also contains `generator_revision`, a SHA-256 digest of the exact reporter source file executed by the CLI, plus the canonical fixture digest in `source_sha256`. Reviewers must bind approval to both immutable digests. No output from this PR is executable approval.
 
 ## Future forward-only plan (not authorized here)
 
