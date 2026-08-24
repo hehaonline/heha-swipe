@@ -1,100 +1,110 @@
 # SWP-016 Migration Lineage Evidence
 
-Status: **Corrective documentation review required; executable canonical baseline remains blocked**  
+Status: **COMPATIBILITY MAPPING IN REVIEW; EXECUTABLE CANONICAL BASELINE BLOCKED**  
 Task: `SWP-016`  
-Issue: https://github.com/hehaonline/heha-swipe/issues/85  
-Reviewed historical tree anchor: merge commit `7b32ae605840e50ff1085372e988c980ab538498`
+Issue: https://github.com/hehaonline/heha-swipe/issues/85
 
-## Scope
+## Purpose
 
-This directory contains sanitized evidence and architecture decisions for repairing HEHA Swipe migration lineage.
+Preserve HEHA Swipe database history, document the current live contract without copying business data, and prepare one independently reviewed canonical baseline for new data-less environments.
 
-The evidence package and this refresh are documentation-only. They must not:
-
-- modify `supabase/migrations`;
-- add executable migration SQL;
-- alter any Production schema, configuration, data or migration ledger;
-- apply any draft migration;
-- copy customer, partner, payment or operational rows.
+This directory is evidence and planning. Unless a file is explicitly approved later as executable baseline SQL, nothing here authorizes a Supabase migration, Production change, Stripe action, entitlement, benefit, deployment, or launch.
 
 ## Evidence labels
 
 - `RP` — repository-proven
-- `LP` — live-ledger-proven through independently reproducible live access
+- `LP` — live-ledger or live-catalog metadata proven through authorized read-only access
 - `DR` — decision-record-proven
-- `I` — inferred
-- `U` — unknown / access required
+- `I` — inference, explicitly labeled
+- `U` — unknown / additional evidence required
 
-## Evidence boundary
+## Current verified state
 
-`repository-inventory.csv` is anchored to the exact repository tree at merge commit `7b32ae605840e50ff1085372e988c980ab538498` and remains a historical repository snapshot.
+1. **PR #69 merged** at `955ae8842df66fb7639b78aa5ecf54850b00d06d`.
+   - The recovered `20260614102924` supporter/vibe SQL is preserved byte-for-byte under `historical-sql/`.
+   - It is outside `supabase/migrations` and must never be manually replayed to Production.
 
-The committed `live-ledger-2026-07-19.csv` is a historical 92-row snapshot whose live provenance was originally `U`. It remains preserved rather than rewritten.
+2. **PR #131 merged** at `45b5dcbd14fb68911226792b2fca5c6cb636daca`.
+   - The historical 92-row and current 96-row ledger evidence, capture contracts, and fail-closed verification tooling are on `main`.
 
-A new authorized read-only connector session on 2026-08-19 reported the current live migration ledger. `live-ledger-2026-08-19.csv` records 96 internally consistent rows with evidence label `LP`; `live-ledger-refresh-2026-08-19.md` records the evidence boundary, counts, duplicate-name result, the earlier supporter-catalog claim and zero-Production-impact receipt. The exact query contract and offline verifier were added on 2026-08-20. Independent live provenance remains blocked until a sanitized recapture is committed and checked.
+3. **PR #132 merged** at `dc8b1709b80f5cc0fe7fae79e7e980b32b085eb8`.
+   - The sanitized top-level live-object manifest verifies 45 tables, 5 views, 39 functions, 46 triggers, 133 policies, and 6 extensions.
+   - All 45 public tables report RLS enabled; zero report FORCE RLS.
+   - This is structural evidence, not a BOLA or full-schema proof.
 
-PR #69 was squash-merged on 2026-08-21 at merge commit `955ae8842df66fb7639b78aa5ecf54850b00d06d`. It preserves the recovered supporter/vibe SQL byte-for-byte under `docs/migration-lineage/historical-sql/` as **non-executable historical evidence**. That repository preservation is `RP`. The earlier connector claim that the archived source equals the live catalog is not independently reproducible from committed normalized bytes and remains `U` for canonical-baseline use.
+4. The committed `supabase/migrations` tree contains 35 files using 31 unique versions and is corrective rather than a complete zero-build chain.
 
-Neither ledger snapshot nor the historical SQL archive is a schema dump or a complete canonical rebuild chain. Ledger presence proves recorded ordering/name metadata, not that every historical SQL body is available or safe to replay.
+5. A founder-approved ordinary Supabase branch inherited no HEHA application schema or application migration ledger.
 
-## 2026-08-19 live refresh
+6. Community Pass PR #128 passed isolated additive tests but remains separate, draft, unmerged, and blocked on lineage-faithful current-schema proof and all other launch gates.
 
-Reported live evidence established:
+7. The Production migration ledger remains untouched.
 
-- 96 migration rows and 96 distinct versions; **[LP]**
-- first version `20260531101429`; latest version `20260812220624`; **[LP]**
-- one duplicate migration name, `analytics_triggers_for_partner_counters`, at versions `20260602213920` and `20260602220224`; **[LP]**
-- four rows added after the old 92-row snapshot:
-  - `20260720132527_partner_multi_categories`;
-  - `20260720132617_partner_multi_categories_view_security_invoker`;
-  - `20260805123842_sec002_revoke_public_execute_on_trigger_functions`;
-  - `20260812220624_update_founding_neighbor_pass_preferences`; **[LP]**
-- Production has 45 public base tables; **[LP]**
-- a founder-approved disposable Supabase branch inherited zero application migration rows and zero initial application public tables; **[LP]**
-- a prior connector receipt reported that the recovered supporter/vibe SQL matched live definitions, but the normalized rows behind its digest are not committed; independent equality is **[U]** pending a new sanitized capture;
-- the approved canonical-baseline strategy remains necessary because the archived PR #69 source alone cannot reproduce the 45-table Production schema. **[DR + LP]**
+## Accepted architecture
 
-## Accepted architecture decision
+Use:
 
-Use an immutable historical evidence archive plus a clean, reviewed canonical baseline for new environments.
+1. immutable historical evidence;
+2. a reviewed current-definition manifest;
+3. a separately reviewed canonical baseline for new data-less environments;
+4. independent forward migrations after that baseline;
+5. an untouched Production ledger.
 
-Canonical implementation remains blocked until:
+Do not reconstruct history by renaming, reordering, or blindly replaying incomplete files.
 
-- the current repository and 96-row live ledger receive an updated compatibility map;
-- required live object definitions are captured and reviewed without copying business data;
-- duplicate migrations receive written compatibility decisions;
-- the canonical project and ONE HEHA identity boundary are confirmed;
-- an independent security/database review approves the executable plan;
-- a clean disposable branch builds from zero and passes schema/type/advisor/behavior/rollback proof;
-- Geronimo separately approves any future paid environment and final live action.
+## Current packet
 
-## Files
+- `live-ledger-compatibility-map-2026-08-24.csv` — disposition for all 96 live-ledger rows.
+- `repository-migration-disposition-map-2026-08-24.csv` — disposition for all 35 current executable migration files.
+- `repository-ledger-compatibility-summary-2026-08-24.md` — conclusions and evidence limits.
+- `deep-metadata-capture-plan-2026-08-24.md` — staged next-evidence plan.
+- `queries/deep-structure-manifest-capture.sql` — prepared, unexecuted, metadata-only query for the first deep-structure tranche.
+- `verify-repository-ledger-map.mjs` — fail-closed map and current-directory verifier.
+- `repository-ledger-map-manifest.sha256` — packet integrity manifest.
 
-- `repository-inventory.csv` — 35-file historical migration inventory anchored to merge commit `7b32ae605840e50ff1085372e988c980ab538498`
-- `live-ledger-2026-07-19.csv` — preserved 92-row historical snapshot; original provenance remains `U`
-- `live-ledger-2026-08-19.csv` — reported current 96-row live ledger; evidence label `LP`, with fresh independent recapture still pending
-- `live-ledger-refresh-2026-08-19.md` — read-only live refresh receipt, disposable-branch finding and corrected supporter-catalog evidence boundary
-- `historical-sql/20260614102924_add_supporter_payments_subscriptions_vibe_settings.sql` — byte-preserved, non-executable historical source merged by PR #69
-- `historical-sql/20260614102924_add_supporter_payments_subscriptions_vibe_settings.provenance.md` — source hashes, founder disposition and corrected evidence boundary
-- `queries/live-ledger-capture.sql` — exact read-only ledger query and deterministic CSV capture contract
-- `queries/pr69-supporter-catalog-capture.sql` — bounded read-only supporter/vibe catalog query and deterministic JSONL contract
-- `verify-evidence.mjs` — dependency-free offline ledger/delta/duplicate/manifest verifier; repository evidence only
-- `verify-pr69-catalog.mjs` — fail-closed two-artifact comparator for future sanitized live and recovered-source catalogs; synthetic self-test only until both artifacts exist
-- `object-dependency-map.md` — missing baseline/object families, rechecked against the historical 35-file tree
-- `duplicate-compatibility-map.md` — duplicate identifier decisions
-- `canonical-baseline-decision.md` — approved strategy and PR separation
-- `production-preflight.md` — no-go conditions and future proof plan
-- `evidence-manifest.sha256` — SHA-256 manifest for historical and current evidence files; it must be recalculated against the exact review head before merge
+## Historical and supporting evidence
 
-## Current conclusion
+- `repository-inventory.csv` — 35-file repository inventory.
+- `live-ledger-2026-07-19.csv` — preserved historical 92-row snapshot.
+- `live-ledger-2026-08-19.csv` — current 96-row ledger evidence.
+- `live-ledger-refresh-2026-08-19.md` — read-only refresh receipt.
+- `live-object-manifest-summary-2026-08-19.md` — verified top-level object summary.
+- `live-object-manifest-capture-2026-08-24.md` and part files — hash-bound sanitized catalog evidence.
+- `object-dependency-map.md` — missing baseline/object families.
+- `duplicate-compatibility-map.md` — explicit duplicate handling.
+- `canonical-baseline-decision.md` — approved strategy and PR separation.
+- `production-preflight.md` — no-go conditions and future proof plan.
 
-- The committed 2026-08-19 ledger contains 96 rows / 96 distinct versions and passes repository-consistency checks. **[RP]**
-- Its live-source provenance remains pending a fresh authorized recapture under the committed query contract. **[U]**
-- The reported live ledger begins with corrective migrations rather than a complete initial-schema baseline. **[LP + DR]**
-- The repository tree remains corrective rather than a complete rebuild history. **[RP]**
-- PR #69 is merged as non-executable historical evidence; its SQL bytes and hashes are repository-proven. **[RP]**
-- Semantic equality between that archive and the current live supporter/vibe catalog remains **UNKNOWN** until two sanitized catalog artifacts pass `verify-pr69-catalog.mjs`. **[U]**
-- The archived SQL must not be manually applied to the already-recorded Production project. **[DR + RP]**
-- A normal disposable branch did not reproduce the reported live migration ledger or application schema. **[LP]**
-- The smallest safe path remains: preserve history, capture current definitions, create a separately reviewed canonical baseline for new environments, prove it in a disposable branch, and leave Production history untouched. **[DR]**
-- This documentation refresh creates no runtime or Production authorization. **[RP]**
+## Remaining gates
+
+Before executable baseline SQL or another paid branch:
+
+1. complete and review the repository↔96-row compatibility map;
+2. capture and verify deep structural definitions;
+3. capture and review views, functions, triggers, RLS expressions, grants, and effective access;
+4. document provider-managed Storage/Auth/cron/Edge Function requirements without secrets;
+5. settle ONE HEHA identity and legacy-versus-current authority boundaries;
+6. obtain independent database/security review;
+7. source-control the exact zero-build and rollback/forward-fix procedure;
+8. provide the expected runtime and cost;
+9. obtain separate founder approval;
+10. prove the build on a data-less disposable branch and delete it immediately afterward.
+
+## Permanent no-go rules
+
+Do not:
+
+- alter Production or its migration ledger;
+- copy customer, partner, payment, order, profile, Auth, or storage rows;
+- commit secrets, tokens, credentials, Vault values, or provider payloads;
+- infer SQL equivalence from similar names;
+- put rollback or historical archive files into the future executable zero-build chain;
+- fold Community Pass PR #128 into the baseline silently;
+- create a paid environment without exact cost approval;
+- activate Stripe, billing, entitlements, HEHA Credit, partner benefits, delivery waivers, or public launch through this evidence lane.
+
+## Source-of-truth rule
+
+The HEHA Business Model 2026 slides are historical context only. Newest explicit founder decisions, current operating economics, exact technical/provider evidence, current partner terms, and current legal/accounting/insurance decisions control whenever they differ.
+
+Production impact: **NONE**.
