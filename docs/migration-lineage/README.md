@@ -63,6 +63,7 @@ Do not reconstruct history by renaming, reordering, or blindly replaying incompl
 - `queries/deep-structure-manifest-capture.sql` — prepared, unexecuted, metadata-only query for the first deep-structure tranche.
 - `verify-repository-ledger-map.mjs` — fail-closed row-semantic, bidirectional-edge, and current-directory verifier.
 - `test-repository-ledger-map-negative.mjs` — aggregate-preserving and edge-corruption controls that must be rejected even after fixture hashes are refreshed.
+- `test-private-capture-containment.mjs` — credential-free runtime controls for canonical/private parent ancestry, symlink rejection, output modes, and descriptor-pinned capture bytes.
 - `repository-ledger-map-manifest.sha256` — packet integrity manifest.
 
 ## Historical and supporting evidence
