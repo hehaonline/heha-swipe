@@ -9,6 +9,7 @@ on:
       - "docs/migration-lineage/deep-metadata-capture-plan-2026-08-24.md"
       - "docs/migration-lineage/queries/deep-structure-manifest-capture.sql"
       - "docs/migration-lineage/verify-repository-ledger-map.mjs"
+      - "docs/migration-lineage/test-repository-ledger-map-negative.mjs"
       - "docs/migration-lineage/repository-ledger-map-manifest.sha256"
       - "docs/migration-lineage/README.md"
       - "docs/migration-lineage/live-ledger-2026-08-19.csv"
@@ -32,14 +33,19 @@ jobs:
     steps:
       - name: Check out exact review ref
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Use Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "20.20.2"
 
       - name: Verify compatibility maps
         run: node docs/migration-lineage/verify-repository-ledger-map.mjs
+
+      - name: Reject aggregate-preserving semantic corruption
+        run: node docs/migration-lineage/test-repository-ledger-map-negative.mjs
 
       - name: Verify packet hashes
         run: sha256sum -c docs/migration-lineage/repository-ledger-map-manifest.sha256
@@ -55,4 +61,15 @@ jobs:
           fi
 
       - name: Verify patch whitespace
-        run: git diff --check
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --check "$PR_BASE_SHA...$PR_HEAD_SHA"
+          else
+            git diff --check HEAD^ HEAD
+          fi
