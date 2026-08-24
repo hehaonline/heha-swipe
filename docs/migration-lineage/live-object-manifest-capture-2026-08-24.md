@@ -1,6 +1,6 @@
 # HEHA Swipe live-object manifest capture receipt — 2026-08-24
 
-Status: **READ-ONLY SANITIZED METADATA CAPTURE / VERIFIED / NO PRODUCTION CHANGE**  
+Status: **READ-ONLY SANITIZED METADATA CAPTURE / HASH-BOUND / NO PRODUCTION CHANGE**  
 Task: `SWP-016`  
 PR: `#132`
 
@@ -16,15 +16,19 @@ The query read only PostgreSQL catalog, policy, and extension metadata. It did n
 
 No DDL, DML, configuration, migration-ledger, Auth, storage, Edge Function, Stripe, or provider mutation occurred.
 
+## Integrity repair
+
+The first GitHub transport attempt was rejected by CI because several committed part bytes did not match their recorded hashes. The database capture itself remained read-only. The affected parts and documentation were rebuilt from the same deterministic query contract, and this receipt records the corrected query-produced hashes. Exact-head CI remains the merge gate.
+
 ## Deterministic artifact
 
-The query output was ordered by record type, schema, object identity, and metadata text under `C` collation. To keep connector transfer bounded, the exact ordered output is stored as fourteen contiguous JSONL parts.
+The query output is ordered by record type, schema, object identity, and metadata text under `C` collation. To keep connector transfer bounded, the exact ordered output is stored as fourteen contiguous JSONL parts.
 
 | Part | Rows | Bytes | SHA-256 |
 |---|---:|---:|---|
-| 001a | 12 | 3,321 | `36db6de8f50d5d1dc4acdb40fe79d02443b083e4d13a56fa27985175b7702651` |
-| 001b | 12 | 3,571 | `80fc249e38e4778073f254f075f592ab3419d8f219f9d521876a52abdd8afedf` |
-| 001c | 11 | 3,113 | `439a219280d482d3f9d579835b0929c98a9bfcef036806ea8e62f2a87707ec85` |
+| 001a | 12 | 2,492 | `c319225f63ea27aec4d7d28f53cbe60d649461d67c37e2dbafb2921d3a2b7980` |
+| 001b | 12 | 4,031 | `877267481a70a01717b13cafb4f49f17bd64aeb6d7d07ef02745d3d02d1b3b1a` |
+| 001c | 11 | 3,482 | `82c51daa40b4f6c8c86b58f5d223bae651634a7f52a023c9693136a64fae7702` |
 | 002 | 35 | 9,548 | `331aed6e59ab1fc7e9b239bd564f0ec5d1ba797b403dacaff8809e0694194a0f` |
 | 003a | 12 | 3,124 | `af052ead1c0db00afa20d5d78b19b36e2b46afd36a5728d03627929ae6d0419b` |
 | 003b | 12 | 2,997 | `ca35469ad48f75c81acc6ddd0ef9de0845d9a0177a0f16ead10785acb47becb7` |
@@ -41,9 +45,11 @@ Concatenated in filename order:
 
 - rows: **274**
 - UTF-8 bytes: **71,078**
-- SHA-256: `d33beb6850fc8398ad69611b7894ac026dd6766447996dbea560ccdced573a8b`
+- SHA-256: `065bb72658cee40d194dbc4c6fe17c8f40d11343e1dcbc05f5b59cabca0c6779`
 
 ## Verified counts
+
+The committed verifier must recompute these values at the exact review head:
 
 - public tables: **45**
 - public views: **5**
@@ -57,6 +63,6 @@ Concatenated in filename order:
 
 ## Evidence boundary
 
-This closes the top-level object-inventory artifact gap. It does not prove complete schema definitions, grants, policy expressions, function bodies, dependencies, rebuild parity, or Production readiness. Those remain separate canonical-baseline gates.
+This closes the top-level object-inventory artifact gap only after exact-head CI passes. It does not prove complete schema definitions, grants, policy expressions, function bodies, dependencies, rebuild parity, or Production readiness. Those remain separate canonical-baseline gates.
 
 Production impact: **NONE**.

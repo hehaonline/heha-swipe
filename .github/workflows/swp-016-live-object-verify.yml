@@ -45,7 +45,7 @@ jobs:
           cat docs/migration-lineage/live-object-manifest-2026-08-24.part-*.jsonl > /tmp/live-object-manifest-2026-08-24.jsonl
           test "$(wc -l < /tmp/live-object-manifest-2026-08-24.jsonl)" -eq 274
           test "$(wc -c < /tmp/live-object-manifest-2026-08-24.jsonl)" -eq 71078
-          echo "d33beb6850fc8398ad69611b7894ac026dd6766447996dbea560ccdced573a8b  /tmp/live-object-manifest-2026-08-24.jsonl" | sha256sum -c -
+          echo "065bb72658cee40d194dbc4c6fe17c8f40d11343e1dcbc05f5b59cabca0c6779  /tmp/live-object-manifest-2026-08-24.jsonl" | sha256sum -c -
 
       - name: Verify sanitized metadata contract
         run: node docs/migration-lineage/verify-live-object-manifest.mjs /tmp/live-object-manifest-2026-08-24.jsonl

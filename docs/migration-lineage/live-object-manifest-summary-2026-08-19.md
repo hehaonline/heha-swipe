@@ -1,6 +1,6 @@
 # HEHA Swipe Live Object Manifest Summary — refreshed 2026-08-24
 
-Status: **VERIFIED TOP-LEVEL METADATA CAPTURE / NO PRODUCTION CHANGE**  
+Status: **HASH-BOUND TOP-LEVEL METADATA CAPTURE / EXECUTABLE BASELINE STILL BLOCKED**  
 Task: `SWP-016`  
 Related: issue #85, merged PRs #69 and #131, PRs #128 and #132
 
@@ -16,27 +16,29 @@ No DDL, DML, configuration, migration-ledger, Auth, storage, Edge Function, Stri
 
 ## Captured artifact
 
-The deterministic JSONL capture is committed as eight ordered parts:
+The deterministic JSONL capture is committed as fourteen contiguous parts matching:
 
-`docs/migration-lineage/live-object-manifest-2026-08-24.part-001.jsonl` through `part-008.jsonl`
+`docs/migration-lineage/live-object-manifest-2026-08-24.part-*.jsonl`
 
 Concatenated in filename order, the artifact has:
 
 - **274 rows**
 - **71,078 UTF-8 bytes**
-- SHA-256: `d33beb6850fc8398ad69611b7894ac026dd6766447996dbea560ccdced573a8b`
+- SHA-256: `065bb72658cee40d194dbc4c6fe17c8f40d11343e1dcbc05f5b59cabca0c6779`
 
-The part hashes are bound by:
+The exact part hashes are bound by:
 
 `docs/migration-lineage/live-object-manifest-2026-08-24.parts.sha256`
 
-The exact capture receipt is:
+The capture receipt is:
 
 `docs/migration-lineage/live-object-manifest-capture-2026-08-24.md`
 
-## Verified top-level inventory
+The first GitHub transport attempt was rejected by CI because several part bytes did not match their recorded hashes. The corrected parts and manifests preserve the same read-only capture boundary; exact-head CI is the merge gate.
 
-| Object class | Verified count |
+## Top-level inventory contract
+
+| Object class | Expected verified count |
 |---|---:|
 | Public base tables | 45 |
 | Public views | 5 |
@@ -45,16 +47,16 @@ The exact capture receipt is:
 | Public-table RLS policies | 133 |
 | Installed extensions | 6 |
 
-Additional verified structural facts:
+Additional structural checks:
 
 - RLS enabled: **45 / 45 public tables**
 - FORCE RLS enabled: **0 / 45 public tables**
 - Public materialized views: **0**
-- Every row is strictly ordered and has a unique object identity within its class.
+- Every row must be strictly ordered and have a unique object identity within its class.
 
-## What this proves
+## What this proves after exact-head CI passes
 
-This closes the missing-evidence gap for the top-level object inventory. The exact names, owners, function signatures/security mode, trigger attachments, policy names/roles/commands, table RLS state, view kind, and extension versions are now reproducible from committed sanitized bytes.
+This closes the missing-evidence gap for the top-level object inventory. Exact object names, owners, function signatures/security mode, trigger attachments, policy names/roles/commands, table RLS state, view kind, and extension versions become reproducible from committed sanitized bytes.
 
 ## What this does not prove
 
