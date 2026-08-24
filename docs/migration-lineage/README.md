@@ -57,6 +57,7 @@ Do not reconstruct history by renaming, reordering, or blindly replaying incompl
 
 - `live-ledger-compatibility-map-2026-08-24.csv` — disposition for all 96 live-ledger rows.
 - `repository-migration-disposition-map-2026-08-24.csv` — disposition for all 35 current executable migration files.
+- `repository-disposition-expectations-2026-08-24.csv` — independently reviewed, hash-bound repository class and full candidate-edge expectations.
 - `repository-ledger-compatibility-summary-2026-08-24.md` — conclusions and evidence limits.
 - `deep-metadata-capture-plan-2026-08-24.md` — staged next-evidence plan.
 - `queries/deep-structure-manifest-capture.sql` — prepared, unexecuted, metadata-only query for the first deep-structure tranche.
@@ -83,7 +84,7 @@ Before executable baseline SQL or another paid branch:
 
 1. resolve the current 96-row ledger's `U` live-source-provenance gate through a separately authorized exact-byte recapture;
 2. independently approve a private/no-log execution path and server-side redaction boundary before any deep metadata read;
-3. capture and verify the server-side-sanitized deep-structure inventory, including context-bound table/column comment fingerprints; raw definition and comment text remains blocked pending a separate allowlist;
+3. capture and verify the server-side-sanitized deep-structure inventory using presence/allowlisted flags only; raw definitions, comments, enum labels, sequence-owner role names, and public fingerprints remain blocked;
 4. capture and review views, functions, triggers, RLS expressions, grants, and effective access;
 5. document provider-managed Storage/Auth/cron/Edge Function requirements without secrets;
 6. settle ONE HEHA identity and legacy-versus-current authority boundaries;
