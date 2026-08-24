@@ -155,20 +155,17 @@ if [[ ! -d "$capture_dir" || -L "$capture_dir" ]] || \
    [[ "$(stat -Lc '%d:%i' "$capture_dir" 2>/dev/null || true)" != "$capture_dir_identity" ]]; then
   path_integrity=false
 fi
-for path_and_identity in \
-  "$capture_file:$capture_file_identity:3" \
-  "$error_file:$error_file_identity:4" \
-  "$receipt_file:$receipt_file_identity:5"; do
-  destination="${path_and_identity%%:*}"
-  identity_and_fd="${path_and_identity#*:}"
-  expected_identity="${identity_and_fd%:*}"
-  descriptor="${identity_and_fd##*:}"
+verify_pinned_destination() {
+  local destination="$1" expected_identity="$2" descriptor="$3"
   if [[ ! -f "$destination" || -L "$destination" ]] || \
      [[ "$(stat -Lc '%u:%a:%d:%i' "$destination" 2>/dev/null || true)" != "$operator_uid:600:$expected_identity" ]] || \
      [[ "$(stat -Lc '%d:%i' "/proc/self/fd/$descriptor")" != "$expected_identity" ]]; then
     path_integrity=false
   fi
-done
+}
+verify_pinned_destination "$capture_file" "$capture_file_identity" 3
+verify_pinned_destination "$error_file" "$error_file_identity" 4
+verify_pinned_destination "$receipt_file" "$receipt_file_identity" 5
 capture_bytes="$(stat -Lc '%s' /proc/self/fd/3)"
 capture_sha256="$(sha256sum /proc/self/fd/3 | cut -d ' ' -f1)"
 error_bytes="$(stat -Lc '%s' /proc/self/fd/4)"
