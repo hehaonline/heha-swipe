@@ -12,6 +12,7 @@ on:
       - "docs/migration-lineage/queries/deep-structure-manifest-capture.sql"
       - "docs/migration-lineage/verify-repository-ledger-map.mjs"
       - "docs/migration-lineage/test-repository-ledger-map-negative.mjs"
+      - "docs/migration-lineage/test-private-capture-containment.mjs"
       - "docs/migration-lineage/repository-ledger-map-manifest.sha256"
       - "docs/migration-lineage/README.md"
       - "docs/migration-lineage/live-ledger-2026-08-19.csv"
@@ -53,6 +54,9 @@ jobs:
 
       - name: Reject aggregate-preserving semantic corruption
         run: node docs/migration-lineage/test-repository-ledger-map-negative.mjs
+
+      - name: Verify private capture path containment
+        run: node docs/migration-lineage/test-private-capture-containment.mjs
 
       - name: Verify packet hashes
         run: sha256sum -c docs/migration-lineage/repository-ledger-map-manifest.sha256
