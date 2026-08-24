@@ -19,6 +19,8 @@ const MANIFEST = 'docs/migration-lineage/repository-ledger-map-manifest.sha256';
 const LIVE_MAP = 'docs/migration-lineage/live-ledger-compatibility-map-2026-08-24.csv';
 const REPOSITORY_MAP =
   'docs/migration-lineage/repository-migration-disposition-map-2026-08-24.csv';
+const REPOSITORY_EXPECTATIONS =
+  'docs/migration-lineage/repository-disposition-expectations-2026-08-24.csv';
 
 function fail(message) {
   throw new Error(message);
@@ -288,15 +290,15 @@ const fixtures = [
   },
   {
     name: 'missing reverse edge',
-    expected: /repository map vs reviewed expectations: key mismatch/,
+    expected: /missing reverse edge/,
     mutate(root) {
-      mutateCsv(root, REPOSITORY_MAP, (rows) => {
-        rowBy(
-          rows,
-          'repository_path',
-          'supabase/migrations/20260618000100_nina_community_events_tables.sql'
-        ).live_candidates = '';
-      });
+      const repositoryPath =
+        'supabase/migrations/20260618000100_nina_community_events_tables.sql';
+      for (const relativePath of [REPOSITORY_MAP, REPOSITORY_EXPECTATIONS]) {
+        mutateCsv(root, relativePath, (rows) => {
+          rowBy(rows, 'repository_path', repositoryPath).live_candidates = '';
+        });
+      }
     }
   }
 ];
