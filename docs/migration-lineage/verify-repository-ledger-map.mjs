@@ -130,12 +130,19 @@ const repoMap = parseCsv(
   readText('docs/migration-lineage/repository-migration-disposition-map-2026-08-24.csv'),
   'repository disposition map'
 );
+const repositoryExpectations = parseCsv(
+  readText('docs/migration-lineage/repository-disposition-expectations-2026-08-24.csv'),
+  'reviewed repository expectations'
+);
 
 if (ledger.length !== 96) fail(`live ledger: expected 96 rows, got ${ledger.length}`);
 if (new Set(ledger.map((row) => row.version)).size !== 96) fail('live ledger: versions are not unique');
 if (inventory.length !== 35) fail(`repository inventory: expected 35 rows, got ${inventory.length}`);
 if (liveMap.length !== 96) fail(`live compatibility map: expected 96 rows, got ${liveMap.length}`);
 if (repoMap.length !== 35) fail(`repository disposition map: expected 35 rows, got ${repoMap.length}`);
+if (repositoryExpectations.length !== 35) {
+  fail(`reviewed repository expectations: expected 35 rows, got ${repositoryExpectations.length}`);
+}
 
 assertExactKeys(
   liveMap,
@@ -153,6 +160,12 @@ assertExactKeys(
     return `${version}\u0000${name}\u0000${path}\u0000${row.evidence}`;
   },
   'repository map vs inventory'
+);
+assertExactKeys(
+  repoMap,
+  repositoryExpectations,
+  (row) => `${row.repository_path}\u0000${row.class}\u0000${row.live_candidates}`,
+  'repository map vs reviewed expectations'
 );
 
 const liveVersions = new Set(ledger.map((row) => row.version));
