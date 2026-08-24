@@ -49,15 +49,15 @@ The exact client byte contract, to be run only after that approval with a separa
 ```bash
 set -euo pipefail
 umask 077
-capture_parent="${TMPDIR:-/tmp}"
-if [[ ! -d "$capture_parent" || -L "$capture_parent" ]]; then
-  echo "Capture parent must be an existing non-symlink directory." >&2
+capture_parent="${TMPDIR:?Set TMPDIR to an operator-owned mode-700 directory}"
+operator_uid="$(id -u)"
+if [[ ! -d "$capture_parent" || -L "$capture_parent" || "$(stat -c '%u:%a' "$capture_parent")" != "$operator_uid:700" ]]; then
+  echo "TMPDIR must be an existing non-symlink directory owned by the operator with mode 700." >&2
   exit 1
 fi
 capture_dir="$(mktemp -d -- "$capture_parent/swp-016-private-capture.XXXXXXXX")"
 capture_file="$capture_dir/deep-structure-manifest.jsonl"
 error_file="$capture_dir/deep-structure-manifest.stderr"
-operator_uid="$(id -u)"
 if [[ -L "$capture_dir" || "$(stat -c '%u:%a' "$capture_dir")" != "$operator_uid:700" ]]; then
   echo "Fresh capture directory must be operator-owned mode 700." >&2
   exit 1
@@ -79,10 +79,17 @@ for destination in "$capture_file" "$error_file"; do
     exit 1
   fi
 done
+exec 3>"$capture_file" 4>"$error_file"
+if [[ "$(stat -Lc '%u:%a:%s' /proc/self/fd/3)" != "$operator_uid:600:0" || \
+      "$(stat -Lc '%u:%a:%s' /proc/self/fd/4)" != "$operator_uid:600:0" ]]; then
+  echo "Opened capture descriptors must reference operator-owned mode-600 regular empty files." >&2
+  exit 1
+fi
 PGCLIENTENCODING=UTF8 PGSERVICE=heha-swipe-approved-readonly \
   psql -XAtq -P footer=off -v ON_ERROR_STOP=1 \
   -f docs/migration-lineage/queries/deep-structure-manifest-capture.sql \
-  >"$capture_file" 2>"$error_file"
+  >&3 2>&4
+exec 3>&- 4>&-
 ```
 
 The connection profile must remain outside source control and command history. The resulting bytes remain private until a reviewer confirms that every row matches the server-side sanitized contract. This file does not authorize creating that profile or running the command.
