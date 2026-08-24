@@ -208,8 +208,68 @@ const fixtures = [
     }
   },
   {
+    name: 'aggregate-preserving BC/AN disposition swap',
+    expected: /repository map vs reviewed expectations: key mismatch/,
+    mutate(root) {
+      mutateCsv(root, REPOSITORY_MAP, (rows) => {
+        const bc = rowBy(
+          rows,
+          'repository_path',
+          'supabase/migrations/20260618000100_nina_community_events_tables.sql'
+        );
+        const an = rowBy(
+          rows,
+          'repository_path',
+          'supabase/migrations/20260618000200_admin_review_fixes_summary.sql'
+        );
+        [bc.class, an.class] = [an.class, bc.class];
+      });
+    }
+  },
+  {
+    name: 'aggregate-preserving BS/AS disposition swap',
+    expected: /repository map vs reviewed expectations: key mismatch/,
+    mutate(root) {
+      mutateCsv(root, REPOSITORY_MAP, (rows) => {
+        const bs = rowBy(
+          rows,
+          'repository_path',
+          'supabase/migrations/20260705000600_scout_pm_tasks.sql'
+        );
+        const as = rowBy(
+          rows,
+          'repository_path',
+          'supabase/migrations/20260705000600_scout_task_routing.sql'
+        );
+        [bs.class, as.class] = [as.class, bs.class];
+      });
+    }
+  },
+  {
+    name: 'coherent unrelated C edge rewire',
+    expected: /repository map vs reviewed expectations: key mismatch/,
+    mutate(root) {
+      const firstVersion = '20260706004220';
+      const firstKey = `${firstVersion}:public_partner_routing_views_select_only`;
+      const firstPath =
+        'supabase/migrations/20260705001300_public_routing_views_select_only.sql';
+      const secondVersion = '20260706062250';
+      const secondKey = `${secondVersion}:restrict_primary_ecosystem_cta_destinations`;
+      const secondPath = 'supabase/migrations/20260705001400_primary_ecosystem_cta_only.sql';
+
+      mutateCsv(root, LIVE_MAP, (rows) => {
+        rowBy(rows, 'live_version', firstVersion).repository_candidates = secondPath;
+        rowBy(rows, 'live_version', secondVersion).repository_candidates = firstPath;
+      });
+      mutateCsv(root, REPOSITORY_MAP, (rows) => {
+        rowBy(rows, 'repository_path', firstPath).live_candidates = secondKey;
+        rowBy(rows, 'repository_path', secondPath).live_candidates = firstKey;
+      });
+    }
+  },
+  {
     name: 'missing reverse edge',
-    expected: /missing reverse edge/,
+    expected: /repository map vs reviewed expectations: key mismatch/,
     mutate(root) {
       mutateCsv(root, REPOSITORY_MAP, (rows) => {
         rowBy(
@@ -251,7 +311,7 @@ console.log(
   JSON.stringify(
     {
       status: 'PASS',
-      boundary: 'aggregate-preserving-and-edge-corruption-negative-controls',
+      boundary: 'reviewed-expectation-and-edge-corruption-negative-controls',
       rejected_fixtures: results
     },
     null,
