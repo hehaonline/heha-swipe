@@ -8,8 +8,8 @@
 -- alter configuration, or execute DDL/DML.
 --
 -- Output: deterministic UTF-8 JSONL ordered under C collation. Raw defaults,
--- constraint/index expressions, and comments are redacted inside PostgreSQL;
--- only presence flags and context-bound fingerprints leave the database.
+-- constraint/index expressions, comments, enum labels, and role names are
+-- withheld inside PostgreSQL; only allowlisted structural flags leave it.
 --
 -- This query is still blocked until its private/no-log execution path and
 -- server-side redaction boundary receive independent approval.
@@ -40,28 +40,8 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
       end,
       'default_present', def.oid is not null,
       'default_expression_withheld', def.oid is not null,
-      'default_expression_fingerprint_md5', case
-        when def.oid is null then null
-        else pg_catalog.md5(pg_catalog.format(
-          'swp016|column-default|%s|%s|%s|%s',
-          n.nspname,
-          rel.relname,
-          att.attname,
-          pg_catalog.pg_get_expr(def.adbin, def.adrelid, true)
-        ))
-      end,
       'comment_present', pg_catalog.col_description(att.attrelid, att.attnum) is not null,
-      'comment_withheld', pg_catalog.col_description(att.attrelid, att.attnum) is not null,
-      'comment_fingerprint_md5', case
-        when pg_catalog.col_description(att.attrelid, att.attnum) is null then null
-        else pg_catalog.md5(pg_catalog.format(
-          'swp016|column-comment|%s|%s|%s|%s',
-          n.nspname,
-          rel.relname,
-          att.attname,
-          pg_catalog.col_description(att.attrelid, att.attnum)
-        ))
-      end
+      'comment_withheld', pg_catalog.col_description(att.attrelid, att.attnum) is not null
     )
   from pg_catalog.pg_attribute att
   join pg_catalog.pg_class rel on rel.oid = att.attrelid
@@ -86,16 +66,7 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
     pg_catalog.jsonb_build_object(
       'table_identity', pg_catalog.format('%I.%I', n.nspname, rel.relname),
       'comment_present', pg_catalog.obj_description(rel.oid, 'pg_class') is not null,
-      'comment_withheld', pg_catalog.obj_description(rel.oid, 'pg_class') is not null,
-      'comment_fingerprint_md5', case
-        when pg_catalog.obj_description(rel.oid, 'pg_class') is null then null
-        else pg_catalog.md5(pg_catalog.format(
-          'swp016|table-comment|%s|%s|%s',
-          n.nspname,
-          rel.relname,
-          pg_catalog.obj_description(rel.oid, 'pg_class')
-        ))
-      end
+      'comment_withheld', pg_catalog.obj_description(rel.oid, 'pg_class') is not null
     )
   from pg_catalog.pg_class rel
   join pg_catalog.pg_namespace n on n.oid = rel.relnamespace
@@ -117,14 +88,7 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
       'validated', con.convalidated,
       'no_inherit', con.connoinherit,
       'definition_present', true,
-      'definition_withheld', true,
-      'definition_fingerprint_md5', pg_catalog.md5(pg_catalog.format(
-        'swp016|constraint|%s|%s|%s|%s',
-        n.nspname,
-        rel.relname,
-        con.conname,
-        pg_catalog.pg_get_constraintdef(con.oid, true)
-      ))
+      'definition_withheld', true
     )
   from pg_catalog.pg_constraint con
   join pg_catalog.pg_class rel on rel.oid = con.conrelid
@@ -151,13 +115,7 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
       'clustered', idx.indisclustered,
       'replica_identity', idx.indisreplident,
       'definition_present', true,
-      'definition_withheld', true,
-      'definition_fingerprint_md5', pg_catalog.md5(pg_catalog.format(
-        'swp016|index|%s|%s|%s',
-        n.nspname,
-        index_rel.relname,
-        pg_catalog.pg_get_indexdef(idx.indexrelid)
-      ))
+      'definition_withheld', true
     )
   from pg_catalog.pg_index idx
   join pg_catalog.pg_class index_rel on index_rel.oid = idx.indexrelid
@@ -170,12 +128,13 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
   select
     'enum_label',
     n.nspname::text,
-    enum.enumlabel::text,
+    '[withheld]'::text,
     pg_catalog.format('%I.%I.%s', n.nspname, typ.typname, enum.enumsortorder),
     pg_catalog.jsonb_build_object(
       'type_identity', pg_catalog.format('%I.%I', n.nspname, typ.typname),
       'sort_order', enum.enumsortorder,
-      'label', enum.enumlabel
+      'label_present', true,
+      'label_withheld', true
     )
   from pg_catalog.pg_type typ
   join pg_catalog.pg_namespace n on n.oid = typ.typnamespace
@@ -198,16 +157,7 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
         else pg_catalog.format('%I.%I', coll_n.nspname, coll.collname)
       end,
       'default_present', typ.typdefault is not null,
-      'default_expression_withheld', typ.typdefault is not null,
-      'default_expression_fingerprint_md5', case
-        when typ.typdefault is null then null
-        else pg_catalog.md5(pg_catalog.format(
-          'swp016|domain-default|%s|%s|%s',
-          n.nspname,
-          typ.typname,
-          typ.typdefault
-        ))
-      end
+      'default_expression_withheld', typ.typdefault is not null
     )
   from pg_catalog.pg_type typ
   join pg_catalog.pg_namespace n on n.oid = typ.typnamespace
@@ -227,14 +177,7 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
       'domain_identity', pg_catalog.format('%I.%I', n.nspname, typ.typname),
       'validated', con.convalidated,
       'definition_present', true,
-      'definition_withheld', true,
-      'definition_fingerprint_md5', pg_catalog.md5(pg_catalog.format(
-        'swp016|domain-constraint|%s|%s|%s|%s',
-        n.nspname,
-        typ.typname,
-        con.conname,
-        pg_catalog.pg_get_constraintdef(con.oid, true)
-      ))
+      'definition_withheld', true
     )
   from pg_catalog.pg_constraint con
   join pg_catalog.pg_type typ on typ.oid = con.contypid
@@ -250,7 +193,8 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
     rel.relname::text,
     pg_catalog.format('%I.%I', n.nspname, rel.relname),
     pg_catalog.jsonb_build_object(
-      'owner', pg_catalog.pg_get_userbyid(rel.relowner),
+      'owner_present', rel.relowner <> 0,
+      'owner_withheld', true,
       'data_type', pg_catalog.format_type(seq.seqtypid, null),
       'start_value', seq.seqstart,
       'increment', seq.seqincrement,
