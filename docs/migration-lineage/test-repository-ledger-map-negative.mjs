@@ -134,7 +134,12 @@ function copyFixture(root) {
   }
 
   for (const name of readdirSync(join(SOURCE_ROOT, 'supabase/migrations'))) {
-    if (name.endsWith('.sql')) writeFileSync(join(root, 'supabase/migrations', name), '');
+    if (name.endsWith('.sql')) {
+      copyFileSync(
+        join(SOURCE_ROOT, 'supabase/migrations', name),
+        join(root, 'supabase/migrations', name)
+      );
+    }
   }
 }
 
@@ -205,6 +210,20 @@ const fixtures = [
           rows[0].repository_path
         ];
       });
+    }
+  },
+  {
+    name: 'same-path migration content swap',
+    expected: /SHA-256 mismatch/,
+    mutate(root) {
+      const firstPath =
+        'supabase/migrations/20260618000100_nina_community_events_tables.sql';
+      const secondPath =
+        'supabase/migrations/20260618000200_admin_review_fixes_summary.sql';
+      const firstBytes = readFileSync(join(root, firstPath));
+      const secondBytes = readFileSync(join(root, secondPath));
+      writeFileSync(join(root, firstPath), secondBytes);
+      writeFileSync(join(root, secondPath), firstBytes);
     }
   },
   {
