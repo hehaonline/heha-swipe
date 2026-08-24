@@ -7,10 +7,16 @@
 -- read Vault/provider payloads, inspect function bodies or policy expressions,
 -- alter configuration, or execute DDL/DML.
 --
--- Output: deterministic UTF-8 JSONL ordered under C collation.
+-- Output: deterministic UTF-8 JSONL ordered under C collation. Raw defaults,
+-- constraint/index expressions, and comments are redacted inside PostgreSQL;
+-- only presence flags and context-bound fingerprints leave the database.
 --
--- Stop before committing output if any structural expression contains a
--- credential, token, secret, private URL, personal data, or provider payload.
+-- This query is still blocked until its private/no-log execution path and
+-- server-side redaction boundary receive independent approval.
+
+begin;
+set transaction read only;
+set local search_path = pg_catalog;
 
 with target_schemas(schema_name) as (
   values ('public'::name), ('app_private'::name)
@@ -32,7 +38,30 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
         when att.attcollation = 0 then null
         else pg_catalog.format('%I.%I', coll_n.nspname, coll.collname)
       end,
-      'default_expression', pg_catalog.pg_get_expr(def.adbin, def.adrelid, true)
+      'default_present', def.oid is not null,
+      'default_expression_withheld', def.oid is not null,
+      'default_expression_fingerprint_md5', case
+        when def.oid is null then null
+        else pg_catalog.md5(pg_catalog.format(
+          'swp016|column-default|%s|%s|%s|%s',
+          n.nspname,
+          rel.relname,
+          att.attname,
+          pg_catalog.pg_get_expr(def.adbin, def.adrelid, true)
+        ))
+      end,
+      'comment_present', pg_catalog.col_description(att.attrelid, att.attnum) is not null,
+      'comment_withheld', pg_catalog.col_description(att.attrelid, att.attnum) is not null,
+      'comment_fingerprint_md5', case
+        when pg_catalog.col_description(att.attrelid, att.attnum) is null then null
+        else pg_catalog.md5(pg_catalog.format(
+          'swp016|column-comment|%s|%s|%s|%s',
+          n.nspname,
+          rel.relname,
+          att.attname,
+          pg_catalog.col_description(att.attrelid, att.attnum)
+        ))
+      end
     )
   from pg_catalog.pg_attribute att
   join pg_catalog.pg_class rel on rel.oid = att.attrelid
@@ -50,6 +79,32 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
   union all
 
   select
+    'table_comment',
+    n.nspname::text,
+    rel.relname::text,
+    pg_catalog.format('%I.%I', n.nspname, rel.relname),
+    pg_catalog.jsonb_build_object(
+      'table_identity', pg_catalog.format('%I.%I', n.nspname, rel.relname),
+      'comment_present', pg_catalog.obj_description(rel.oid, 'pg_class') is not null,
+      'comment_withheld', pg_catalog.obj_description(rel.oid, 'pg_class') is not null,
+      'comment_fingerprint_md5', case
+        when pg_catalog.obj_description(rel.oid, 'pg_class') is null then null
+        else pg_catalog.md5(pg_catalog.format(
+          'swp016|table-comment|%s|%s|%s',
+          n.nspname,
+          rel.relname,
+          pg_catalog.obj_description(rel.oid, 'pg_class')
+        ))
+      end
+    )
+  from pg_catalog.pg_class rel
+  join pg_catalog.pg_namespace n on n.oid = rel.relnamespace
+  join target_schemas target on target.schema_name = n.nspname
+  where rel.relkind in ('r', 'p')
+
+  union all
+
+  select
     'constraint',
     n.nspname::text,
     con.conname::text,
@@ -61,7 +116,15 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
       'initially_deferred', con.condeferred,
       'validated', con.convalidated,
       'no_inherit', con.connoinherit,
-      'definition', pg_catalog.pg_get_constraintdef(con.oid, true)
+      'definition_present', true,
+      'definition_withheld', true,
+      'definition_fingerprint_md5', pg_catalog.md5(pg_catalog.format(
+        'swp016|constraint|%s|%s|%s|%s',
+        n.nspname,
+        rel.relname,
+        con.conname,
+        pg_catalog.pg_get_constraintdef(con.oid, true)
+      ))
     )
   from pg_catalog.pg_constraint con
   join pg_catalog.pg_class rel on rel.oid = con.conrelid
@@ -87,7 +150,14 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
       'live', idx.indislive,
       'clustered', idx.indisclustered,
       'replica_identity', idx.indisreplident,
-      'definition', pg_catalog.pg_get_indexdef(idx.indexrelid)
+      'definition_present', true,
+      'definition_withheld', true,
+      'definition_fingerprint_md5', pg_catalog.md5(pg_catalog.format(
+        'swp016|index|%s|%s|%s',
+        n.nspname,
+        index_rel.relname,
+        pg_catalog.pg_get_indexdef(idx.indexrelid)
+      ))
     )
   from pg_catalog.pg_index idx
   join pg_catalog.pg_class index_rel on index_rel.oid = idx.indexrelid
@@ -127,7 +197,17 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
         when typ.typcollation = 0 then null
         else pg_catalog.format('%I.%I', coll_n.nspname, coll.collname)
       end,
-      'default_expression', typ.typdefault
+      'default_present', typ.typdefault is not null,
+      'default_expression_withheld', typ.typdefault is not null,
+      'default_expression_fingerprint_md5', case
+        when typ.typdefault is null then null
+        else pg_catalog.md5(pg_catalog.format(
+          'swp016|domain-default|%s|%s|%s',
+          n.nspname,
+          typ.typname,
+          typ.typdefault
+        ))
+      end
     )
   from pg_catalog.pg_type typ
   join pg_catalog.pg_namespace n on n.oid = typ.typnamespace
@@ -146,7 +226,15 @@ catalog_rows(record_type, schema_name, object_name, object_identity, metadata) a
     pg_catalog.jsonb_build_object(
       'domain_identity', pg_catalog.format('%I.%I', n.nspname, typ.typname),
       'validated', con.convalidated,
-      'definition', pg_catalog.pg_get_constraintdef(con.oid, true)
+      'definition_present', true,
+      'definition_withheld', true,
+      'definition_fingerprint_md5', pg_catalog.md5(pg_catalog.format(
+        'swp016|domain-constraint|%s|%s|%s|%s',
+        n.nspname,
+        typ.typname,
+        con.conname,
+        pg_catalog.pg_get_constraintdef(con.oid, true)
+      ))
     )
   from pg_catalog.pg_constraint con
   join pg_catalog.pg_type typ on typ.oid = con.contypid
@@ -189,3 +277,5 @@ order by
   row.schema_name collate "C",
   row.object_identity collate "C",
   row.metadata::text collate "C";
+
+commit;
