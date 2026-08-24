@@ -20,26 +20,53 @@ Target schemas:
 - `public`
 - `app_private`
 
-Captured record classes:
+Captured record classes in the first, pre-egress-safe pass:
 
-1. table columns, ordinal position, formatted type, nullability, identity/generated state, collation, and default expression;
-2. table constraints and normalized `pg_get_constraintdef` output;
-3. indexes and normalized `pg_get_indexdef` output;
-4. enum labels and order;
-5. domains, base types, nullability, and defaults;
-6. sequences and structural parameters.
+1. table columns, ordinal position, formatted type, nullability, identity/generated state, collation, and server-side context-bound fingerprints for withheld defaults and column comments;
+2. table-comment presence and a server-side context-bound fingerprint, with comment text withheld;
+3. table constraints and structural flags, with definition text withheld and fingerprinted inside PostgreSQL;
+4. indexes and structural flags, with definition text withheld and fingerprinted inside PostgreSQL;
+5. enum labels and order;
+6. domains, base types, nullability, and server-side fingerprints for withheld defaults and constraints;
+7. sequences and structural parameters.
 
-The query reads catalog metadata only. It does not select from application tables.
+The query reads catalog metadata only. It does not select from application tables. Raw defaults, constraints, index expressions, domain expressions, and table/column comment text are converted inside PostgreSQL to context-bound MD5 fingerprints before result rows are returned. MD5 is used only as a deterministic comparison fingerprint, not as password storage or proof that guessed low-entropy text is safe to disclose. Raw text remains withheld. This pass proves inventory and supports same-object fingerprint comparison; it does not claim semantic definition parity.
 
-### Stop before commit if
+### Mandatory execution containment — still not authorized
 
-- any default, constraint, or index definition contains a credential, token, secret, private URL, personal data, or provider payload;
+Before any live metadata read, an independent reviewer must approve all of the following for the named canonical environment:
+
+1. a least-privilege, read-only database role and a transaction forced to `READ ONLY`;
+2. the committed query's server-side fingerprint/redaction boundary and pinned `pg_catalog` search path;
+3. a private workstation/session that does not echo result rows to a connector, CI, chat, observability stream, or shared terminal transcript;
+4. a restricted destination directory and files readable only by the operator;
+5. a separate, reviewed rule for any later raw-definition allowlist. No raw expression or comment may leave the database until that rule exists.
+
+The exact client byte contract, to be run only after that approval with a separately configured `PGSERVICE` entry, is:
+
+```bash
+umask 077
+capture_dir="${TMPDIR:-/tmp}/swp-016-private-capture"
+mkdir -p -- "$capture_dir"
+capture_file="$capture_dir/deep-structure-manifest.jsonl"
+error_file="$capture_dir/deep-structure-manifest.stderr"
+PGSERVICE=heha-swipe-approved-readonly psql -XAtq -P footer=off -v ON_ERROR_STOP=1 \
+  -f docs/migration-lineage/queries/deep-structure-manifest-capture.sql \
+  >"$capture_file" 2>"$error_file"
+```
+
+The connection profile must remain outside source control and command history. The resulting bytes remain private until a reviewer confirms that every row matches the server-side sanitized contract. This file does not authorize creating that profile or running the command.
+
+### Stop before capture or commit if
+
+- the query can return raw default, constraint, index, domain, or comment text;
+- the database role, private/no-log path, output permissions, or server-side redaction rule is unverified;
 - an unexpected schema appears;
 - the result cannot be deterministically sorted;
 - the output is too large for bounded review;
 - current object counts conflict with the verified top-level manifest.
 
-If a stop condition occurs, preserve the raw result outside source control, redact only through a documented rule, and recapture a hash-bound sanitized artifact. Never silently edit evidence bytes.
+If a stop condition occurs, do not run the capture. If execution has already started, keep any result confined to the approved private destination, record the stop, and recapture only after the query and containment path are independently reviewed. Never silently edit evidence bytes.
 
 ## Tranche 2 — views, functions, and triggers
 
@@ -94,18 +121,20 @@ No legacy supporter row becomes Community Pass authority without a separately ap
 
 ## Review and build sequence
 
-1. source-control the exact read-only query;
-2. receive one explicit authorization for the bounded live metadata read;
-3. execute against the named canonical environment;
-4. preserve exact UTF-8/LF bytes;
-5. commit the sanitized artifact, capture receipt, and SHA-256;
-6. run a fail-closed verifier;
-7. perform database dependency, privacy, and security review;
-8. draft—but do not run—the executable canonical baseline;
-9. estimate runtime and cost for a data-less disposable branch;
-10. obtain separate founder approval;
-11. prove zero-to-current rebuild, generated types, advisors, behavior, concurrency, rollback/forward-fix, and complete cleanup;
-12. delete the branch and record actual cost.
+1. source-control the exact read-only, server-side-sanitized query;
+2. independently review the private/no-log containment path and pre-egress redaction;
+3. receive one explicit authorization for the bounded live metadata read;
+4. execute against the named canonical environment with the exact JSONL command;
+5. preserve exact UTF-8/LF bytes in the restricted destination;
+6. verify that no raw expression or comment crossed the redaction boundary;
+7. commit only the reviewed sanitized artifact, capture receipt, and SHA-256;
+8. run a fail-closed verifier;
+9. perform database dependency, privacy, and security review;
+10. draft—but do not run—the executable canonical baseline;
+11. estimate runtime and cost for a data-less disposable branch;
+12. obtain separate founder approval;
+13. prove zero-to-current rebuild, generated types, advisors, behavior, concurrency, rollback/forward-fix, and complete cleanup;
+14. delete the branch and record actual cost.
 
 ## No-go conditions
 
