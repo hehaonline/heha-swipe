@@ -5,6 +5,7 @@ on:
     paths:
       - "docs/migration-lineage/live-ledger-compatibility-map-2026-08-24.csv"
       - "docs/migration-lineage/repository-migration-disposition-map-2026-08-24.csv"
+      - "docs/migration-lineage/repository-disposition-expectations-2026-08-24.csv"
       - "docs/migration-lineage/repository-ledger-compatibility-summary-2026-08-24.md"
       - "docs/migration-lineage/deep-metadata-capture-plan-2026-08-24.md"
       - "docs/migration-lineage/queries/deep-structure-manifest-capture.sql"
