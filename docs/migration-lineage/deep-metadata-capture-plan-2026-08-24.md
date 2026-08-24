@@ -9,6 +9,8 @@ Capture enough current structural metadata to design a reproducible, data-less H
 
 This plan follows the verified top-level inventory on `main` and the repository↔live-ledger compatibility map. It does not authorize executable baseline SQL.
 
+The unavailable historical 381,741-byte capture is governed by `historical-deep-capture-custody-2026-08-24.md`. Its reported digest and zero-match scan are unverified operator reports. Those bytes are permanently excluded from publication, baseline work, CI, and AI/chat/connector reuse; if retained, they remain in encrypted private quarantine only.
+
 ## Tranche 1 — deep structure
 
 Prepared query:
@@ -45,11 +47,38 @@ Before any live metadata read, an independent reviewer must approve all of the f
 The exact client byte contract, to be run only after that approval with a separately configured `PGSERVICE` entry, is:
 
 ```bash
+set -euo pipefail
 umask 077
-capture_dir="${TMPDIR:-/tmp}/swp-016-private-capture"
-mkdir -p -- "$capture_dir"
+capture_parent="${TMPDIR:-/tmp}"
+if [[ ! -d "$capture_parent" || -L "$capture_parent" ]]; then
+  echo "Capture parent must be an existing non-symlink directory." >&2
+  exit 1
+fi
+capture_dir="$(mktemp -d -- "$capture_parent/swp-016-private-capture.XXXXXXXX")"
 capture_file="$capture_dir/deep-structure-manifest.jsonl"
 error_file="$capture_dir/deep-structure-manifest.stderr"
+operator_uid="$(id -u)"
+if [[ -L "$capture_dir" || "$(stat -c '%u:%a' "$capture_dir")" != "$operator_uid:700" ]]; then
+  echo "Fresh capture directory must be operator-owned mode 700." >&2
+  exit 1
+fi
+for destination in "$capture_file" "$error_file"; do
+  if [[ -e "$destination" || -L "$destination" ]]; then
+    echo "Refusing pre-existing or symlink destination: $destination" >&2
+    exit 1
+  fi
+done
+set -o noclobber
+: >"$capture_file"
+: >"$error_file"
+set +o noclobber
+chmod 600 -- "$capture_file" "$error_file"
+for destination in "$capture_file" "$error_file"; do
+  if [[ ! -f "$destination" || -L "$destination" || "$(stat -c '%u:%a' "$destination")" != "$operator_uid:600" ]]; then
+    echo "Capture destination must be a regular operator-owned mode-600 file." >&2
+    exit 1
+  fi
+done
 PGCLIENTENCODING=UTF8 PGSERVICE=heha-swipe-approved-readonly \
   psql -XAtq -P footer=off -v ON_ERROR_STOP=1 \
   -f docs/migration-lineage/queries/deep-structure-manifest-capture.sql \
