@@ -57,7 +57,7 @@ Do not reconstruct history by renaming, reordering, or blindly replaying incompl
 
 - `live-ledger-compatibility-map-2026-08-24.csv` — disposition for all 96 live-ledger rows.
 - `repository-migration-disposition-map-2026-08-24.csv` — disposition for all 35 current executable migration files.
-- `repository-disposition-expectations-2026-08-24.csv` — independently reviewed, hash-bound repository class and full candidate-edge expectations.
+- `repository-disposition-expectations-2026-08-24.csv` — independently reviewed, hash-bound repository class, full candidate-edge, and migration-byte SHA-256 expectations.
 - `repository-ledger-compatibility-summary-2026-08-24.md` — conclusions and evidence limits.
 - `deep-metadata-capture-plan-2026-08-24.md` — staged next-evidence plan.
 - `queries/deep-structure-manifest-capture.sql` — prepared, unexecuted, metadata-only query for the first deep-structure tranche.
@@ -71,6 +71,7 @@ Do not reconstruct history by renaming, reordering, or blindly replaying incompl
 - `live-ledger-2026-07-19.csv` — preserved historical 92-row snapshot.
 - `live-ledger-2026-08-19.csv` — current 96-row ledger evidence.
 - `live-ledger-refresh-2026-08-19.md` — read-only refresh receipt.
+- `historical-deep-capture-custody-2026-08-24.md` — operator-reported historical digest/size and non-reuse boundary; the artifact and scan/custody proof remain unavailable.
 - `live-object-manifest-summary-2026-08-19.md` — verified top-level object summary.
 - `live-object-manifest-capture-2026-08-24.md` and part files — hash-bound sanitized catalog evidence.
 - `object-dependency-map.md` — missing baseline/object families.
