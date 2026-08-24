@@ -2,6 +2,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 const ROOT = process.cwd();
 
@@ -11,6 +12,10 @@ function fail(message) {
 
 function readText(relativePath) {
   return readFileSync(join(ROOT, relativePath), 'utf8');
+}
+
+function sha256(relativePath) {
+  return createHash('sha256').update(readFileSync(join(ROOT, relativePath))).digest('hex');
 }
 
 function parseCsv(text, label) {
@@ -142,6 +147,17 @@ if (liveMap.length !== 96) fail(`live compatibility map: expected 96 rows, got $
 if (repoMap.length !== 35) fail(`repository disposition map: expected 35 rows, got ${repoMap.length}`);
 if (repositoryExpectations.length !== 35) {
   fail(`reviewed repository expectations: expected 35 rows, got ${repositoryExpectations.length}`);
+}
+for (const row of repositoryExpectations) {
+  if (!/^[0-9a-f]{64}$/.test(row.sha256)) {
+    fail(`reviewed repository expectations ${row.repository_path}: invalid SHA-256`);
+  }
+  const actual = sha256(row.repository_path);
+  if (actual !== row.sha256) {
+    fail(
+      `reviewed repository expectations ${row.repository_path}: SHA-256 mismatch; expected=${row.sha256} actual=${actual}`
+    );
+  }
 }
 
 assertExactKeys(
