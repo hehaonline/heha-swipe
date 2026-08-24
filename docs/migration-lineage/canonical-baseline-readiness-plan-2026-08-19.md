@@ -1,199 +1,115 @@
-# HEHA Swipe Canonical Baseline Readiness Plan — 2026-08-19
+# HEHA Swipe Canonical Baseline Readiness Plan — refreshed 2026-08-24
 
-Status: **DOCUMENTATION-ONLY PREPARATION / EXECUTABLE BASELINE BLOCKED**  
+Status: **DOCUMENTATION/EVIDENCE PREPARATION / EXECUTABLE BASELINE BLOCKED**  
 Task: `SWP-016`  
 Authority: issue #85 and the approved canonical-baseline decision on `main`
 
 ## Objective
 
-Prepare one reviewed, reproducible migration baseline for **new disposable and future non-Production environments** without rewriting HEHA Swipe Production history, copying business data, or treating incomplete historical scripts as safe merely because they exist.
+Create one reviewed, reproducible baseline for new data-less HEHA Swipe environments without rewriting Production history or copying business data. The baseline must let HEHA build a clean environment from zero, then apply separately approved forward migrations such as Community Pass Package A without collisions.
 
-The baseline exists to answer one practical question:
+## Current verified state
 
-> Can a clean, data-less HEHA Swipe environment be built from zero into the reviewed current application contract, after which approved forward migrations such as Community Pass Package A can be applied and proven without collisions?
+1. PR #69 is merged: the recovered supporter/vibe SQL is preserved as non-executable historical evidence.
+2. PR #131 is merged: the 92-row and reported 96-row migration-ledger evidence, capture contracts, and repository verifier are on `main`.
+3. PR #132 now contains a sanitized, deterministic top-level live-object artifact verified against:
+   - 45 public tables;
+   - 5 public views;
+   - 39 public functions;
+   - 46 non-internal triggers;
+   - 133 public-table RLS policies;
+   - 6 installed extensions;
+   - 45 RLS-enabled tables, zero FORCE-RLS tables, and zero public materialized views.
+4. Production has 45 public application tables, while an ordinary disposable Supabase branch inherited no application schema or application migration ledger.
+5. Community Pass PR #128 passed its isolated additive contract tests, but still lacks a lineage-faithful current-schema rebuild and remains unmerged and unapplied.
+6. The Production migration ledger remains untouched.
 
-## Current evidence
+## Remaining deliverables before executable baseline SQL
 
-1. Prior read-only receipts report **96 migration versions** and **45 public base tables**; repository consistency is reproducible, but independent live provenance remains blocked on committed sanitized capture artifacts.
-2. The repository migration tree is corrective rather than a complete zero-build history.
-3. A founder-approved ordinary Supabase branch inherited **zero application migration rows** and **zero initial application public tables**.
-4. Community Pass Package A passed as an isolated additive contract on managed Supabase, but not against a lineage-faithful 45-table clone.
-5. PR #69 contains a source-restoration candidate, but its claimed semantic match to the live supporter/vibe object family is **UNKNOWN** until normalized sanitized catalog bytes and an offline comparison are committed.
-6. PR #131 preserves the reported live-ledger evidence and now carries exact read-only capture contracts plus a repository-only verifier; live provenance remains a separate gate.
-7. The approved architecture direction is immutable history + reviewed canonical baseline + untouched Production ledger.
+### D1 — Repository-to-ledger compatibility map
 
-## Required deliverables before executable SQL
+For each current repository migration and each of the 96 recorded live versions, record the source/evidence state, object cohort, replay risk, and treatment:
 
-### D1 — Current repository inventory
+- `recovered`;
+- `baseline-required`;
+- `provider-managed`;
+- `superseded/archive-only`;
+- `unresolved`.
 
-Refresh the repository inventory against exact `main` and record:
+Unknown historical SQL stays explicitly unknown.
 
-- file path and timestamp;
-- object families touched;
-- prerequisites;
-- whether the file is historical, corrective, forward-only, rollback-only, duplicate-timestamp, or missing from the live ledger;
-- whether the SQL body is proven to match a live object family;
-- replay risk and required treatment.
+### D2 — Deep sanitized schema manifest
 
-### D2 — Live-ledger compatibility map
+Capture metadata only, in separately reviewable chunks:
 
-For each of the 96 live versions, record:
+- table columns, data types, defaults, generated/identity behavior, comments;
+- primary, foreign, unique, exclusion, and check constraints;
+- complete index definitions, predicates, and expressions;
+- application-required types, sequences, schemas, and extensions;
+- view definitions, options, dependencies, owners, and grants;
+- function body hashes, owners, security mode, search paths, ACLs, and dependencies;
+- trigger definitions, ordering, and enabled state;
+- RLS policy expressions plus table/schema/function grants;
+- required storage, cron, and provider configuration receipts.
 
-- version and name;
-- exact repository source if known;
-- semantic source match if proven;
-- live objects attributable to the cohort;
-- state: `recovered`, `baseline-required`, `provider-managed`, `superseded/archive-only`, or `unresolved`;
-- required action.
+Never capture business rows, Auth rows, storage objects, Vault values, tokens, webhook payloads, or secrets.
 
-Unknown SQL stays unknown. Do not infer equivalence from similar names.
-
-### D3 — Sanitized live object manifest
-
-Capture metadata only:
-
-- schemas and extensions;
-- tables, columns, defaults, generated/identity behavior and comments;
-- constraints and indexes;
-- sequences/types where application-required;
-- views/materialized views and options;
-- functions and procedures, with normalized body hashes;
-- triggers and ordering;
-- RLS enable/force state, policies and grants;
-- storage buckets/policies, cron jobs and provider configuration required for application behavior;
-- object owners and dependencies.
-
-Never capture row contents, secrets, Vault values, Auth tokens, webhook payloads or storage objects.
-
-### D4 — Baseline object-order plan
-
-Order the future baseline by dependency:
-
-1. application-required extensions and schemas;
-2. types/domains/sequences;
-3. identity/profile foundation and role helpers;
-4. partner/catalog tables;
-5. order/customer-activity tables;
-6. community/event/admin/Scout tables;
-7. legacy supporter/contribution compatibility objects;
-8. constraints and indexes;
-9. functions and trigger helpers;
-10. triggers;
-11. RLS policies and grants;
-12. views/public projections;
-13. provider configuration receipts.
-
-The exact order must be generated from dependencies, not from this illustrative list alone.
-
-### D5 — Legacy-to-current authority map
+### D3 — Authority and identity map
 
 Explicitly separate:
 
-- legacy `supporter_*` records and profile subscription cache;
-- the new Community Pass canonical account/subscription/purchase/entitlement/event authority in PR #128;
-- public/owner/internal partner states;
-- HEHA Swipe identity versus future HEHA Local benefit verification.
+- legacy `supporter_*` records and profile caches;
+- new Community Pass accounts, subscriptions, purchases, entitlements, acceptances, events, and provider inbox;
+- partner listing/claim/partnership/contract/publication states;
+- canonical ONE HEHA identity and the future Swipe-to-Local benefit check.
 
-The baseline may reproduce legacy objects for compatibility, but it must not silently make legacy supporter tables the new Community Pass authority or migrate historical customers without a separate approved mapping.
+No legacy record becomes Community Pass authority without a separate approved migration and customer-protection plan.
 
-### D6 — Security review packet
+### D4 — Security review packet
 
-For every exposed surface, prove:
+Prove least privilege, RLS/BOLA behavior, SECURITY DEFINER caller binding, public-view minimization, deletion/redaction/retention, and no secret or PII leakage for every exposed surface.
 
-- least-privilege schema/table/function grants;
-- RLS and BOLA behavior for `anon`, `authenticated`, owner, internal roles, service role, Auth admin and database owner;
-- SECURITY DEFINER caller binding and pinned search path;
-- public view column/row minimization;
-- deletion/redaction/retention behavior;
-- no secret or PII leakage through definitions, errors or evidence.
+### D5 — Clean-build proof
 
-### D7 — Clean-build proof specification
+Before any new paid branch:
 
-Before another paid branch, source-control the exact procedure:
+1. source-control the exact baseline and proof plan;
+2. provide the expected runtime and cost;
+3. obtain explicit founder approval;
+4. create a data-less disposable environment;
+5. apply the baseline and approved repeatability strategy;
+6. generate TypeScript types and compare the schema to the reviewed manifest;
+7. run security/performance advisors and behavioral/concurrency tests;
+8. apply approved forward migrations in order;
+9. verify zero synthetic rows/users remain;
+10. delete the branch and record actual cost.
 
-1. create data-less disposable environment;
-2. record provider/project/version metadata;
-3. apply the reviewed canonical baseline once;
-4. apply it again or run its approved repeatability strategy;
-5. generate TypeScript types;
-6. run schema diff against the reviewed manifest;
-7. run security and performance advisors;
-8. run structural and behavioral proofs;
-9. apply approved dependent forward migrations in order;
-10. rerun types, advisors, behavior, concurrency and rollback/forward-fix proofs;
-11. verify zero synthetic rows/users remain;
-12. destroy the branch and record actual cost.
+## PR separation
 
-### D8 — Production preflight
+- **Merged PR #69:** historical supporter/vibe source archive only.
+- **Merged PR #131:** ledger evidence and verification tooling.
+- **PR #132:** top-level object evidence and canonical-baseline readiness plan; no executable baseline.
+- **Future executable baseline PR:** not authorized until the remaining evidence and security review pass.
+- **PR #128 and other product migrations:** separate forward changes, not silently folded into the baseline.
 
-Production remains untouched until a later release package proves:
+## Current next action after PR #132
 
-- exact baseline is for new environments only;
-- Production ledger receives no rewrite or repair;
-- forward migrations are additive/corrective and individually reviewed;
-- backup, rollback/forward-fix and monitoring are ready;
-- final founder approval names exact SHAs and actions.
-
-## Proposed PR separation
-
-### PR C — live-ledger refresh
-
-Current draft PR #131. Documentation/evidence only.
-
-### PR D — live-object manifest and baseline design
-
-This documentation-only lane. It may contain sanitized manifests, compatibility maps, dependency plans, proof specifications and checksums. It must not contain executable canonical baseline SQL.
-
-### PR B — executable canonical baseline
-
-Not authorized yet. It may open only after PR C/PR D receive exact-head independent database/security approval and all required metadata is complete.
-
-### Dependent forward PRs
-
-Community Pass PR #128 and other partner/claim/publication migrations remain separate, review-only forward changes. They may be tested after the baseline but are not folded into it without an explicit compatibility decision.
-
-## Review gates
-
-PR D must receive:
-
-1. evidence-integrity review;
-2. database dependency review;
-3. RLS/ACL/security review;
-4. privacy/data-minimization review;
-5. confirmation that no executable or Production action is hidden in the evidence lane.
-
-The author/controller cannot self-certify independence.
+Complete the repository-to-ledger compatibility map and define the next deep-metadata capture packet. Do not open executable baseline SQL or request another paid branch until that packet is source-controlled and reviewed.
 
 ## Stop conditions
 
-Stop and escalate if:
-
-- a required live object cannot be represented without copying business data;
-- live definitions conflict materially with repository/public behavior;
-- the canonical identity/project boundary changes;
-- a provider-managed object cannot be reproduced safely;
-- the baseline would require rewriting Production history;
-- security review finds a P0/P1 access-control defect that changes the baseline contract;
-- another paid environment is needed before an exact runtime/cost estimate and Geronimo approval.
-
-## Immediate no-cost next actions
-
-1. Independently review PRs #128, #131 and #69 at their exact heads.
-2. Run the committed top-level object query only in a separately authorized read-only session, commit its sanitized JSONL bytes and verify the six reported counts/RLS totals offline.
-3. Capture columns/constraints/indexes, then views/functions/triggers/policies/grants, in separately reviewed sanitized chunks with normalized definitions and hashes.
-4. Refresh repository↔96-row compatibility mapping.
-5. Prepare a complete PR D evidence manifest and request independent review.
-6. Only then prepare the exact executable PR B file plan and paid-branch estimate.
+Stop and escalate if the work would require business data, secrets, a Production ledger rewrite, a changed canonical identity/project boundary, an unreviewed provider dependency, or a P0/P1 access-control change.
 
 ## Explicitly not authorized
 
-- executable baseline SQL;
-- merge of PR #128, #131 or #69;
+- executable baseline or Production migration;
 - Production DDL/DML/configuration/ledger changes;
-- live Stripe or customer billing;
-- partner/customer data copy;
-- Package B Checkout/provider-event work;
+- business-data copy;
+- live Stripe products, Checkout, subscriptions, charges, refunds, or billing;
+- Community Pass entitlement or benefit activation;
 - HEHA Local benefit activation;
-- another paid Supabase branch.
+- another paid Supabase branch without a separate cost estimate and founder approval.
+
+The HEHA Business Model 2026 slides are historical context, not current operating authority.
 
 Production impact: **NONE**.

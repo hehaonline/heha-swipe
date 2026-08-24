@@ -1,4 +1,4 @@
-ff2fe256bae2a775f65d0fcf3ccbdc71c6f1445d17775b56920ca61322ec4f89  docs/migration-lineage/live-object-manifest-summary-2026-08-19.md
-04ce321e4a59f0a0c2fc4cb20d6b84bbe7e6a057c59c1a470d8bb79d2cdfdc72  docs/migration-lineage/canonical-baseline-readiness-plan-2026-08-19.md
+2ac7f2445497f752dc2a487f770a380794e3ad7cbbdd6cc06ba62d63ae8db02f  docs/migration-lineage/live-object-manifest-summary-2026-08-19.md
+3cecc43a92b678490730b520116366ca30d5e71a55100fe739be4a88ca76a51a  docs/migration-lineage/canonical-baseline-readiness-plan-2026-08-19.md
 bb2263fd49fab32c246a4601724adaded69b02526bd92f19f799eaab03a9c6b8  docs/migration-lineage/queries/live-object-manifest-capture.sql
 3c2ef98ce01d118a66d5822d39f72b6f512aea1101c20bd701d1cf369b322998  docs/migration-lineage/verify-live-object-manifest.mjs

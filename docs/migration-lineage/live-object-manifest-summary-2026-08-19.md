@@ -1,258 +1,78 @@
-# HEHA Swipe Live Object Manifest Summary — 2026-08-19
+# HEHA Swipe Live Object Manifest Summary — refreshed 2026-08-24
 
-Status: **REPORTED READ-ONLY METADATA / INDEPENDENT ARTIFACT MISSING**
+Status: **VERIFIED TOP-LEVEL METADATA CAPTURE / NO PRODUCTION CHANGE**  
 Task: `SWP-016`  
-Related: issue #85, PR #69, PR #128, PR #131
+Related: issue #85, merged PRs #69 and #131, PRs #128 and #132
 
 ## Evidence boundary
 
-A prior authorized read-only Supabase connector session reported results from `pg_catalog`, `information_schema`, `pg_policies`, and extension metadata for the canonical HEHA Swipe Production project at approximately `2026-08-19 23:14 UTC`.
+On 2026-08-24, an authorized read-only query was executed against the canonical HEHA Swipe Supabase project using the committed contract:
 
-The query did **not** read customer, partner, payment, profile, order, waitlist, contact, message, review, save, or other business rows. It did not read secrets, raw webhook payloads, Auth tokens, storage objects, or provider credentials.
+`docs/migration-lineage/queries/live-object-manifest-capture.sql`
 
-No DDL, DML, configuration, function, policy, grant, migration-ledger, Auth, storage, cron, Edge Function, or provider mutation was reported.
+The query read only `pg_catalog`, `pg_policies`, and extension metadata. It did not read customer, partner, payment, profile, order, waitlist, Auth, storage, Vault, provider, message, review, save, or other business rows. It did not read function bodies, policy expressions, ACLs, secrets, credentials, tokens, webhook payloads, or storage objects.
 
-The normalized catalog rows and exact query used by that session were not committed. The claims below therefore remain a **reported checkpoint**, not independently reproducible live evidence. This file is not a schema dump, an executable baseline, or proof that a fresh environment reproduces Production behavior.
+No DDL, DML, configuration, migration-ledger, Auth, storage, Edge Function, Stripe, or provider mutation occurred.
 
-## Reported top-level inventory
+## Captured artifact
 
-| Object class | Reported count | Notes |
-|---|---:|---|
-| Public base tables | 45 | All 45 report RLS enabled; none report `FORCE ROW LEVEL SECURITY` |
-| Public views/materialized views | 5 | All five are ordinary views; no public materialized view was returned |
-| Public functions | 39 | Mix of invoker and SECURITY DEFINER functions; exact bodies/ACLs remain a later capture |
-| Non-internal triggers on public tables | 46 | Spread across operational, partner, Scout, supporter, profile, order, and messaging tables |
-| Public RLS policies | 133 | Policy expressions and table grants require separate exact capture/review |
-| Installed extensions | 6 | Includes Supabase-managed and application-used extensions |
+The deterministic JSONL capture is committed as eight ordered parts:
 
-## Reproducibility tooling — 2026-08-20
+`docs/migration-lineage/live-object-manifest-2026-08-24.part-001.jsonl` through `part-008.jsonl`
 
-This branch now commits two no-live-data tools:
+Concatenated in filename order, the artifact has:
 
-- `queries/live-object-manifest-capture.sql` fixes the bounded, read-only catalog query and deterministic JSONL serialization for the six object classes below. It deliberately excludes function bodies, policy expressions, ACLs, business/Auth/storage rows, Vault values and provider/configuration secrets.
-- `verify-live-object-manifest.mjs` validates the allowed sanitized row schema, strict ordering and unique identities, then recomputes the six claimed counts, 45/45 RLS, 0/45 FORCE RLS and zero materialized-view totals. Its `--self-test` is synthetic only.
-- `live-object-tooling-manifest.sha256` binds the summary, readiness plan, query contract and verifier bytes; it intentionally has no live-artifact entry.
+- **274 rows**
+- **71,078 UTF-8 bytes**
+- SHA-256: `d33beb6850fc8398ad69611b7894ac026dd6766447996dbea560ccdced573a8b`
 
-No sanitized live artifact was generated or inferred for this repair. A normal verifier run fails closed unless an artifact path is supplied. The six reported counts and listed names therefore remain **UNKNOWN for independent evidence** until a separately authorized capture is committed, hashed and reviewed.
+The part hashes are bound by:
 
-## Public base tables — 45
+`docs/migration-lineage/live-object-manifest-2026-08-24.parts.sha256`
 
-```text
-account_deletion_requests
-admin_actions
-admin_approval_requests
-admin_audit_logs
-admin_certification_reviews
-admin_content_requests
-admin_deal_requests
-admin_hubspot_links
-admin_missing_items
-admin_partner_readiness
-admin_platform_visibility
-admin_pm_tasks
-admin_weekly_reports
-community_offer_redemptions
-community_offers_public
-community_outreach
-contributions
-customer_profiles
-discount_interest_requests
-event_applications
-event_concepts
-event_recaps
-featured_items
-founding_business_recommendations
-founding_neighbor_waitlist
-in_app_messages
-invite_list
-notifications
-order_items
-orders
-partner_media_requests
-partner_photos
-partner_profile_change_requests
-partner_services
-partners
-profiles
-reviews
-saves
-scout_contacts
-scout_leads
-supporter_payments
-supporter_subscriptions
-swipe_events
-user_roles
-vibe_settings
-```
+The exact capture receipt is:
 
-### Reported RLS checkpoint
+`docs/migration-lineage/live-object-manifest-capture-2026-08-24.md`
 
-- RLS enabled: **45 / 45 tables**
-- FORCE RLS enabled: **0 / 45 tables**
-- All listed table owners: `postgres`
+## Verified top-level inventory
 
-This is a structural fact, not a vulnerability verdict. The canonical baseline must preserve intentional owner/service behavior, exact grants, policies, and SECURITY DEFINER boundaries. Whether any table should use FORCE RLS is a separate security decision and must not be changed silently during baseline reconstruction.
+| Object class | Verified count |
+|---|---:|
+| Public base tables | 45 |
+| Public views | 5 |
+| Public functions | 39 |
+| Non-internal triggers on public tables | 46 |
+| Public-table RLS policies | 133 |
+| Installed extensions | 6 |
 
-## Public views — 5
+Additional verified structural facts:
 
-```text
-admin_hubspot_sync_queue_view
-heha_pricing
-public_local_partners
-public_partner_directory
-public_swipe_partners
-```
+- RLS enabled: **45 / 45 public tables**
+- FORCE RLS enabled: **0 / 45 public tables**
+- Public materialized views: **0**
+- Every row is strictly ordered and has a unique object identity within its class.
 
-The next evidence layer must capture each view definition, `security_invoker`/`security_barrier` options, owner, dependencies, and role grants. Existing launch audits already treat `heha_pricing` and the public partner projections as review-sensitive surfaces; this summary does not resolve those gates.
+## What this proves
 
-## Public functions — 39
+This closes the missing-evidence gap for the top-level object inventory. The exact names, owners, function signatures/security mode, trigger attachments, policy names/roles/commands, table RLS state, view kind, and extension versions are now reproducible from committed sanitized bytes.
 
-```text
-admin_touch_updated_at()
-apply_partner_routing_suggestions()
-approve_partner(p_partner_id uuid)
-claim_hubspot_sync_queue(p_limit integer)
-cleanup_test_hubspot()
-cleanup_test_readiness()
-confirm_community_offer_code(p_partner_id uuid, p_code text)
-confirm_community_offer_outcome(p_redemption_id uuid, p_outcome text, p_problem_note text)
-delete_event_application_by_id(p_id uuid)
-delete_partner_by_id(p_id uuid)
-ensure_scout_event_artifact(p_lead_id uuid)
-ensure_scout_pm_task(p_lead_id uuid)
-get_my_active_supporter_entitlement()
-guard_profile_entitlement_fields()
-handle_new_user()
-heha_set_updated_at()
-increment_partner_swipe_stats()
-issue_community_offer_redemption(p_deal_id uuid)
-notify_make_new_user()
-notify_make_partner_approved()
-notify_partner_registration_saved()
-partner_cta_label_for_lane(p_lane text)
-partner_cta_path_for_lane(p_lane text, p_partner_id uuid)
-record_swipe(p_partner_id uuid, p_direction text, p_session_id text)
-release_hubspot_sync_queue(p_limit integer)
-requeue_hubspot_for_scout_contact()
-requeue_hubspot_for_scout_lead()
-reset_partner_routing_suggestion(p_partner_id uuid)
-review_partner_routing(p_partner_id uuid, p_heha_pillar text, p_website_eligible boolean, p_swipe_eligible boolean, p_local_eligible boolean, p_local_lane text, p_primary_cta_destination text, p_primary_cta_label text, p_primary_cta_path text, p_routing_notes text, p_finalize boolean)
-rls_auto_enable()
-scout_pm_task_wrapper()
-scout_touch_updated_at()
-suggest_partner_local_lane(p_category text, p_business_type text, p_product_price_policy text, p_service_fee_type text, p_delivery_days text[])
-suggest_partner_pillar(p_category text, p_business_type text)
-sync_partner_platform_visibility()
-sync_partner_save_stats()
-sync_scout_partner_artifacts()
-sync_scout_swipe_card_fields()
-update_updated_at()
-```
+## What this does not prove
 
-The prior metadata receipt reported both invoker and SECURITY DEFINER functions. A later exact manifest must record function body hash, language, volatility, owner, `proconfig`/search path, EXECUTE ACL, dependencies, and intended caller role. This summary does not approve any existing function boundary.
+This is not a complete schema dump, executable baseline, security approval, or current-schema rebuild PASS. A canonical baseline still requires separately reviewed evidence for:
 
-## Trigger coverage
+1. table columns, defaults, generated/identity behavior, comments, constraints, and indexes;
+2. view definitions, options, dependencies, and grants;
+3. function bodies or normalized body hashes, search paths, ACLs, and dependencies;
+4. trigger definitions and ordering;
+5. complete RLS `USING` / `WITH CHECK` expressions and table/schema/function grants;
+6. required non-public schemas, types, sequences, storage configuration, cron jobs, and provider-managed settings;
+7. repository-to-live-ledger compatibility mapping;
+8. clean data-less rebuild, generated types, advisors, behavior tests, rollback/forward-fix evidence, and branch deletion.
 
-The 46 non-internal triggers are attached to these public tables:
+## Authority boundary
 
-```text
-admin_approval_requests
-admin_certification_reviews
-admin_content_requests
-admin_deal_requests
-admin_hubspot_links
-admin_missing_items
-admin_partner_readiness
-admin_platform_visibility
-admin_pm_tasks
-admin_weekly_reports
-community_offer_redemptions
-community_outreach
-event_applications
-event_concepts
-event_recaps
-invite_list
-orders
-partner_media_requests
-partner_profile_change_requests
-partners
-profiles
-saves
-scout_contacts
-scout_leads
-supporter_payments
-supporter_subscriptions
-swipe_events
-user_roles
-vibe_settings
-```
+The HEHA Business Model 2026 slides remain historical context only. Current founder decisions, current runtime/provider evidence, current economics, current partner terms, and current legal/accounting/insurance decisions control whenever they differ.
 
-The canonical manifest must preserve trigger order, timing, event, function dependency, enabled state, and any interactions between owner guards, routing, public projections, webhooks, counters, queueing, and entitlement protection.
-
-## RLS policies — 133
-
-The prior connector receipt reported 133 public-table RLS policies. The set includes:
-
-- public/anonymous insert or read paths for founding waitlists and selected public content;
-- customer-owned profile, notification, message, order, review, save, and swipe paths;
-- partner-owner self-service paths;
-- internal/admin/SOM/Scout paths on operational tables;
-- supporter payment/subscription self-read paths;
-- community-offer issue/confirmation/read paths.
-
-Names and command/role metadata were reported in an uncommitted connector receipt, but are not independently available in this branch. The next exact evidence file must include `USING`, `WITH CHECK`, role arrays, permissive/restrictive mode, and matching table grants. Policy names or role labels alone are not sufficient to prove BOLA resistance.
-
-## Installed extensions — 6
-
-| Extension | Version | Schema |
-|---|---|---|
-| `pg_net` | `0.20.3` | `public` |
-| `pg_stat_statements` | `1.11` | `extensions` |
-| `pgcrypto` | `1.3` | `extensions` |
-| `plpgsql` | `1.0` | `pg_catalog` |
-| `supabase_vault` | `0.3.1` | `vault` |
-| `uuid-ossp` | `1.1` | `extensions` |
-
-The canonical baseline must distinguish provider-managed extensions from application-required extensions and must not embed secrets or Vault contents in source control.
-
-## Domain grouping for baseline planning
-
-The 45 public tables can be grouped for dependency review as follows:
-
-1. **Identity and account lifecycle** — `profiles`, `customer_profiles`, `user_roles`, `account_deletion_requests`, `vibe_settings`.
-2. **Partner/catalog/publication** — `partners`, `partner_services`, `partner_photos`, `partner_media_requests`, `partner_profile_change_requests`, `featured_items`, public partner views.
-3. **Orders and customer activity** — `orders`, `order_items`, `reviews`, `saves`, `swipe_events`, notifications/messages.
-4. **Community and founding programs** — founding waitlists/recommendations, community offers/redemptions/outreach, events, invite list.
-5. **Admin and operations** — admin request/review/readiness/visibility/task/report/audit tables and HubSpot links/queue view.
-6. **Scout and partner acquisition** — `scout_leads`, `scout_contacts`, routing/sync functions and triggers.
-7. **Legacy supporter/payment authority** — `supporter_payments`, `supporter_subscriptions`, profile entitlement cache/guard, contributions.
-
-The new Community Pass Package A objects are not present in Production and therefore are not part of this 45-table checkpoint. They remain additive draft objects in PR #128.
-
-## What remains to capture before an executable canonical baseline
-
-1. Table columns, data types, generated/identity/default expressions, nullability and comments.
-2. Primary, foreign, unique, exclusion and check constraints with ordered columns and actions.
-3. Complete index definitions, predicates, expressions and ownership.
-4. View definitions, options, dependencies and grants.
-5. Function bodies/hashes, owners, security mode, search paths, ACLs and dependencies.
-6. Trigger definitions, ordering and enabled state.
-7. Complete RLS policy expressions plus table/schema/function grants.
-8. Required non-public schemas, types, sequences, storage configuration, cron jobs and provider-managed settings.
-9. A repository↔96-row-live-ledger compatibility map and explicit treatment of unknown historical SQL.
-10. Independent database/security review before any executable baseline file exists.
-
-## No-go conditions
-
-Do not use this summary to:
-
-- create or approve executable baseline SQL;
-- modify the Production ledger;
-- claim full schema parity;
-- copy business data into a fixture or branch;
-- merge PR #128 or begin Package B;
-- alter existing RLS, grants, functions, views, triggers, Auth, storage, cron, or provider settings;
-- create another paid branch without a separate cost estimate and Geronimo approval.
-- claim that the reported counts, names, RLS totals or extension versions are independently verified before the sanitized JSONL artifact is committed and hashed.
+Community Pass PR #128 remains a separate additive draft. This evidence does not authorize its merge, Supabase application, Stripe Checkout, billing, entitlements, benefits, HEHA Credit, delivery waivers, or public launch.
 
 Production impact: **NONE**.

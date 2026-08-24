@@ -1,0 +1,57 @@
+name: SWP-016 Live Object Manifest Verification
+
+on:
+  pull_request:
+    paths:
+      - "docs/migration-lineage/live-object-manifest-2026-08-24.part-*.jsonl"
+      - "docs/migration-lineage/live-object-manifest-2026-08-24.parts.sha256"
+      - "docs/migration-lineage/live-object-manifest-capture-2026-08-24.md"
+      - "docs/migration-lineage/live-object-manifest-summary-2026-08-19.md"
+      - "docs/migration-lineage/canonical-baseline-readiness-plan-2026-08-19.md"
+      - "docs/migration-lineage/live-object-tooling-manifest.sha256"
+      - "docs/migration-lineage/queries/live-object-manifest-capture.sql"
+      - "docs/migration-lineage/verify-live-object-manifest.mjs"
+      - ".github/workflows/swp-016-live-object-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: swp-016-live-object-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out exact review ref
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify part hashes
+        run: sha256sum -c docs/migration-lineage/live-object-manifest-2026-08-24.parts.sha256
+
+      - name: Rebuild exact artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat docs/migration-lineage/live-object-manifest-2026-08-24.part-*.jsonl > /tmp/live-object-manifest-2026-08-24.jsonl
+          test "$(wc -l < /tmp/live-object-manifest-2026-08-24.jsonl)" -eq 274
+          test "$(wc -c < /tmp/live-object-manifest-2026-08-24.jsonl)" -eq 71078
+          echo "d33beb6850fc8398ad69611b7894ac026dd6766447996dbea560ccdced573a8b  /tmp/live-object-manifest-2026-08-24.jsonl" | sha256sum -c -
+
+      - name: Verify sanitized metadata contract
+        run: node docs/migration-lineage/verify-live-object-manifest.mjs /tmp/live-object-manifest-2026-08-24.jsonl
+
+      - name: Verify tooling hashes
+        run: sha256sum -c docs/migration-lineage/live-object-tooling-manifest.sha256
+
+      - name: Verify patch whitespace
+        run: git diff --check
