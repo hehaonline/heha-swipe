@@ -1,0 +1,51 @@
+name: SWP-016 Evidence Verification
+
+on:
+  pull_request:
+    paths:
+      - 'docs/migration-lineage/**'
+      - '.github/workflows/swp-016-evidence-verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify migration-lineage evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out exact review ref
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Confirm historical SQL is non-executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e supabase/migrations/20260614102924_add_supporter_payments_subscriptions_vibe_settings.sql
+          test -f docs/migration-lineage/historical-sql/20260614102924_add_supporter_payments_subscriptions_vibe_settings.sql
+          test -f docs/migration-lineage/historical-sql/20260614102924_add_supporter_payments_subscriptions_vibe_settings.provenance.md
+
+      - name: Verify ledgers, delta, duplicate name, archive and manifest
+        run: node docs/migration-lineage/verify-evidence.mjs
+
+      - name: Verify catalog comparator and negative control
+        shell: bash
+        run: |
+          set -euo pipefail
+          node docs/migration-lineage/verify-pr69-catalog.mjs --self-test
+          if node docs/migration-lineage/verify-pr69-catalog.mjs >missing-artifacts.out 2>&1; then
+            echo 'Comparator unexpectedly accepted missing artifacts.' >&2
+            exit 1
+          fi
+          grep -q 'usage:' missing-artifacts.out
+
+      - name: Verify patch whitespace
+        run: git diff --check
