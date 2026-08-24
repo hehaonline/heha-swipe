@@ -164,9 +164,18 @@ try {
     `SWP016_ERROR_SHA256=${expectedErrorSha}`,
     'SWP016_ELIGIBLE=true'
   ]) {
-    if (!receiptText.includes(receipt)) {
+  if (!receiptText.includes(receipt)) {
       throw new Error(`safe parent: missing descriptor-backed receipt ${receipt}`);
     }
+  }
+
+  const colonParent = join(fixtureRoot, 'safe:colon-parent');
+  mkdirSync(colonParent, { mode: 0o700 });
+  const colonSuccess = runCapture(colonParent);
+  if (colonSuccess.status !== 0) {
+    throw new Error(
+      `colon parent: expected success, status=${colonSuccess.status}, stderr=${colonSuccess.stderr}`
+    );
   }
 
   const replacedParent = join(fixtureRoot, 'replace-parent');
@@ -220,7 +229,10 @@ try {
           'post-open pathname replacement',
           'nonzero psql status'
         ],
-        accepted: ['canonical operator-owned private parent']
+        accepted: [
+          'canonical operator-owned private parent',
+          'canonical private parent containing colon'
+        ]
       },
       null,
       2
