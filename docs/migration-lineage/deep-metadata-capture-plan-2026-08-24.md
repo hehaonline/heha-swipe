@@ -22,22 +22,22 @@ Target schemas:
 
 Captured record classes in the first, pre-egress-safe pass:
 
-1. table columns, ordinal position, formatted type, nullability, identity/generated state, collation, and server-side context-bound fingerprints for withheld defaults and column comments;
-2. table-comment presence and a server-side context-bound fingerprint, with comment text withheld;
-3. table constraints and structural flags, with definition text withheld and fingerprinted inside PostgreSQL;
-4. indexes and structural flags, with definition text withheld and fingerprinted inside PostgreSQL;
-5. enum labels and order;
-6. domains, base types, nullability, and server-side fingerprints for withheld defaults and constraints;
-7. sequences and structural parameters.
+1. table columns, ordinal position, formatted type, nullability, identity/generated state, collation, and presence flags for withheld defaults and column comments;
+2. table-comment presence, with comment text withheld;
+3. table constraints and structural flags, with definition text withheld;
+4. indexes and structural flags, with definition text withheld;
+5. enum type identity and label order, with raw labels withheld;
+6. domains, base types, nullability, and presence flags for withheld defaults and constraints;
+7. sequences and structural parameters, with owner role names withheld.
 
-The query reads catalog metadata only. It does not select from application tables. Raw defaults, constraints, index expressions, domain expressions, and table/column comment text are converted inside PostgreSQL to context-bound MD5 fingerprints before result rows are returned. MD5 is used only as a deterministic comparison fingerprint, not as password storage or proof that guessed low-entropy text is safe to disclose. Raw text remains withheld. This pass proves inventory and supports same-object fingerprint comparison; it does not claim semantic definition parity.
+The query reads catalog metadata only. It does not select from application tables. Raw defaults, constraints, index expressions, domain expressions, table/column comment text, enum labels, and sequence-owner role names are withheld inside PostgreSQL before result rows are returned. The public artifact contains no unsalted fingerprint of those values. This pass proves bounded inventory and allowlisted structural flags only; it does not claim semantic definition parity.
 
 ### Mandatory execution containment — still not authorized
 
 Before any live metadata read, an independent reviewer must approve all of the following for the named canonical environment:
 
 1. a least-privilege, read-only database role and a transaction forced to `READ ONLY`;
-2. the committed query's server-side fingerprint/redaction boundary and pinned `pg_catalog` search path;
+2. the committed query's server-side allowlist/redaction boundary and pinned `pg_catalog` search path;
 3. a private workstation/session that does not echo result rows to a connector, CI, chat, observability stream, or shared terminal transcript;
 4. a restricted destination directory and files readable only by the operator;
 5. a separate, reviewed rule for any later raw-definition allowlist. No raw expression or comment may leave the database until that rule exists.
@@ -50,12 +50,15 @@ capture_dir="${TMPDIR:-/tmp}/swp-016-private-capture"
 mkdir -p -- "$capture_dir"
 capture_file="$capture_dir/deep-structure-manifest.jsonl"
 error_file="$capture_dir/deep-structure-manifest.stderr"
-PGSERVICE=heha-swipe-approved-readonly psql -XAtq -P footer=off -v ON_ERROR_STOP=1 \
+PGCLIENTENCODING=UTF8 PGSERVICE=heha-swipe-approved-readonly \
+  psql -XAtq -P footer=off -v ON_ERROR_STOP=1 \
   -f docs/migration-lineage/queries/deep-structure-manifest-capture.sql \
   >"$capture_file" 2>"$error_file"
 ```
 
 The connection profile must remain outside source control and command history. The resulting bytes remain private until a reviewer confirms that every row matches the server-side sanitized contract. This file does not authorize creating that profile or running the command.
+
+If future parity work requires a stable comparison token for withheld text, the only proposed option is a keyed HMAC-SHA-256 computed in a separately approved private path with a non-exported, purpose-specific key. That option is not implemented or authorized here; no key, HMAC, raw value, or public fingerprint may be added to this query or artifact without separate review.
 
 ### Stop before capture or commit if
 
