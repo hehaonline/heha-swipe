@@ -49,20 +49,69 @@ The exact client byte contract, to be run only after that approval with a separa
 ```bash
 set -euo pipefail
 umask 077
-capture_parent="${TMPDIR:?Set TMPDIR to an operator-owned mode-700 directory}"
+capture_parent_input="${TMPDIR:?Set TMPDIR to a canonical operator-owned mode-700 directory}"
 operator_uid="$(id -u)"
+for required_command in realpath stat sha256sum mktemp psql; do
+  if ! command -v "$required_command" >/dev/null; then
+    echo "Required capture command is unavailable: $required_command" >&2
+    exit 1
+  fi
+done
+if [[ ! -d /proc/self/fd ]]; then
+  echo "Descriptor verification requires Linux /proc/self/fd." >&2
+  exit 1
+fi
+validate_capture_chain() {
+  local current="$1" ancestor_uid ancestor_mode ancestor_mode_value
+  while :; do
+    if [[ ! -d "$current" || -L "$current" ]]; then
+      echo "Every capture-path component must be a real directory: $current" >&2
+      return 1
+    fi
+    IFS=: read -r ancestor_uid ancestor_mode < <(stat -c '%u:%a' -- "$current")
+    if [[ "$ancestor_uid" != "$operator_uid" && "$ancestor_uid" != "0" ]]; then
+      echo "Every capture-path component must be owned by the operator or root: $current" >&2
+      return 1
+    fi
+    ancestor_mode_value=$((8#$ancestor_mode))
+    if (( ancestor_mode_value & 0022 )); then
+      if [[ "$ancestor_uid" != "0" ]] || (( !(ancestor_mode_value & 01000) )); then
+        echo "Writable capture-path components must be root-owned sticky directories: $current" >&2
+        return 1
+      fi
+    fi
+    [[ "$current" == "/" ]] && break
+    current="${current%/*}"
+    [[ -n "$current" ]] || current="/"
+  done
+}
+if [[ "$capture_parent_input" != /* ]]; then
+  echo "TMPDIR must be an absolute path." >&2
+  exit 1
+fi
+if ! capture_parent="$(realpath -e -- "$capture_parent_input")"; then
+  echo "TMPDIR must resolve to an existing directory." >&2
+  exit 1
+fi
+if [[ "$capture_parent" != "$capture_parent_input" ]]; then
+  echo "TMPDIR must already be canonical and contain no symlink path component." >&2
+  exit 1
+fi
 if [[ ! -d "$capture_parent" || -L "$capture_parent" || "$(stat -c '%u:%a' "$capture_parent")" != "$operator_uid:700" ]]; then
   echo "TMPDIR must be an existing non-symlink directory owned by the operator with mode 700." >&2
   exit 1
 fi
+validate_capture_chain "$capture_parent"
 capture_dir="$(mktemp -d -- "$capture_parent/swp-016-private-capture.XXXXXXXX")"
 capture_file="$capture_dir/deep-structure-manifest.jsonl"
 error_file="$capture_dir/deep-structure-manifest.stderr"
+receipt_file="$capture_dir/deep-structure-manifest.receipt"
 if [[ -L "$capture_dir" || "$(stat -c '%u:%a' "$capture_dir")" != "$operator_uid:700" ]]; then
   echo "Fresh capture directory must be operator-owned mode 700." >&2
   exit 1
 fi
-for destination in "$capture_file" "$error_file"; do
+validate_capture_chain "$capture_dir"
+for destination in "$capture_file" "$error_file" "$receipt_file"; do
   if [[ -e "$destination" || -L "$destination" ]]; then
     echo "Refusing pre-existing or symlink destination: $destination" >&2
     exit 1
@@ -71,28 +120,73 @@ done
 set -o noclobber
 : >"$capture_file"
 : >"$error_file"
+: >"$receipt_file"
 set +o noclobber
-chmod 600 -- "$capture_file" "$error_file"
-for destination in "$capture_file" "$error_file"; do
+chmod 600 -- "$capture_file" "$error_file" "$receipt_file"
+for destination in "$capture_file" "$error_file" "$receipt_file"; do
   if [[ ! -f "$destination" || -L "$destination" || "$(stat -c '%u:%a' "$destination")" != "$operator_uid:600" ]]; then
     echo "Capture destination must be a regular operator-owned mode-600 file." >&2
     exit 1
   fi
 done
-exec 3>"$capture_file" 4>"$error_file"
+exec 3<>"$capture_file" 4<>"$error_file" 5<>"$receipt_file"
+capture_dir_identity="$(stat -Lc '%d:%i' "$capture_dir")"
+capture_file_identity="$(stat -Lc '%d:%i' /proc/self/fd/3)"
+error_file_identity="$(stat -Lc '%d:%i' /proc/self/fd/4)"
+receipt_file_identity="$(stat -Lc '%d:%i' /proc/self/fd/5)"
 if [[ "$(stat -Lc '%u:%a:%s' /proc/self/fd/3)" != "$operator_uid:600:0" || \
-      "$(stat -Lc '%u:%a:%s' /proc/self/fd/4)" != "$operator_uid:600:0" ]]; then
+      "$(stat -Lc '%u:%a:%s' /proc/self/fd/4)" != "$operator_uid:600:0" || \
+      "$(stat -Lc '%u:%a:%s' /proc/self/fd/5)" != "$operator_uid:600:0" ]]; then
   echo "Opened capture descriptors must reference operator-owned mode-600 regular empty files." >&2
   exit 1
 fi
+set +e
 PGCLIENTENCODING=UTF8 PGSERVICE=heha-swipe-approved-readonly \
   psql -XAtq -P footer=off -v ON_ERROR_STOP=1 \
   -f docs/migration-lineage/queries/deep-structure-manifest-capture.sql \
   >&3 2>&4
-exec 3>&- 4>&-
+psql_status=$?
+set -e
+path_integrity=true
+if ! validate_capture_chain "$capture_parent" || ! validate_capture_chain "$capture_dir"; then
+  path_integrity=false
+fi
+if [[ ! -d "$capture_dir" || -L "$capture_dir" ]] || \
+   [[ "$(stat -Lc '%d:%i' "$capture_dir" 2>/dev/null || true)" != "$capture_dir_identity" ]]; then
+  path_integrity=false
+fi
+for path_and_identity in \
+  "$capture_file:$capture_file_identity:3" \
+  "$error_file:$error_file_identity:4" \
+  "$receipt_file:$receipt_file_identity:5"; do
+  destination="${path_and_identity%%:*}"
+  identity_and_fd="${path_and_identity#*:}"
+  expected_identity="${identity_and_fd%:*}"
+  descriptor="${identity_and_fd##*:}"
+  if [[ ! -f "$destination" || -L "$destination" ]] || \
+     [[ "$(stat -Lc '%u:%a:%d:%i' "$destination" 2>/dev/null || true)" != "$operator_uid:600:$expected_identity" ]] || \
+     [[ "$(stat -Lc '%d:%i' "/proc/self/fd/$descriptor")" != "$expected_identity" ]]; then
+    path_integrity=false
+  fi
+done
+capture_bytes="$(stat -Lc '%s' /proc/self/fd/3)"
+capture_sha256="$(sha256sum /proc/self/fd/3 | cut -d ' ' -f1)"
+error_bytes="$(stat -Lc '%s' /proc/self/fd/4)"
+error_sha256="$(sha256sum /proc/self/fd/4 | cut -d ' ' -f1)"
+eligible=true
+if (( psql_status != 0 )) || [[ "$path_integrity" != "true" ]]; then
+  eligible=false
+fi
+printf 'SWP016_PSQL_STATUS=%s\nSWP016_PATH_INTEGRITY=%s\nSWP016_CAPTURE_BYTES=%s\nSWP016_CAPTURE_SHA256=%s\nSWP016_ERROR_BYTES=%s\nSWP016_ERROR_SHA256=%s\nSWP016_ELIGIBLE=%s\n' \
+  "$psql_status" "$path_integrity" "$capture_bytes" "$capture_sha256" "$error_bytes" "$error_sha256" "$eligible" >&5
+exec 3>&- 4>&- 5>&-
+if [[ "$eligible" != "true" ]]; then
+  echo "Capture is ineligible; discard it and repair the containment or psql failure before retrying." >&2
+  exit 1
+fi
 ```
 
-The connection profile must remain outside source control and command history. The resulting bytes remain private until a reviewer confirms that every row matches the server-side sanitized contract. This file does not authorize creating that profile or running the command.
+The connection profile must remain outside source control and command history. The resulting bytes remain private until a reviewer confirms that every row matches the server-side sanitized contract. Before any later path-based review or commit, recompute the capture SHA-256 and byte count from the same canonical directory and compare them with the private descriptor-derived receipt; a mismatch or an ineligible receipt is a hard stop. This Bash contract trusts the operator's UID and root; a hostile same-UID process or privileged root is outside its threat model and requires a dedicated OS account/container plus an `openat2`/`O_NOFOLLOW` helper. This file does not authorize creating that profile or running the command.
 
 If future parity work requires a stable comparison token for withheld text, the only proposed option is a keyed HMAC-SHA-256 computed in a separately approved private path with a non-exported, purpose-specific key. That option is not implemented or authorized here; no key, HMAC, raw value, or public fingerprint may be added to this query or artifact without separate review.
 
