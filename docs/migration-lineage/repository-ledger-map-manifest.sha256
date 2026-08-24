@@ -1,0 +1,8 @@
+b2767cdfc8ab7ee5add33b6fa7427fb3ac6e46d554102ff391620e80ccf9b6ef  docs/migration-lineage/README.md
+5defa1b3091d05434fef904c746c63b4b93af069ab3f9eabf5e0286485659638  docs/migration-lineage/live-ledger-compatibility-map-2026-08-24.csv
+aba1604cc5eb41616685e10b84206c3ac735a0ce1d9ca272890b6686cc10c764  docs/migration-lineage/repository-migration-disposition-map-2026-08-24.csv
+862f48a59c317a96c3343c7636632a4b3af8f95ccaf663417fb8acf7f17271ba  docs/migration-lineage/repository-ledger-compatibility-summary-2026-08-24.md
+8ff1b21a0d34c0595f132616172524e83074e3febc887f1840ac2080f6cf844e  docs/migration-lineage/deep-metadata-capture-plan-2026-08-24.md
+2475d132fa983e1c93a7c17fb9de29ae5548fa3ed2d0f406481257c435091818  docs/migration-lineage/queries/deep-structure-manifest-capture.sql
+e889e36d50ff24d43a2de04d344553143cb2e380e3d5eff5a60294afc0dab905  docs/migration-lineage/verify-repository-ledger-map.mjs
+2bdbc872162c79a54f11329b383c371272132d0b01d46d41470d0807052e0826  .github/workflows/swp-016-compatibility-map-verify.yml

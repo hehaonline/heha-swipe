@@ -1,0 +1,58 @@
+name: SWP-016 Repository Ledger Compatibility Verification
+
+on:
+  pull_request:
+    paths:
+      - "docs/migration-lineage/live-ledger-compatibility-map-2026-08-24.csv"
+      - "docs/migration-lineage/repository-migration-disposition-map-2026-08-24.csv"
+      - "docs/migration-lineage/repository-ledger-compatibility-summary-2026-08-24.md"
+      - "docs/migration-lineage/deep-metadata-capture-plan-2026-08-24.md"
+      - "docs/migration-lineage/queries/deep-structure-manifest-capture.sql"
+      - "docs/migration-lineage/verify-repository-ledger-map.mjs"
+      - "docs/migration-lineage/repository-ledger-map-manifest.sha256"
+      - "docs/migration-lineage/README.md"
+      - "docs/migration-lineage/live-ledger-2026-08-19.csv"
+      - "docs/migration-lineage/repository-inventory.csv"
+      - "supabase/migrations/**"
+      - ".github/workflows/swp-016-compatibility-map-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: swp-016-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out exact review ref
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify compatibility maps
+        run: node docs/migration-lineage/verify-repository-ledger-map.mjs
+
+      - name: Verify packet hashes
+        run: sha256sum -c docs/migration-lineage/repository-ledger-map-manifest.sha256
+
+      - name: Verify prepared SQL has no mutation statements
+        shell: bash
+        run: |
+          set -euo pipefail
+          query=docs/migration-lineage/queries/deep-structure-manifest-capture.sql
+          if grep -Ev '^[[:space:]]*--' "$query" | grep -Eiq '(^|[[:space:];])(insert|update|delete|merge|alter|create|drop|truncate|grant|revoke|comment|copy|call|do)([[:space:](]|$)'; then
+            echo "Prepared capture SQL contains a disallowed mutation keyword outside comments." >&2
+            exit 1
+          fi
+
+      - name: Verify patch whitespace
+        run: git diff --check

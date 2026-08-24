@@ -1,0 +1,245 @@
+#!/usr/bin/env node
+
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+const ROOT = process.cwd();
+
+function fail(message) {
+  throw new Error(message);
+}
+
+function readText(relativePath) {
+  return readFileSync(join(ROOT, relativePath), 'utf8');
+}
+
+function parseCsv(text, label) {
+  if (text.includes('\r')) fail(`${label}: CR bytes are not allowed`);
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+
+    if (quoted) {
+      if (char === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          quoted = false;
+        }
+      } else {
+        field += char;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      if (field.length !== 0) fail(`${label}: unexpected quote`);
+      quoted = true;
+    } else if (char === ',') {
+      row.push(field);
+      field = '';
+    } else if (char === '\n') {
+      row.push(field);
+      field = '';
+      if (!(row.length === 1 && row[0] === '')) rows.push(row);
+      row = [];
+    } else {
+      field += char;
+    }
+  }
+
+  if (quoted) fail(`${label}: unterminated quoted field`);
+  if (field.length || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+  if (rows.length < 2) fail(`${label}: expected header and data`);
+
+  const header = rows[0];
+  if (new Set(header).size !== header.length) fail(`${label}: duplicate header`);
+  return rows.slice(1).map((values, index) => {
+    if (values.length !== header.length) {
+      fail(`${label}:${index + 2}: expected ${header.length} fields, got ${values.length}`);
+    }
+    return Object.fromEntries(header.map((name, column) => [name, values[column]]));
+  });
+}
+
+function assertExactKeys(actualRows, expectedRows, keyFn, label) {
+  const actual = actualRows.map(keyFn).sort();
+  const expected = expectedRows.map(keyFn).sort();
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    const actualSet = new Set(actual);
+    const expectedSet = new Set(expected);
+    const missing = expected.filter((key) => !actualSet.has(key));
+    const extra = actual.filter((key) => !expectedSet.has(key));
+    fail(`${label}: key mismatch; missing=${JSON.stringify(missing)} extra=${JSON.stringify(extra)}`);
+  }
+}
+
+function countBy(rows, key) {
+  const counts = {};
+  for (const row of rows) counts[row[key]] = (counts[row[key]] ?? 0) + 1;
+  return counts;
+}
+
+const ledger = parseCsv(
+  readText('docs/migration-lineage/live-ledger-2026-08-19.csv'),
+  'live ledger'
+);
+const inventory = parseCsv(
+  readText('docs/migration-lineage/repository-inventory.csv'),
+  'repository inventory'
+);
+const liveMap = parseCsv(
+  readText('docs/migration-lineage/live-ledger-compatibility-map-2026-08-24.csv'),
+  'live compatibility map'
+);
+const repoMap = parseCsv(
+  readText('docs/migration-lineage/repository-migration-disposition-map-2026-08-24.csv'),
+  'repository disposition map'
+);
+
+if (ledger.length !== 96) fail(`live ledger: expected 96 rows, got ${ledger.length}`);
+if (new Set(ledger.map((row) => row.version)).size !== 96) fail('live ledger: versions are not unique');
+if (inventory.length !== 35) fail(`repository inventory: expected 35 rows, got ${inventory.length}`);
+if (liveMap.length !== 96) fail(`live compatibility map: expected 96 rows, got ${liveMap.length}`);
+if (repoMap.length !== 35) fail(`repository disposition map: expected 35 rows, got ${repoMap.length}`);
+
+assertExactKeys(
+  liveMap,
+  ledger,
+  (row) => `${row.live_version ?? row.version}\u0000${row.live_name ?? row.name}\u0000${row.evidence}`,
+  'live map vs ledger'
+);
+assertExactKeys(
+  repoMap,
+  inventory,
+  (row) => `${row.repository_version ?? row.version}\u0000${row.repository_name ?? row.name}\u0000${row.evidence}`,
+  'repository map vs inventory'
+);
+
+const liveVersions = new Set(ledger.map((row) => row.version));
+const repositoryVersions = new Set(inventory.map((row) => row.version));
+const exactVersionOverlap = [...liveVersions].filter((version) => repositoryVersions.has(version));
+if (exactVersionOverlap.length !== 0) {
+  fail(`expected zero exact live/repository version matches, got ${JSON.stringify(exactVersionOverlap)}`);
+}
+
+const allowedLiveClassifications = new Set(['A', 'N', 'C', 'B', 'D']);
+for (const row of liveMap) {
+  if (!allowedLiveClassifications.has(row.class)) {
+    fail(`live map ${row.live_version}: invalid class ${row.class}`);
+  }
+}
+
+const expectedLiveCounts = { A: 1, B: 15, C: 60, D: 2, N: 18 };
+const actualLiveCounts = countBy(liveMap, 'class');
+for (const [classification, expected] of Object.entries(expectedLiveCounts)) {
+  if (actualLiveCounts[classification] !== expected) {
+    fail(`live map: ${classification} expected ${expected}, got ${actualLiveCounts[classification] ?? 0}`);
+  }
+}
+if (Object.keys(actualLiveCounts).length !== Object.keys(expectedLiveCounts).length) {
+  fail(`live map: unexpected classification set ${JSON.stringify(actualLiveCounts)}`);
+}
+
+const archiveRows = liveMap.filter((row) => row.class === 'A');
+if (
+  archiveRows.length !== 1 ||
+  archiveRows[0].live_version !== '20260614102924' ||
+  archiveRows[0].repository_candidates !==
+    'docs/migration-lineage/historical-sql/20260614102924_add_supporter_payments_subscriptions_vibe_settings.sql'
+) {
+  fail('live map: recovered supporter archive contract changed');
+}
+
+const duplicateRows = liveMap.filter((row) => row.class === 'D');
+if (
+  duplicateRows.length !== 2 ||
+  duplicateRows.some((row) => row.live_name !== 'analytics_triggers_for_partner_counters')
+) {
+  fail('live map: duplicate analytics contract changed');
+}
+
+const allowedRepoClassifications = new Set(['BC', 'BS', 'AN', 'AR', 'AS']);
+for (const row of repoMap) {
+  if (!allowedRepoClassifications.has(row.class)) {
+    fail(`repository map ${row.repository_path}: invalid class ${row.class}`);
+  }
+}
+
+const expectedRepoCounts = { AN: 1, AR: 1, AS: 1, BC: 26, BS: 6 };
+const actualRepoCounts = countBy(repoMap, 'class');
+for (const [classification, expected] of Object.entries(expectedRepoCounts)) {
+  if (actualRepoCounts[classification] !== expected) {
+    fail(`repository map: ${classification} expected ${expected}, got ${actualRepoCounts[classification] ?? 0}`);
+  }
+}
+if (Object.keys(actualRepoCounts).length !== Object.keys(expectedRepoCounts).length) {
+  fail(`repository map: unexpected classification set ${JSON.stringify(actualRepoCounts)}`);
+}
+
+const mappedPaths = repoMap.map((row) => row.repository_path).sort();
+if (new Set(mappedPaths).size !== mappedPaths.length) fail('repository map: duplicate repository_path');
+
+const actualPaths = readdirSync(join(ROOT, 'supabase/migrations'))
+  .filter((name) => name.endsWith('.sql'))
+  .map((name) => `supabase/migrations/${name}`)
+  .sort();
+
+if (JSON.stringify(actualPaths) !== JSON.stringify(mappedPaths)) {
+  const actualSet = new Set(actualPaths);
+  const mappedSet = new Set(mappedPaths);
+  const missing = mappedPaths.filter((path) => !actualSet.has(path));
+  const extra = actualPaths.filter((path) => !mappedSet.has(path));
+  fail(`repository map vs current migration directory mismatch; missing=${JSON.stringify(missing)} extra=${JSON.stringify(extra)}`);
+}
+
+const mappedPathSet = new Set(mappedPaths);
+const archivePath =
+  'docs/migration-lineage/historical-sql/20260614102924_add_supporter_payments_subscriptions_vibe_settings.sql';
+for (const row of liveMap) {
+  const candidates = row.repository_candidates ? row.repository_candidates.split(';') : [];
+  for (const candidate of candidates) {
+    if (candidate !== archivePath && !mappedPathSet.has(candidate)) {
+      fail(`live map ${row.live_version}: unknown repository candidate ${candidate}`);
+    }
+  }
+}
+
+const liveKeySet = new Set(ledger.map((row) => `${row.version}:${row.name}`));
+for (const row of repoMap) {
+  const candidates = row.live_candidates ? row.live_candidates.split(';') : [];
+  for (const candidate of candidates) {
+    if (!liveKeySet.has(candidate)) {
+      fail(`repository map ${row.repository_path}: unknown live candidate ${candidate}`);
+    }
+  }
+}
+
+if (actualPaths.some((path) => path.includes('20260614102924_add_supporter_payments_subscriptions_vibe_settings'))) {
+  fail('historical supporter SQL re-entered the executable migration directory');
+}
+
+console.log(
+  JSON.stringify(
+    {
+      status: 'PASS',
+      boundary: 'repository-and-ledger-compatibility-documentation-only',
+      live_rows: ledger.length,
+      repository_files: inventory.length,
+      unique_repository_versions: repositoryVersions.size,
+      exact_version_matches: exactVersionOverlap.length,
+      live_classes: countBy(liveMap, 'class'),
+      repository_classes: countBy(repoMap, 'class')
+    },
+    null,
+    2
+  )
+);
