@@ -212,8 +212,8 @@ for (const objectName of [
 assert(files.rollback.includes('drop schema if exists one_heha_private'), 'rollback drops identity schema');
 assert(files.rollback.includes('drop schema if exists community_pass_private'), 'rollback drops Community Pass private schema');
 
-assert(files.workflow.includes('postgres:15'), 'PostgreSQL 15 profile');
-assert(files.workflow.includes('postgres:17'), 'PostgreSQL 17 profile');
+assert(files.workflow.includes("postgres: ['15', '17']"), 'PostgreSQL 15/17 matrix');
+assert(files.workflow.includes('image: postgres:${{ matrix.postgres }}'), 'matrix-selected PostgreSQL service image');
 assert(files.workflow.includes('concurrency_two_client.sh'), 'workflow runs genuine concurrency');
 assert(files.workflow.includes('001_s1.rollback.sql'), 'workflow runs rollback');
 assert(files.workflow.includes('reapply'), 'workflow proves reapply');
