@@ -1,0 +1,125 @@
+name: Community Pass Foundation Proof
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20260819193000_community_pass_foundation_v1.sql"
+      - "supabase/migrations/20260819200500_community_pass_trial_activation_qualification.sql"
+      - "supabase/migrations/20260819202500_community_pass_account_unlink_fail_safe.sql"
+      - "supabase/migrations/20260819213000_community_pass_security_hardening.sql"
+      - "supabase/migrations/20260819214500_community_pass_status_environment_row_gate.sql"
+      - "supabase/migrations/20260819221500_community_pass_runtime_config_and_indexes.sql"
+      - "supabase/tests/community_pass_foundation_proof.sql"
+      - "supabase/tests/community_pass_account_unlink_proof.sql"
+      - "supabase/tests/community_pass_security_hardening_proof.sql"
+      - "supabase/tests/fixtures/community_pass_minimal_baseline.sql"
+      - ".github/workflows/community-pass-foundation-proof.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community-pass-foundation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heha_community_pass_proof
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d heha_community_pass_proof"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record exact proof environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "checked_out_sha=$(git rev-parse HEAD)"
+          docker exec "${{ job.services.postgres.id }}" psql --version
+          docker exec "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -Atc "show server_version"
+
+      - name: Apply synthetic baseline
+        shell: bash
+        run: >-
+          docker exec -i "${{ job.services.postgres.id }}"
+          psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
+          < supabase/tests/fixtures/community_pass_minimal_baseline.sql
+
+      - name: Apply Package A migration chain twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pass in 1 2; do
+            echo "Package A apply pass ${pass}"
+            docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819193000_community_pass_foundation_v1.sql
+            docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819200500_community_pass_trial_activation_qualification.sql
+            docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819202500_community_pass_account_unlink_fail_safe.sql
+            docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819213000_community_pass_security_hardening.sql
+            docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819214500_community_pass_status_environment_row_gate.sql
+            docker exec -i "${{ job.services.postgres.id }}" psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1 < supabase/migrations/20260819221500_community_pass_runtime_config_and_indexes.sql
+          done
+
+      - name: Configure disposable private runtime environment
+        shell: bash
+        run: >-
+          docker exec "${{ job.services.postgres.id }}"
+          psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
+          -c "insert into community_pass_private.runtime_config
+          (singleton, environment, config_version, configured_by, change_reference)
+          values (true, 'test', 'ci-proof-v1', 'github-actions', 'community-pass-foundation-proof')"
+
+      - name: Run exact foundation proof
+        shell: bash
+        run: >-
+          docker exec -i "${{ job.services.postgres.id }}"
+          psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
+          < supabase/tests/community_pass_foundation_proof.sql
+
+      - name: Run exact account-unlink proof
+        shell: bash
+        run: >-
+          docker exec -i "${{ job.services.postgres.id }}"
+          psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
+          < supabase/tests/community_pass_account_unlink_proof.sql
+
+      - name: Run exact security-hardening proof
+        shell: bash
+        run: >-
+          docker exec -i "${{ job.services.postgres.id }}"
+          psql -X -U postgres -d heha_community_pass_proof -v ON_ERROR_STOP=1
+          < supabase/tests/community_pass_security_hardening_proof.sql
+
+      - name: Scan proof sources for credential-like material
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            supabase/migrations/20260819193000_community_pass_foundation_v1.sql
+            supabase/migrations/20260819200500_community_pass_trial_activation_qualification.sql
+            supabase/migrations/20260819202500_community_pass_account_unlink_fail_safe.sql
+            supabase/migrations/20260819213000_community_pass_security_hardening.sql
+            supabase/migrations/20260819214500_community_pass_status_environment_row_gate.sql
+            supabase/migrations/20260819221500_community_pass_runtime_config_and_indexes.sql
+            supabase/tests/community_pass_foundation_proof.sql
+            supabase/tests/community_pass_account_unlink_proof.sql
+            supabase/tests/community_pass_security_hardening_proof.sql
+            supabase/tests/fixtures/community_pass_minimal_baseline.sql
+          )
+          if grep -EIn '(sk_live_|sk_test_|whsec_|service_role_key|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY)' "${files[@]}"; then
+            echo "Credential-like material detected" >&2
+            exit 1
+          fi
