@@ -13,10 +13,10 @@ export default function BecomePartnerEmbed() {
           </p>
         </div>
 
-        <div className="become-partner-flow" aria-label="Partner onboarding steps">
-          <div><strong>1</strong><span>Create a secure business account</span></div>
-          <div><strong>2</strong><span>Build your HEHA partner profile</span></div>
-          <div><strong>3</strong><span>HEHA reviews the listing before public visibility</span></div>
+        <div className="become-partner-flow" role="list" aria-label="Partner onboarding steps">
+          <div role="listitem"><strong>1</strong><span>Create a secure business account</span></div>
+          <div role="listitem"><strong>2</strong><span>Build your HEHA partner profile</span></div>
+          <div role="listitem"><strong>3</strong><span>HEHA reviews the listing before public visibility</span></div>
         </div>
 
         <a className="become-partner-cta" href={onboardingUrl} target="_top">

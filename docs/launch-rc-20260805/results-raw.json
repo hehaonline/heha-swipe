@@ -1,0 +1,426 @@
+[
+  {
+    "id": "L-home-320",
+    "app": "local",
+    "vp": "320",
+    "url": "http://127.0.0.1:4173/",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-home-390",
+    "app": "local",
+    "vp": "390",
+    "url": "http://127.0.0.1:4173/",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-home-430",
+    "app": "local",
+    "vp": "430",
+    "url": "http://127.0.0.1:4173/",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-home-768",
+    "app": "local",
+    "vp": "768",
+    "url": "http://127.0.0.1:4173/",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-home-1024",
+    "app": "local",
+    "vp": "1024",
+    "url": "http://127.0.0.1:4173/",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-home-1440",
+    "app": "local",
+    "vp": "1440",
+    "url": "http://127.0.0.1:4173/",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-start-320",
+    "app": "local",
+    "vp": "320",
+    "url": "http://127.0.0.1:4173/start",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-start-390",
+    "app": "local",
+    "vp": "390",
+    "url": "http://127.0.0.1:4173/start",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-start-430",
+    "app": "local",
+    "vp": "430",
+    "url": "http://127.0.0.1:4173/start",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-start-768",
+    "app": "local",
+    "vp": "768",
+    "url": "http://127.0.0.1:4173/start",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-start-1024",
+    "app": "local",
+    "vp": "1024",
+    "url": "http://127.0.0.1:4173/start",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-start-1440",
+    "app": "local",
+    "vp": "1440",
+    "url": "http://127.0.0.1:4173/start",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-login-320",
+    "app": "local",
+    "vp": "320",
+    "url": "http://127.0.0.1:4173/login",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-login-390",
+    "app": "local",
+    "vp": "390",
+    "url": "http://127.0.0.1:4173/login",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-login-430",
+    "app": "local",
+    "vp": "430",
+    "url": "http://127.0.0.1:4173/login",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-login-768",
+    "app": "local",
+    "vp": "768",
+    "url": "http://127.0.0.1:4173/login",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-login-1024",
+    "app": "local",
+    "vp": "1024",
+    "url": "http://127.0.0.1:4173/login",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-login-1440",
+    "app": "local",
+    "vp": "1440",
+    "url": "http://127.0.0.1:4173/login",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-home-zoom",
+    "app": "local",
+    "vp": "Z",
+    "url": "http://127.0.0.1:4173/",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-market-zoom",
+    "app": "local",
+    "vp": "Z",
+    "url": "http://127.0.0.1:4173/market",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-nutrition-complete-390",
+    "app": "local",
+    "vp": "390",
+    "url": "http://127.0.0.1:4173/market",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-nutrition-partial-390",
+    "app": "local",
+    "vp": "390",
+    "url": "http://127.0.0.1:4173/market",
+    "status": "FAIL",
+    "note": "expected content not found;"
+  },
+  {
+    "id": "L-nutrition-missing-390",
+    "app": "local",
+    "vp": "390",
+    "url": "http://127.0.0.1:4173/market",
+    "status": "FAIL",
+    "note": "expected content not found;"
+  },
+  {
+    "id": "L-signup-390",
+    "app": "local",
+    "vp": "390",
+    "url": "http://127.0.0.1:4173/signup",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-restaurants-390",
+    "app": "local",
+    "vp": "390",
+    "url": "http://127.0.0.1:4173/restaurants",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-cart-390",
+    "app": "local",
+    "vp": "390",
+    "url": "http://127.0.0.1:4173/cart",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-profile-guest-390",
+    "app": "local",
+    "vp": "390",
+    "url": "http://127.0.0.1:4173/profile",
+    "status": "FAIL",
+    "note": "expected content not found;"
+  },
+  {
+    "id": "L-chef-390",
+    "app": "local",
+    "vp": "390",
+    "url": "http://127.0.0.1:4173/chef",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-subscribe-1440",
+    "app": "local",
+    "vp": "1440",
+    "url": "http://127.0.0.1:4173/subscribe",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "L-restaurants-1440",
+    "app": "local",
+    "vp": "1440",
+    "url": "http://127.0.0.1:4173/restaurants",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "X-start-guest-flow",
+    "app": "local",
+    "vp": "390",
+    "url": "http://127.0.0.1:4173/start?returnTo=%2Fmarket",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-gate-320",
+    "app": "swipe",
+    "vp": "320",
+    "url": "http://127.0.0.1:4174/?entry=landing",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-gate-390",
+    "app": "swipe",
+    "vp": "390",
+    "url": "http://127.0.0.1:4174/?entry=landing",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-gate-430",
+    "app": "swipe",
+    "vp": "430",
+    "url": "http://127.0.0.1:4174/?entry=landing",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-gate-768",
+    "app": "swipe",
+    "vp": "768",
+    "url": "http://127.0.0.1:4174/?entry=landing",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-gate-1024",
+    "app": "swipe",
+    "vp": "1024",
+    "url": "http://127.0.0.1:4174/?entry=landing",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-gate-1440",
+    "app": "swipe",
+    "vp": "1440",
+    "url": "http://127.0.0.1:4174/?entry=landing",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-auth-320",
+    "app": "swipe",
+    "vp": "320",
+    "url": "http://127.0.0.1:4174/",
+    "status": "FAIL",
+    "note": "expected content not found;"
+  },
+  {
+    "id": "S-auth-390",
+    "app": "swipe",
+    "vp": "390",
+    "url": "http://127.0.0.1:4174/",
+    "status": "FAIL",
+    "note": "expected content not found;"
+  },
+  {
+    "id": "S-auth-430",
+    "app": "swipe",
+    "vp": "430",
+    "url": "http://127.0.0.1:4174/",
+    "status": "FAIL",
+    "note": "expected content not found;"
+  },
+  {
+    "id": "S-auth-768",
+    "app": "swipe",
+    "vp": "768",
+    "url": "http://127.0.0.1:4174/",
+    "status": "FAIL",
+    "note": "expected content not found;"
+  },
+  {
+    "id": "S-auth-1024",
+    "app": "swipe",
+    "vp": "1024",
+    "url": "http://127.0.0.1:4174/",
+    "status": "FAIL",
+    "note": "expected content not found;"
+  },
+  {
+    "id": "S-auth-1440",
+    "app": "swipe",
+    "vp": "1440",
+    "url": "http://127.0.0.1:4174/",
+    "status": "FAIL",
+    "note": "expected content not found;"
+  },
+  {
+    "id": "S-gate-zoom",
+    "app": "swipe",
+    "vp": "Z",
+    "url": "http://127.0.0.1:4174/?entry=landing",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-auth-create-390",
+    "app": "swipe",
+    "vp": "390",
+    "url": "http://127.0.0.1:4174/?entry=landing",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-guest-browse-390",
+    "app": "swipe",
+    "vp": "390",
+    "url": "http://127.0.0.1:4174/?entry=landing",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-wizard-basics-390",
+    "app": "swipe",
+    "vp": "390",
+    "url": "http://127.0.0.1:4174/?becomePartner=1",
+    "status": "BLOCKED",
+    "note": "blocked-marker matched;"
+  },
+  {
+    "id": "S-wizard-review-390",
+    "app": "swipe",
+    "vp": "390",
+    "url": "http://127.0.0.1:4174/?becomePartner=1",
+    "status": "BLOCKED",
+    "note": "blocked-marker matched;"
+  },
+  {
+    "id": "S-discover-390",
+    "app": "swipe",
+    "vp": "390",
+    "url": "http://127.0.0.1:4174/?entry=landing",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-saved-390",
+    "app": "swipe",
+    "vp": "390",
+    "url": "http://127.0.0.1:4174/?entry=landing",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-community-390",
+    "app": "swipe",
+    "vp": "390",
+    "url": "http://127.0.0.1:4174/?entry=landing",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-support-success-390",
+    "app": "swipe",
+    "vp": "390",
+    "url": "http://127.0.0.1:4174/support/success",
+    "status": "PASS",
+    "note": ""
+  },
+  {
+    "id": "S-embed-partners-1440",
+    "app": "swipe",
+    "vp": "1440",
+    "url": "http://127.0.0.1:4174/embed/partners",
+    "status": "PASS",
+    "note": ""
+  }
+]

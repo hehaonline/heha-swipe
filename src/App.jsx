@@ -1,6 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabase";
 import AuthScreen from "./components/AuthScreen";
+import EntryGate from "./components/EntryGate";
+import AuthPromptModal from "./components/AuthPromptModal";
+import {
+  isGuestSession,
+  setGuestSession,
+  clearGuestSession,
+  shouldShowEntryGate,
+  stripEntryParams,
+  readReturnPath,
+  isLandingEntry,
+} from "./lib/entryGate";
 import OnboardingScreen from "./components/OnboardingScreen";
 import PartnerWizard from "./components/PartnerWizard";
 import SwipeTab from "./components/SwipeTab";
@@ -86,6 +97,15 @@ export default function App() {
   const [appError, setAppError] = useState(null);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [locationLabel, setLocationLabel] = useState(null);
+  // Landing entry gate + guest browsing state. `guest` is true only after the
+  // visitor explicitly chose "continue as guest" (remembered for the session).
+  // `authIntent` routes a landing/guest visitor into the existing AuthScreen in
+  // sign-in or create-account mode. `authPrompt` drives the protected-action
+  // modal for guests. None of these grant any server-side capability.
+  const [guest, setGuestFlag] = useState(() => isGuestSession());
+  const [authIntent, setAuthIntent] = useState(null); // null | "signin" | "create"
+  const [authPrompt, setAuthPrompt] = useState(null); // null | { message?: string }
+  const arrivedFromLanding = useRef(isLandingEntry(window.location.search));
   const [supportReturn] = useState(() => window.location.pathname === "/support/success");
   const [supportView, setSupportView] = useState(() =>
     window.location.pathname === "/support/success"
@@ -117,6 +137,14 @@ export default function App() {
     const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
       if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
+      if (newSession) {
+        // A real session supersedes any guest choice. Clearing it means a later
+        // sign-out returns to the auth screen, never to a lingering guest pass.
+        clearGuestSession();
+        setGuestFlag(false);
+        setAuthIntent(null);
+        setAuthPrompt(null);
+      }
       if (!newSession) {
         setProfile(null);
         setPartners([]);
@@ -153,6 +181,22 @@ export default function App() {
     if (returnRole === "partner") setShowPartnerWizard(true);
     loadData(session.user.id);
   }, [session?.user?.id]);
+
+  // Authenticated visitors bypass the gate automatically: strip the landing
+  // params (preserving a safe return destination) once the session is known.
+  useEffect(() => {
+    if (loading) return;
+    if (session?.user && isLandingEntry(window.location.search)) {
+      finalizeEntryUrl();
+    }
+  }, [loading, session?.user?.id]);
+
+  // Guest browsing loads the public partner deck once, with no session.
+  useEffect(() => {
+    if (session?.user?.id) return;
+    if (!guest) return;
+    loadPublicPartners();
+  }, [guest, session?.user?.id]);
 
   const savedPartnerIds = useMemo(
     () => new Set(saves.map((save) => save.partner_id)),
@@ -215,6 +259,58 @@ export default function App() {
       setDataLoading(false);
     }
   };
+
+  // Guest discovery: load only the public, anon-readable partner view. No
+  // profile, saves, swipe history, or any user-scoped data is touched, and no
+  // Supabase user or row is created. Server-side RLS remains the real boundary.
+  const loadPublicPartners = async () => {
+    setDataLoading(true);
+    setAppError(null);
+    try {
+      const { data, error } = await supabase
+        .from("public_swipe_partners")
+        .select("*")
+        .order("heha_partner", { ascending: false })
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setPartners(data || []);
+    } catch (error) {
+      setAppError(error.message || "Could not load HEHA Swipe.");
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
+  // Clean the entry params out of the URL after a choice, honoring a sanitized
+  // internal return destination when one was supplied.
+  const finalizeEntryUrl = () => {
+    const safeReturn = readReturnPath(window.location.search);
+    const target =
+      safeReturn ||
+      `${window.location.pathname}${stripEntryParams(window.location.search)}${window.location.hash}`;
+    window.history.replaceState(null, "", target);
+  };
+
+  const handleChooseGuest = () => {
+    setGuestSession();
+    setGuestFlag(true);
+    setAuthIntent(null);
+    setAuthPrompt(null);
+    finalizeEntryUrl();
+  };
+
+  const handleChooseAuth = (intent) => {
+    setAuthPrompt(null);
+    setAuthIntent(intent === "create" ? "create" : "signin");
+    finalizeEntryUrl();
+  };
+
+  const requireAuth = (message) =>
+    setAuthPrompt({
+      message:
+        message ||
+        "Create a free account or log in to use this. You can keep browsing as a guest in the meantime.",
+    });
 
   const pingNewUserWebhook = async (user) => {
     try {
@@ -400,8 +496,32 @@ export default function App() {
   if (supportView) {
     return <SupportCheckoutStatus status={supportView} onContinue={handleSupportStatusContinue} onPoll={refreshProfileNow} />;
   }
-  if (!session) return <AuthScreen />;
-  if (passwordRecovery) {
+  // Unauthenticated: entry gate, auth screen, or guest browsing. Authenticated
+  // users never enter this branch and keep their existing flow untouched.
+  if (!session) {
+    if (authIntent) {
+      // Guest/landing visitor chose Log in or Create an account. Reuse the
+      // existing auth system; offer a safe path back to guest browsing.
+      return <AuthScreen initialMode={authIntent} onBack={handleChooseGuest} />;
+    }
+    if (shouldShowEntryGate({ search: window.location.search, hasSession: false, isGuest: guest })) {
+      return (
+        <EntryGate
+          onGuest={handleChooseGuest}
+          onLogin={() => handleChooseAuth("signin")}
+          onCreate={() => handleChooseAuth("create")}
+        />
+      );
+    }
+    if (!guest) {
+      // Direct (non-landing) visitors keep the exact existing behavior: the auth
+      // screen with no guest affordance. Landing visitors get a way back.
+      return <AuthScreen onBack={arrivedFromLanding.current ? handleChooseGuest : undefined} />;
+    }
+    // Otherwise: guest browsing -> fall through to the guest-safe app shell.
+  }
+
+  if (session && passwordRecovery) {
     return (
       <PasswordResetScreen
         onComplete={() => {
@@ -412,7 +532,7 @@ export default function App() {
     );
   }
 
-  if (needsOnboarding && !supportReturn) {
+  if (session && needsOnboarding && !supportReturn) {
     return (
       <OnboardingScreen
         user={session.user}
@@ -425,7 +545,7 @@ export default function App() {
     );
   }
 
-  if (showPartnerWizard) {
+  if (session && showPartnerWizard) {
     return (
       <PartnerWizard
         user={session.user}
@@ -439,8 +559,11 @@ export default function App() {
     );
   }
 
+  const isGuestMode = !session && guest;
+  const guestSaveMessage = "Create a free account or log in to save spots to your HEHA list.";
+
   return (
-    <div className="app-shell">
+    <div className={isGuestMode ? "app-shell guest-shell" : "app-shell"}>
       <header className="app-header luxe-header">
         <SwipeLogo compact />
         <button
@@ -452,8 +575,31 @@ export default function App() {
           <span className="location-pill-icon">📍</span>
           <span className="location-pill-label">{locationLabel || "Tampa Bay"}</span>
         </button>
-        <button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
+        <button
+          className="ghost-pill"
+          onClick={
+            isGuestMode
+              ? () => requireAuth("Log in or create an account to list your business on HEHA Swipe.")
+              : () => setShowPartnerWizard(true)
+          }
+        >
+          Get listed
+        </button>
       </header>
+
+      {isGuestMode && (
+        <div className="guest-ribbon" role="status">
+          <span>You're browsing as a guest.</span>
+          <span className="guest-ribbon-actions">
+            <button type="button" className="text-button" onClick={() => handleChooseAuth("signin")}>
+              Log in
+            </button>
+            <button type="button" className="guest-ribbon-cta" onClick={() => handleChooseAuth("create")}>
+              Create account
+            </button>
+          </span>
+        </div>
+      )}
 
       {notice && <div className="toast-notice">{notice}</div>}
       {appError && <div className="error-banner">{appError}</div>}
@@ -467,46 +613,90 @@ export default function App() {
         />
       )}
 
+      {authPrompt && (
+        <AuthPromptModal
+          message={authPrompt.message}
+          onLogin={() => handleChooseAuth("signin")}
+          onCreate={() => handleChooseAuth("create")}
+          onCancel={() => setAuthPrompt(null)}
+        />
+      )}
+
       <main className="app-content" aria-busy={dataLoading}>
         {tab === "swipe" && (
           <SwipeTab
             partners={partners}
             saves={saves}
-            onSave={handleSave}
+            onSave={isGuestMode ? () => requireAuth(guestSaveMessage) : handleSave}
             onPass={handlePass}
-            onSuperSwipe={handleSuperSwipe}
-            onUndoSwipe={handleUndoSwipe}
+            onSuperSwipe={
+              isGuestMode
+                ? () => requireAuth("SuperSwoop is a member feature. Log in or create an account to try it.")
+                : handleSuperSwipe
+            }
+            onUndoSwipe={
+              isGuestMode
+                ? () => {
+                    requireAuth("Log in or create an account to save and undo swipes.");
+                    return false;
+                  }
+                : handleUndoSwipe
+            }
             dataLoading={dataLoading}
           />
         )}
-        {tab === "faves" && (
-          <FavesTab
-            partners={partners}
-            saves={saves}
-            onUnsave={handleUnsave}
-            onDiscountCheck={handleDiscountCheck}
-          />
-        )}
-        {tab === "deals" && (
-          <CommunityPassTab
-            user={session.user}
-            profile={profile}
-            onListBusiness={() => setShowPartnerWizard(true)}
-          />
-        )}
-        {tab === "profile" && (
-          <ProfileTab
-            user={session.user}
-            profile={profile}
-            partners={partners}
-            saves={saves}
-            isBusiness={isPartnerProfile(profile) || !!myListing}
-            listing={myListing}
-            onSignOut={handleSignOut}
-            onListBusiness={() => setShowPartnerWizard(true)}
-            onRefresh={() => loadData(session.user.id)}
-          />
-        )}
+        {tab === "faves" &&
+          (isGuestMode ? (
+            <GuestTabGate
+              title="Save your favorite spots"
+              message="Log in or create a free account to keep a personal list of the healthy places you love."
+              onLogin={() => handleChooseAuth("signin")}
+              onCreate={() => handleChooseAuth("create")}
+            />
+          ) : (
+            <FavesTab
+              partners={partners}
+              saves={saves}
+              onUnsave={handleUnsave}
+              onDiscountCheck={handleDiscountCheck}
+            />
+          ))}
+        {tab === "deals" &&
+          (isGuestMode ? (
+            <GuestTabGate
+              title="Join the HEHA community"
+              message="Community passes and offers are for members. Log in or create a free account to take part."
+              onLogin={() => handleChooseAuth("signin")}
+              onCreate={() => handleChooseAuth("create")}
+            />
+          ) : (
+            <CommunityPassTab
+              user={session.user}
+              profile={profile}
+              onListBusiness={() => setShowPartnerWizard(true)}
+            />
+          ))}
+        {tab === "profile" &&
+          (isGuestMode ? (
+            <GuestTabGate
+              title="Your HEHA profile"
+              message="Log in or create a free account to personalize discovery, manage saved spots, and support local."
+              onLogin={() => handleChooseAuth("signin")}
+              onCreate={() => handleChooseAuth("create")}
+            />
+          ) : (
+            <ProfileTab
+              user={session.user}
+              profile={profile}
+              partners={partners}
+              saves={saves}
+              isBusiness={isPartnerProfile(profile) || !!myListing}
+              listing={myListing}
+              onSignOut={handleSignOut}
+              onListBusiness={() => setShowPartnerWizard(true)}
+              onRefresh={() => loadData(session.user.id)}
+            />
+          ))}
       </main>
 
       <nav className="bottom-nav luxe-nav" aria-label="Primary navigation">
@@ -521,6 +711,24 @@ export default function App() {
           </button>
         ))}
       </nav>
+    </div>
+  );
+}
+
+function GuestTabGate({ title, message, onLogin, onCreate }) {
+  return (
+    <div className="empty-state guest-tab-gate">
+      <div className="empty-icon" aria-hidden="true">♡</div>
+      <h2>{title}</h2>
+      <p>{message}</p>
+      <div className="guest-tab-gate-actions">
+        <button type="button" className="primary-button" onClick={onCreate}>
+          Create an account
+        </button>
+        <button type="button" className="text-button center" onClick={onLogin}>
+          Log in
+        </button>
+      </div>
     </div>
   );
 }

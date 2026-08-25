@@ -5,9 +5,35 @@ const redirectTo = window.location.origin;
 // Single source of truth for the sign-up intent key so it stays in sync with App.jsx.
 const SIGNUP_ROLE_KEY = "heha_signup_role";
 
-export default function AuthScreen() {
-  const [role, setRole] = useState(() => localStorage.getItem(SIGNUP_ROLE_KEY) || "");
-  const [mode, setMode] = useState("create");
+function CustomerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M19.5 4.5c-6.8.1-11.2 2.6-13.1 7.4-1.1 2.8-.2 5.5 2.2 6.7 2.5 1.3 5.4.2 6.8-2.4 1.1-2.1 1.2-5.3 4.1-11.7Z" />
+      <path d="M5 20c2.2-4.1 5.3-7.1 9.3-9" />
+    </svg>
+  );
+}
+
+function BusinessIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M4 9.5V20h16V9.5" />
+      <path d="M3 9.5 5.2 4h13.6L21 9.5" />
+      <path d="M3 9.5c0 1.4 1 2.5 2.3 2.5s2.4-1.1 2.4-2.5c0 1.4 1 2.5 2.3 2.5s2-1.1 2-2.5c0 1.4.9 2.5 2 2.5s2.3-1.1 2.3-2.5c0 1.4 1.1 2.5 2.4 2.5S21 10.9 21 9.5" />
+      <path d="M9 20v-5h6v5" />
+    </svg>
+  );
+}
+
+export default function AuthScreen({ initialMode = null, onBack } = {}) {
+  // When arriving from the landing entry gate we already know the intent
+  // (sign in vs create) and can skip straight to the consumer form, while the
+  // role pill still lets business users switch. Direct visitors keep the
+  // original role-first experience.
+  const [role, setRole] = useState(
+    () => localStorage.getItem(SIGNUP_ROLE_KEY) || (initialMode ? "customer" : "")
+  );
+  const [mode, setMode] = useState(initialMode === "signin" ? "signin" : "create");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -150,22 +176,26 @@ export default function AuthScreen() {
     return (
       <main className="auth-screen">
         <section className="auth-card">
+          {onBack && (
+            <button type="button" className="auth-back-link" onClick={onBack}>
+              ← Explore as guest
+            </button>
+          )}
           <div className="auth-hero">
-            <div className="brand-mark large">✦</div>
+            <div className="brand-mark large" role="img" aria-label="HEHA Swipe">H</div>
             <p className="eyebrow">HEHA Swipe early access</p>
             <h1>Swipe local. Save healthy spots. Support what you love.</h1>
             <p>HEHA Swipe helps you discover local healthy restaurants, wellness spaces, markets, vendors, and community businesses — starting as an early-access web app.</p>
-            <p>Swipe local spots. Save favorites. Set your vibe. Businesses can request to get listed.</p>
           </div>
 
           <div className="choice-grid auth-choice-grid">
             <button type="button" className="choice-card" onClick={() => chooseRole("customer")}>
-              <span>🌿</span>
+              <span className="choice-icon"><CustomerIcon /></span>
               <h2>Customer</h2>
               <p>Discover, save, and support healthy local businesses around Tampa Bay.</p>
             </button>
             <button type="button" className="choice-card featured" onClick={() => chooseRole("partner")}>
-              <span>🏪</span>
+              <span className="choice-icon"><BusinessIcon /></span>
               <h2>Business</h2>
               <p>Create a listing and become visible inside the HEHA Swipe discovery feed.</p>
             </button>
@@ -180,42 +210,56 @@ export default function AuthScreen() {
   const switchLabel = isBusiness ? "Customer access" : "Business access";
   const headline = "Swipe local. Save healthy spots. Support what you love.";
   const helperCopy = isBusiness
-    ? "HEHA Swipe helps you discover local healthy restaurants, wellness spaces, markets, vendors, and community businesses — starting as an early-access web app. Create a free account to request your business listing."
-    : "HEHA Swipe helps you discover local healthy restaurants, wellness spaces, markets, vendors, and community businesses — starting as an early-access web app. Create a free account to explore HEHA Swipe.";
+    ? mode === "create"
+      ? "Create an account to request your business listing and join the HEHA Swipe discovery feed."
+      : "Sign in to continue managing your HEHA Swipe business access."
+    : mode === "create"
+      ? "Create an account to discover, save, and support healthy local places."
+      : "Sign in to continue discovering and saving healthy local places.";
 
   return (
     <main className="auth-screen">
       <section className="auth-card role-auth-card">
+        {onBack && (
+          <button type="button" className="auth-back-link" onClick={onBack}>
+            ← Explore as guest
+          </button>
+        )}
         <button type="button" className="role-switch-pill" onClick={changeRole}>
           {switchLabel}
         </button>
 
         <div className="auth-hero">
-          <div className="brand-mark large">✦</div>
+          <div className="brand-mark large" role="img" aria-label="HEHA Swipe">H</div>
           <p className="eyebrow">{accessLabel}</p>
           <h1>{headline}</h1>
           <p>{helperCopy}</p>
-          <p>Swipe local spots. Save favorites. Set your vibe. Businesses can request to get listed.</p>
         </div>
 
         <div className="auth-tabs">
-          <button type="button" className={mode === "create" ? "active" : ""} onClick={() => setMode("create")}>Create account</button>
-          <button type="button" className={mode === "signin" ? "active" : ""} onClick={() => setMode("signin")}>Sign in</button>
+          <button type="button" aria-pressed={mode === "create"} className={mode === "create" ? "active" : ""} onClick={() => setMode("create")}>Create account</button>
+          <button type="button" aria-pressed={mode === "signin"} className={mode === "signin" ? "active" : ""} onClick={() => setMode("signin")}>Sign in</button>
         </div>
 
         <form onSubmit={submitPasswordAuth} className="auth-form">
-          <label>Email address</label>
+          <label htmlFor="auth-email">Email address</label>
           <input
+            id="auth-email"
+            name="email"
             type="email"
+            autoComplete="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="you@example.com"
             required
           />
 
-          <label>Password</label>
+          <label htmlFor="auth-password">Password</label>
           <input
+            id="auth-password"
+            name="password"
             type="password"
+            autoComplete={mode === "create" ? "new-password" : "current-password"}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="Minimum 8 characters"
@@ -223,7 +267,7 @@ export default function AuthScreen() {
             required
           />
 
-          <button className="primary-button" disabled={loading}>
+          <button type="submit" className="primary-button" disabled={loading}>
             {loading ? "Working…" : mode === "create" ? "Create secure account" : "Sign in with password"}
           </button>
         </form>
@@ -238,19 +282,28 @@ export default function AuthScreen() {
           Send secure sign-in email instead
         </button>
 
-        <div className="divider"><span>or continue with</span></div>
+        <div className="divider"><span>or</span></div>
 
         <div className="provider-row">
-          <button type="button" onClick={() => signInWithProvider("google")} disabled={loading}>Google</button>
-          <button type="button" onClick={() => signInWithProvider("apple")} disabled={loading}>Apple</button>
-          <button type="button" onClick={() => signInWithProvider("facebook")} disabled={loading}>Facebook</button>
+          <button type="button" onClick={() => signInWithProvider("google")} disabled={loading}>
+            <span className="provider-mark" aria-hidden="true">G</span>
+            <span>Continue with Google</span>
+          </button>
+          <button type="button" onClick={() => signInWithProvider("apple")} disabled={loading}>
+            <span className="provider-mark" aria-hidden="true">A</span>
+            <span>Continue with Apple</span>
+          </button>
+          <button type="button" onClick={() => signInWithProvider("facebook")} disabled={loading}>
+            <span className="provider-mark" aria-hidden="true">f</span>
+            <span>Continue with Facebook</span>
+          </button>
         </div>
 
-        {message && <div className="success-banner">{message}</div>}
-        {error && <div className="error-banner">{error}</div>}
+        {message && <div className="success-banner" role="status" aria-live="polite">{message}</div>}
+        {error && <div className="error-banner" role="alert">{error}</div>}
 
         <p className="fine-print">
-          Passwords are handled securely by Supabase Auth. HEHA does not store your password inside your public profile.
+          Your sign-in is protected. HEHA never displays your password or shares it with local partners.
         </p>
       </section>
     </main>

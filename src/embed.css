@@ -426,7 +426,7 @@ body:has(.embed-page),
   place-items: center;
   border-radius: 12px;
   background: var(--heha-orange-soft);
-  color: var(--heha-orange);
+  color: var(--heha-orange-text, #a94e00);
 }
 
 .become-partner-flow span {
@@ -440,6 +440,12 @@ body:has(.embed-page),
   grid-column: 1 / -1;
   padding: 16px 18px;
   font-size: 1rem;
+}
+
+.become-partner-cta:focus-visible {
+  outline: 3px solid var(--heha-orange-text, #a94e00);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px rgba(255,255,255,.96);
 }
 
 .become-partner-note {
