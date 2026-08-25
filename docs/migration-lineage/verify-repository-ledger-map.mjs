@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 const ROOT = process.cwd();
 
@@ -11,6 +12,10 @@ function fail(message) {
 
 function readText(relativePath) {
   return readFileSync(join(ROOT, relativePath), 'utf8');
+}
+
+function sha256(relativePath) {
+  return createHash('sha256').update(readFileSync(join(ROOT, relativePath))).digest('hex');
 }
 
 function parseCsv(text, label) {
@@ -88,6 +93,32 @@ function countBy(rows, key) {
   return counts;
 }
 
+function splitCandidates(value, label) {
+  if (!value) return [];
+  const candidates = value.split(';');
+  if (candidates.some((candidate) => candidate.length === 0)) {
+    fail(`${label}: empty candidate segment`);
+  }
+  if (new Set(candidates).size !== candidates.length) {
+    fail(`${label}: duplicate candidate`);
+  }
+  return candidates;
+}
+
+function repositoryPath(version, name) {
+  return `supabase/migrations/${version}_${name}.sql`;
+}
+
+function repositoryNameFromPath(path) {
+  const match = basename(path).match(/^\d{14}_(.+)\.sql$/);
+  if (!match) fail(`repository path has non-canonical migration filename: ${path}`);
+  return match[1];
+}
+
+function liveKey(row) {
+  return `${row.live_version ?? row.version}:${row.live_name ?? row.name}`;
+}
+
 const ledger = parseCsv(
   readText('docs/migration-lineage/live-ledger-2026-08-19.csv'),
   'live ledger'
@@ -104,12 +135,30 @@ const repoMap = parseCsv(
   readText('docs/migration-lineage/repository-migration-disposition-map-2026-08-24.csv'),
   'repository disposition map'
 );
+const repositoryExpectations = parseCsv(
+  readText('docs/migration-lineage/repository-disposition-expectations-2026-08-24.csv'),
+  'reviewed repository expectations'
+);
 
 if (ledger.length !== 96) fail(`live ledger: expected 96 rows, got ${ledger.length}`);
 if (new Set(ledger.map((row) => row.version)).size !== 96) fail('live ledger: versions are not unique');
 if (inventory.length !== 35) fail(`repository inventory: expected 35 rows, got ${inventory.length}`);
 if (liveMap.length !== 96) fail(`live compatibility map: expected 96 rows, got ${liveMap.length}`);
 if (repoMap.length !== 35) fail(`repository disposition map: expected 35 rows, got ${repoMap.length}`);
+if (repositoryExpectations.length !== 35) {
+  fail(`reviewed repository expectations: expected 35 rows, got ${repositoryExpectations.length}`);
+}
+for (const row of repositoryExpectations) {
+  if (!/^[0-9a-f]{64}$/.test(row.sha256)) {
+    fail(`reviewed repository expectations ${row.repository_path}: invalid SHA-256`);
+  }
+  const actual = sha256(row.repository_path);
+  if (actual !== row.sha256) {
+    fail(
+      `reviewed repository expectations ${row.repository_path}: SHA-256 mismatch; expected=${row.sha256} actual=${actual}`
+    );
+  }
+}
 
 assertExactKeys(
   liveMap,
@@ -120,8 +169,19 @@ assertExactKeys(
 assertExactKeys(
   repoMap,
   inventory,
-  (row) => `${row.repository_version ?? row.version}\u0000${row.repository_name ?? row.name}\u0000${row.evidence}`,
+  (row) => {
+    const version = row.repository_version ?? row.version;
+    const name = row.repository_name ?? row.name;
+    const path = row.repository_path ?? repositoryPath(version, name);
+    return `${version}\u0000${name}\u0000${path}\u0000${row.evidence}`;
+  },
   'repository map vs inventory'
+);
+assertExactKeys(
+  repoMap,
+  repositoryExpectations,
+  (row) => `${row.repository_path}\u0000${row.class}\u0000${row.live_candidates}`,
+  'repository map vs reviewed expectations'
 );
 
 const liveVersions = new Set(ledger.map((row) => row.version));
@@ -159,12 +219,57 @@ if (
   fail('live map: recovered supporter archive contract changed');
 }
 
+const ledgerRowsByName = new Map();
+for (const row of ledger) {
+  const rows = ledgerRowsByName.get(row.name) ?? [];
+  rows.push(row);
+  ledgerRowsByName.set(row.name, rows);
+}
+const ledgerDuplicateNames = [...ledgerRowsByName.entries()].filter(([, rows]) => rows.length > 1);
+if (
+  ledgerDuplicateNames.length !== 1 ||
+  ledgerDuplicateNames[0][0] !== 'analytics_triggers_for_partner_counters' ||
+  JSON.stringify(ledgerDuplicateNames[0][1].map((row) => row.version).sort()) !==
+    JSON.stringify(['20260602213920', '20260602220224'])
+) {
+  fail('live ledger: exact duplicate-name/version contract changed');
+}
+
 const duplicateRows = liveMap.filter((row) => row.class === 'D');
 if (
   duplicateRows.length !== 2 ||
-  duplicateRows.some((row) => row.live_name !== 'analytics_triggers_for_partner_counters')
+  duplicateRows.some(
+    (row) =>
+      row.live_name !== 'analytics_triggers_for_partner_counters' ||
+      !['20260602213920', '20260602220224'].includes(row.live_version)
+  )
 ) {
-  fail('live map: duplicate analytics contract changed');
+  fail('live map: exact duplicate-name/version contract changed');
+}
+
+for (const row of liveMap) {
+  const candidates = splitCandidates(row.repository_candidates, `live map ${row.live_version}`);
+  if (row.class === 'A') {
+    if (candidates.length !== 1 || candidates[0] !== archiveRows[0].repository_candidates) {
+      fail(`live map ${row.live_version}: class A requires the frozen archive path`);
+    }
+  } else if (row.class === 'B' || row.class === 'D') {
+    if (candidates.length !== 0) {
+      fail(`live map ${row.live_version}: class ${row.class} must not have repository candidates`);
+    }
+  } else if (row.class === 'C' || row.class === 'N') {
+    if (candidates.length === 0) {
+      fail(`live map ${row.live_version}: class ${row.class} requires a repository candidate`);
+    }
+  }
+
+  if (row.class === 'N') {
+    for (const candidate of candidates) {
+      if (repositoryNameFromPath(candidate) !== row.live_name) {
+        fail(`live map ${row.live_version}: class N candidate must preserve the migration name`);
+      }
+    }
+  }
 }
 
 const allowedRepoClassifications = new Set(['BC', 'BS', 'AN', 'AR', 'AS']);
@@ -188,6 +293,43 @@ if (Object.keys(actualRepoCounts).length !== Object.keys(expectedRepoCounts).len
 const mappedPaths = repoMap.map((row) => row.repository_path).sort();
 if (new Set(mappedPaths).size !== mappedPaths.length) fail('repository map: duplicate repository_path');
 
+for (const row of repoMap) {
+  const expectedPath = repositoryPath(row.repository_version, row.repository_name);
+  if (row.repository_path !== expectedPath) {
+    fail(`repository map ${row.repository_version}:${row.repository_name}: expected path ${expectedPath}, got ${row.repository_path}`);
+  }
+  if (repositoryNameFromPath(row.repository_path) !== row.repository_name) {
+    fail(`repository map ${row.repository_path}: filename/name mismatch`);
+  }
+  splitCandidates(row.live_candidates, `repository map ${row.repository_path}`);
+}
+
+const repositoryRowsByVersion = new Map();
+for (const row of repoMap) {
+  const rows = repositoryRowsByVersion.get(row.repository_version) ?? [];
+  rows.push(row);
+  repositoryRowsByVersion.set(row.repository_version, rows);
+}
+for (const [version, rows] of repositoryRowsByVersion) {
+  if (rows.length === 1) {
+    if (['BS', 'AR', 'AS'].includes(rows[0].class)) {
+      fail(`repository map ${version}: collision-only class ${rows[0].class} used for a unique version`);
+    }
+    continue;
+  }
+  if (!rows.some((row) => row.class === 'BS')) {
+    fail(`repository map ${version}: shared version requires at least one BS row`);
+  }
+  for (const row of rows) {
+    if (!['BS', 'AR', 'AS'].includes(row.class)) {
+      fail(`repository map ${row.repository_path}: shared version requires a collision class`);
+    }
+    if (row.repository_name.endsWith('.rollback') !== (row.class === 'AR')) {
+      fail(`repository map ${row.repository_path}: rollback/collision class mismatch`);
+    }
+  }
+}
+
 const actualPaths = readdirSync(join(ROOT, 'supabase/migrations'))
   .filter((name) => name.endsWith('.sql'))
   .map((name) => `supabase/migrations/${name}`)
@@ -202,23 +344,41 @@ if (JSON.stringify(actualPaths) !== JSON.stringify(mappedPaths)) {
 }
 
 const mappedPathSet = new Set(mappedPaths);
+const repoByPath = new Map(repoMap.map((row) => [row.repository_path, row]));
+const liveByKey = new Map(liveMap.map((row) => [liveKey(row), row]));
 const archivePath =
   'docs/migration-lineage/historical-sql/20260614102924_add_supporter_payments_subscriptions_vibe_settings.sql';
 for (const row of liveMap) {
-  const candidates = row.repository_candidates ? row.repository_candidates.split(';') : [];
+  const candidates = splitCandidates(row.repository_candidates, `live map ${row.live_version}`);
   for (const candidate of candidates) {
     if (candidate !== archivePath && !mappedPathSet.has(candidate)) {
       fail(`live map ${row.live_version}: unknown repository candidate ${candidate}`);
+    }
+    if (candidate !== archivePath) {
+      const reverseCandidates = splitCandidates(
+        repoByPath.get(candidate).live_candidates,
+        `repository map ${candidate}`
+      );
+      if (!reverseCandidates.includes(liveKey(row))) {
+        fail(`live map ${row.live_version}: missing reverse edge from ${candidate}`);
+      }
     }
   }
 }
 
 const liveKeySet = new Set(ledger.map((row) => `${row.version}:${row.name}`));
 for (const row of repoMap) {
-  const candidates = row.live_candidates ? row.live_candidates.split(';') : [];
+  const candidates = splitCandidates(row.live_candidates, `repository map ${row.repository_path}`);
   for (const candidate of candidates) {
     if (!liveKeySet.has(candidate)) {
       fail(`repository map ${row.repository_path}: unknown live candidate ${candidate}`);
+    }
+    const reverseCandidates = splitCandidates(
+      liveByKey.get(candidate).repository_candidates,
+      `live map ${candidate}`
+    );
+    if (!reverseCandidates.includes(row.repository_path)) {
+      fail(`repository map ${row.repository_path}: missing reverse edge from ${candidate}`);
     }
   }
 }

@@ -5,10 +5,14 @@ on:
     paths:
       - "docs/migration-lineage/live-ledger-compatibility-map-2026-08-24.csv"
       - "docs/migration-lineage/repository-migration-disposition-map-2026-08-24.csv"
+      - "docs/migration-lineage/repository-disposition-expectations-2026-08-24.csv"
       - "docs/migration-lineage/repository-ledger-compatibility-summary-2026-08-24.md"
       - "docs/migration-lineage/deep-metadata-capture-plan-2026-08-24.md"
+      - "docs/migration-lineage/historical-deep-capture-custody-2026-08-24.md"
       - "docs/migration-lineage/queries/deep-structure-manifest-capture.sql"
       - "docs/migration-lineage/verify-repository-ledger-map.mjs"
+      - "docs/migration-lineage/test-repository-ledger-map-negative.mjs"
+      - "docs/migration-lineage/test-private-capture-containment.mjs"
       - "docs/migration-lineage/repository-ledger-map-manifest.sha256"
       - "docs/migration-lineage/README.md"
       - "docs/migration-lineage/live-ledger-2026-08-19.csv"
@@ -16,6 +20,11 @@ on:
       - "supabase/migrations/**"
       - ".github/workflows/swp-016-compatibility-map-verify.yml"
   workflow_dispatch:
+    inputs:
+      base_sha:
+        description: "Exact 40-character base commit SHA for merge-base-to-dispatch-head checks"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -32,14 +41,22 @@ jobs:
     steps:
       - name: Check out exact review ref
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Use Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "20.20.2"
 
       - name: Verify compatibility maps
         run: node docs/migration-lineage/verify-repository-ledger-map.mjs
+
+      - name: Reject aggregate-preserving semantic corruption
+        run: node docs/migration-lineage/test-repository-ledger-map-negative.mjs
+
+      - name: Verify private capture path containment
+        run: node docs/migration-lineage/test-private-capture-containment.mjs
 
       - name: Verify packet hashes
         run: sha256sum -c docs/migration-lineage/repository-ledger-map-manifest.sha256
@@ -55,4 +72,28 @@ jobs:
           fi
 
       - name: Verify patch whitespace
-        run: git diff --check
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DISPATCH_BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --check "$PR_BASE_SHA...$PR_HEAD_SHA"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ ! "$DISPATCH_BASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "base_sha must be an exact 40-character commit SHA." >&2
+              exit 1
+            fi
+            git cat-file -e "$DISPATCH_BASE_SHA^{commit}"
+            if ! git merge-base --is-ancestor "$DISPATCH_BASE_SHA" "$GITHUB_SHA"; then
+              echo "base_sha must be an ancestor of GITHUB_SHA." >&2
+              exit 1
+            fi
+            git diff --check "$DISPATCH_BASE_SHA...$GITHUB_SHA"
+          else
+            echo "Unsupported event: $EVENT_NAME" >&2
+            exit 1
+          fi
