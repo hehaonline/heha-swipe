@@ -20,7 +20,17 @@ const GENERIC_HEHA_LOCAL_LISTING_PATHS = new Set([
   "/restaurants/",
   "/vendors",
   "/vendors/",
+  "/market",
+  "/market/",
+  "/chef",
+  "/chef/",
+  "/chef/match",
+  "/group-orders",
+  "/group-orders/",
 ]);
+
+const SPECIFIC_LOCAL_PROFILE_PATH = /^\/(restaurants|vendors|market|chef)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/i;
+const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function localOrigin() {
   const configured = String(import.meta.env.VITE_HEHA_LOCAL_URL || "").trim();
@@ -51,7 +61,27 @@ export function hasSpecificHehaLocalDestination(partner) {
 
   const configuredPath = normalizedConfiguredPath(partner);
   if (!configuredPath) return false;
-  return !isGenericHehaLocalListingPath(configuredPath);
+  if (isGenericHehaLocalListingPath(configuredPath)) return false;
+  const partnerId = String(partner?.id || "").trim();
+  const lane = String(partner?.local_lane || "").trim();
+  const isWave1Route = lane === "chef"
+    || lane === "group_orders"
+    || configuredPath.startsWith("/chef")
+    || configuredPath.startsWith("/group-orders");
+
+  if (isWave1Route) {
+    if (!UUID_TEXT.test(partnerId)) return false;
+    if (lane === "chef") {
+      return configuredPath.split("?", 1)[0] === `/chef/${partnerId}`
+        || configuredPath === `/chef/match?swipePartnerId=${partnerId}&service=private_chef`;
+    }
+    if (lane === "group_orders") {
+      return configuredPath === `/chef/match?swipePartnerId=${partnerId}&service=catering`;
+    }
+    return false;
+  }
+
+  return SPECIFIC_LOCAL_PROFILE_PATH.test(configuredPath);
 }
 
 export function isHehaLocalPartner(partner) {
@@ -92,6 +122,8 @@ export function partnerOrderUrl(partner, item = null) {
 
 export function partnerOrderLabel(partner, selectedItem = null) {
   if (isHehaLocalPartner(partner)) {
+    if (partner?.local_lane === "chef") return "Request this chef";
+    if (partner?.local_lane === "group_orders") return "Request catering quote";
     const isVendor = partner?.category === "Vendor" || partner?.local_lane === "vendors";
     return selectedItem
       ? "Open item in HEHA Local"
@@ -100,4 +132,26 @@ export function partnerOrderLabel(partner, selectedItem = null) {
         : "View full menu in HEHA Local";
   }
   return selectedItem ? "Order selected item on HEHA" : "Select an item to order";
+}
+
+export function partnerLocalRequestCopy(partner) {
+  if (!isHehaLocalPartner(partner)) return null;
+
+  if (partner?.local_lane === "chef") {
+    return {
+      eyebrow: "HEHA Local request",
+      heading: "Request this chef",
+      body: "Open HEHA Local to share your event details and request availability and a quote from this chef.",
+    };
+  }
+
+  if (partner?.local_lane === "group_orders") {
+    return {
+      eyebrow: "HEHA Local request",
+      heading: "Request catering quote",
+      body: "Open HEHA Local to share your group-order details and request a catering quote from this partner.",
+    };
+  }
+
+  return null;
 }
