@@ -1,0 +1,193 @@
+{
+  "contract_version": "one-heha-s1-swipe-foundation-v1",
+  "status": "review-only",
+  "production_authorization": false,
+  "base_sha": "a8abb46c4908c9f216c589dd35ab7369a8f6cba9",
+  "authority": {
+    "canonical_consumer_identity": "heha_local_auth_user_id",
+    "canonical_business_identity": "heha_swipe_partners_id",
+    "community_pass_ledger": "heha_swipe_server_owned",
+    "ownership_is_role": false,
+    "email_is_identity_authority": false,
+    "browser_may_submit_canonical_user_id": false
+  },
+  "package": {
+    "repository": "hehaonline/heha-swipe",
+    "branch": "agent/one-heha-swipe-identity-cp-foundation-v1",
+    "standard_migration_path_allowed": false,
+    "application_code_allowed": false,
+    "real_accounts_allowed": false,
+    "provider_calls_allowed": false,
+    "paid_infrastructure_allowed": false
+  },
+  "private_schemas": [
+    "one_heha_private",
+    "community_pass_private"
+  ],
+  "identity_objects": {
+    "identity_links": {
+      "schema": "one_heha_private",
+      "browser_access": "none",
+      "canonical_user_cross_project_fk": false,
+      "swipe_user_fk": "auth.users",
+      "active_unique_by_canonical_user_and_environment": true,
+      "active_unique_by_swipe_user_and_environment": true,
+      "states": [
+        "pending",
+        "active",
+        "revoked",
+        "deleted",
+        "reconciliation_exception"
+      ]
+    },
+    "link_handshakes": {
+      "schema": "one_heha_private",
+      "browser_access": "none",
+      "max_lifetime_seconds": 300,
+      "max_reauthentication_age_seconds": 600,
+      "raw_nonce_stored": false,
+      "raw_assertion_stored": false,
+      "one_time_consumption": true,
+      "states": [
+        "pending",
+        "consumed",
+        "expired",
+        "cancelled",
+        "manual_review",
+        "reconciliation_exception"
+      ]
+    },
+    "identity_events": {
+      "schema": "one_heha_private",
+      "browser_access": "none",
+      "append_only": true,
+      "idempotent": true,
+      "event_types": [
+        "link_requested",
+        "local_identity_verified",
+        "link_activated",
+        "link_rejected",
+        "link_revoked",
+        "canonical_account_deletion_requested",
+        "canonical_account_deleted",
+        "reconciliation_exception"
+      ]
+    }
+  },
+  "community_pass_objects": {
+    "account_owner_column": "canonical_user_id",
+    "account_owner_cross_project_fk": false,
+    "child_owner_column": "account_id",
+    "duplicated_swipe_user_id_allowed": false,
+    "tables": [
+      "community_pass_accounts",
+      "community_pass_subscriptions",
+      "community_pass_purchases",
+      "community_pass_entitlements",
+      "community_pass_acceptances",
+      "community_pass_events",
+      "community_pass_stripe_event_inbox"
+    ],
+    "active_benefit_states": [
+      "trial_active",
+      "monthly_subscription_active",
+      "prepaid_term_active"
+    ],
+    "inactive_benefit_states": [
+      "payment_recovery",
+      "cancel_scheduled",
+      "support_review",
+      "suspended",
+      "expired",
+      "revoked_account_deleted",
+      "refunded",
+      "disputed",
+      "reconciliation_exception"
+    ],
+    "amount_contract": {
+      "monthly_min_cents": 200,
+      "monthly_max_cents": 10000,
+      "monthly_step_cents": 100,
+      "six_month_cents": 1500,
+      "twelve_month_cents": 2500
+    },
+    "browser_table_access": "none",
+    "forced_rls": true,
+    "events_append_only": true,
+    "trial_once": true,
+    "provider_liabilities_survive_deletion": true
+  },
+  "server_functions": {
+    "begin_link_handshake": {
+      "browser_execute": false,
+      "service_execute": true,
+      "requires_verified_non_sso": true,
+      "requires_recent_swipe_reauthentication": true
+    },
+    "activate_identity_link": {
+      "browser_execute": false,
+      "service_execute": true,
+      "requires_recent_local_reauthentication": true,
+      "requires_one_time_jti": true,
+      "same_request_idempotent": true,
+      "concurrent_conflicts_fail_closed": true
+    },
+    "revoke_identity_for_canonical_user": {
+      "browser_execute": false,
+      "service_execute": true,
+      "idempotent": true,
+      "member_access_fails_closed_first": true,
+      "provider_cancellation_fabricated": false
+    },
+    "resolve_account_for_swipe_user": {
+      "browser_execute": false,
+      "service_execute": true,
+      "requires_active_link": true
+    },
+    "start_trial_for_swipe_user": {
+      "browser_execute": false,
+      "service_execute": true,
+      "requires_active_link": true,
+      "requires_one_open_contract": true
+    }
+  },
+  "proof_requirements": {
+    "postgres_major_versions": [15, 17],
+    "apply": true,
+    "reapply": true,
+    "rollback": true,
+    "clean_teardown": true,
+    "forced_rls": true,
+    "browser_acl_denial": true,
+    "cross_user_denial": true,
+    "email_only_denial": true,
+    "sso_manual_review": true,
+    "replay_denial": true,
+    "expired_handshake_denial": true,
+    "same_request_concurrency": true,
+    "conflicting_link_concurrency": true,
+    "deletion_idempotency": true,
+    "recreation_noninheritance": true,
+    "trial_once": true,
+    "active_state_allowlist": true,
+    "provider_liability_preservation": true,
+    "generated_types_later_gate": true,
+    "security_advisors_later_gate": true,
+    "performance_advisors_later_gate": true
+  },
+  "prohibited": [
+    "supabase/migrations",
+    "production_apply",
+    "production_data",
+    "auth_export",
+    "auth_import",
+    "real_account_link",
+    "live_stripe_action",
+    "customer_billing",
+    "member_benefit_activation",
+    "heha_credit_issuance",
+    "delivery_waiver",
+    "deployment_authorization",
+    "public_launch_claim"
+  ]
+}
