@@ -105,7 +105,10 @@ create unique index if not exists identity_links_active_swipe_unique
   on one_heha_private.identity_links(swipe_user_id, environment)
   where status = 'active' and swipe_user_id is not null;
 
-create unique index if not exists identity_links_tombstone_unique
+-- One canonical deletion may minimize more than one historical source link with
+-- the same opaque tombstone. The tombstone is indexed for lookup, not unique.
+drop index if exists one_heha_private.identity_links_tombstone_unique;
+create index if not exists identity_links_tombstone_idx
   on one_heha_private.identity_links(environment, tombstone_hash)
   where tombstone_hash is not null;
 
