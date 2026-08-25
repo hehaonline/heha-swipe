@@ -8,7 +8,7 @@ On 2026-08-25, the source-controlled read-only query at:
 - path `docs/migration-lineage/queries/deep-structure-manifest-capture.sql`
 - Git blob `37855e6cfb20636664d99547bde7cdd856507645`
 
-was executed against the canonical `HEHA SWIPE` Supabase project under an explicit founder approval for a fresh private metadata-only capture.
+was executed against the canonical `HEHA SWIPE` Supabase project under explicit founder approval for a fresh private metadata-only capture.
 
 ## Public result
 
@@ -21,7 +21,7 @@ was executed against the canonical `HEHA SWIPE` Supabase project under an explic
 - Deterministic plaintext SHA-256: `9bbdec7dd4299824d3d35ffaf832672a35d67c6d435e4ff2fb0512d793587299`
 - Server-side decrypt-and-rehash verification: **PASS**
 
-The full capture is retained only in private HEHA Control draft PR **#58**. It is not included, linked, or reproduced in this public repository.
+The full capture is retained only in the private `hehaonline/heha-control` repository. Private PR **#58** was squash-merged from exact verified head `7b7f460ee7d816d6efda7407e264c904dddab00f` as merge commit `451e3191e21ba08212ec156b84989f3cfe23db67`. The detailed artifact is not included, linked, or reproduced in this public repository.
 
 ## Data-minimization boundary
 
