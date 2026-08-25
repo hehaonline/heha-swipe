@@ -15,6 +15,124 @@
   padding-top: 30px;
 }
 
+/* Claim-flow accessibility tokens:
+   inactive tab #4f493f on #fffaf2 = 8.57:1 contrast. */
+.role-auth-card .auth-tabs button:not(.active) {
+  color: #4f493f;
+}
+
+.role-auth-card.claim-auth-card .auth-hero {
+  padding-right: 0;
+}
+
+.claim-auth-card .auth-tabs button {
+  min-height: 44px;
+}
+
+.role-auth-card h1,
+.claim-success-panel strong,
+.claim-success-panel p {
+  overflow-wrap: anywhere;
+}
+
+.field-guidance {
+  color: #4f493f;
+  font-size: 12px;
+  margin-top: -4px;
+}
+
+.auth-action-error {
+  margin: 0 0 2px;
+}
+
+.claim-review-gate {
+  color: var(--heha-green-dark);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.45;
+  margin: 14px 0;
+}
+
+.claim-support-copy {
+  color: var(--heha-green-dark);
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.claim-success-panel {
+  background: var(--heha-green-soft);
+  border: 2px solid var(--heha-green);
+  border-radius: 18px;
+  color: var(--heha-green-dark);
+  margin: 12px 16px 0;
+  padding: 14px;
+  position: relative;
+  z-index: 25;
+}
+
+.claim-success-panel strong {
+  display: block;
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.claim-success-panel p {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 6px 0 0;
+}
+
+.claim-success-actions {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.claim-mismatch-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  text-align: center;
+}
+
+.claim-mismatch-actions .text-button {
+  display: block;
+  min-height: 44px;
+  padding: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.claim-success-actions .primary-button {
+  min-height: 48px;
+}
+
+.role-auth-card .auth-tabs button:focus-visible,
+.role-auth-card input:focus-visible,
+.role-auth-card .primary-button:focus-visible,
+.role-auth-card .secondary-button:focus-visible,
+.auth-card > a:focus-visible,
+.claim-success-panel button:focus-visible {
+  outline: 3px solid var(--heha-green-dark);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.claim-mismatch-actions a:focus-visible {
+  outline: 3px solid var(--heha-green-dark);
+  outline-offset: 3px;
+}
+
+@media (max-width: 420px) {
+  .role-auth-card {
+    padding: 20px;
+  }
+
+  .role-auth-card .auth-hero h1 {
+    font-size: clamp(30px, 9vw, 38px);
+  }
+}
+
 .role-switch-pill {
   position: absolute;
   top: 18px;

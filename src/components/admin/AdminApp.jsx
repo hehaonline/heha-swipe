@@ -35,6 +35,7 @@ export default function AdminApp({ session, loading, onSignOut }) {
       internal: ROLE_ORDER.includes(role),
       pm: admin || role === "pm_admin",
       routing: admin || role === "pm_admin",
+      claimAdmin: ["super_admin", "developer_admin", "pm_admin"].includes(role),
       community: admin || role === "community_events_admin",
       som: admin || role === "som_admin",
       scout: ROLE_ORDER.includes(role),
@@ -86,7 +87,7 @@ export default function AdminApp({ session, loading, onSignOut }) {
       </header>
       {area === "home" && <AdminHome access={access} openArea={openArea} />}
       {area === "pm" && (access.pm ? <PmDashboard final={access.final} /> : <BlockedArea openArea={openArea} />)}
-      {area === "routing" && (access.routing ? <RoutingDashboard final={access.final} /> : <BlockedArea openArea={openArea} />)}
+      {area === "routing" && (access.routing ? <RoutingDashboard final={access.final} canManageClaims={access.claimAdmin} /> : <BlockedArea openArea={openArea} />)}
       {area === "community" && (access.community ? <CommunityDashboard final={access.final} /> : <BlockedArea openArea={openArea} />)}
       {area === "som" && (access.som ? <ScoutDashboard role={role} final={access.final} mode="som" /> : <BlockedArea openArea={openArea} />)}
       {area === "scout" && <ScoutDashboard role={role} final={access.final} />}
