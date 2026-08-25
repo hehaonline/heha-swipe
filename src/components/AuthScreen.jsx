@@ -5,6 +5,26 @@ const redirectTo = window.location.origin;
 // Single source of truth for the sign-up intent key so it stays in sync with App.jsx.
 const SIGNUP_ROLE_KEY = "heha_signup_role";
 
+function CustomerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M19.5 4.5c-6.8.1-11.2 2.6-13.1 7.4-1.1 2.8-.2 5.5 2.2 6.7 2.5 1.3 5.4.2 6.8-2.4 1.1-2.1 1.2-5.3 4.1-11.7Z" />
+      <path d="M5 20c2.2-4.1 5.3-7.1 9.3-9" />
+    </svg>
+  );
+}
+
+function BusinessIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M4 9.5V20h16V9.5" />
+      <path d="M3 9.5 5.2 4h13.6L21 9.5" />
+      <path d="M3 9.5c0 1.4 1 2.5 2.3 2.5s2.4-1.1 2.4-2.5c0 1.4 1 2.5 2.3 2.5s2-1.1 2-2.5c0 1.4.9 2.5 2 2.5s2.3-1.1 2.3-2.5c0 1.4 1.1 2.5 2.4 2.5S21 10.9 21 9.5" />
+      <path d="M9 20v-5h6v5" />
+    </svg>
+  );
+}
+
 export default function AuthScreen() {
   const [role, setRole] = useState(() => localStorage.getItem(SIGNUP_ROLE_KEY) || "");
   const [mode, setMode] = useState("create");
@@ -151,7 +171,7 @@ export default function AuthScreen() {
       <main className="auth-screen">
         <section className="auth-card">
           <div className="auth-hero">
-            <div className="brand-mark large">✦</div>
+            <div className="brand-mark large" role="img" aria-label="HEHA Swipe">H</div>
             <p className="eyebrow">HEHA Swipe early access</p>
             <h1>Swipe local. Save healthy spots. Support what you love.</h1>
             <p>HEHA Swipe helps you discover local healthy restaurants, wellness spaces, markets, vendors, and community businesses — starting as an early-access web app.</p>
@@ -160,12 +180,12 @@ export default function AuthScreen() {
 
           <div className="choice-grid auth-choice-grid">
             <button type="button" className="choice-card" onClick={() => chooseRole("customer")}>
-              <span>🌿</span>
+              <span className="choice-icon"><CustomerIcon /></span>
               <h2>Customer</h2>
               <p>Discover, save, and support healthy local businesses around Tampa Bay.</p>
             </button>
             <button type="button" className="choice-card featured" onClick={() => chooseRole("partner")}>
-              <span>🏪</span>
+              <span className="choice-icon"><BusinessIcon /></span>
               <h2>Business</h2>
               <p>Create a listing and become visible inside the HEHA Swipe discovery feed.</p>
             </button>
@@ -191,7 +211,7 @@ export default function AuthScreen() {
         </button>
 
         <div className="auth-hero">
-          <div className="brand-mark large">✦</div>
+          <div className="brand-mark large" role="img" aria-label="HEHA Swipe">H</div>
           <p className="eyebrow">{accessLabel}</p>
           <h1>{headline}</h1>
           <p>{helperCopy}</p>
