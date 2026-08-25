@@ -152,12 +152,12 @@ assert(!/\bauth\.uid\s*\(/i.test(files.transitions), 'S1 server transitions must
 assert(files.transitions.includes("p_identity_classification is distinct from 'verified_non_sso'"), 'SSO/unverified fail-close');
 assert(files.transitions.includes("interval '10 minutes'"), 'recent reauthentication gate');
 assert(files.transitions.includes("interval '5 minutes'"), 'five-minute handshake creation');
-assert(files.transitions.includes("HEHA_ONE_ASSERTION_REPLAY_DENIED"), 'assertion replay denial');
-assert(files.transitions.includes("HEHA_ONE_IDENTITY_LINK_CONFLICT"), 'identity conflict denial');
+assert(files.transitions.includes('HEHA_ONE_ASSERTION_REPLAY_DENIED'), 'assertion replay denial');
+assert(files.transitions.includes('HEHA_ONE_IDENTITY_LINK_CONFLICT'), 'identity conflict denial');
 assert(files.transitions.includes('pg_advisory_xact_lock'), 'transactional concurrency locks');
 assert(files.transitions.includes("'one-heha:canonical:'"), 'canonical lock namespace');
 assert(files.transitions.includes("'one-heha:swipe:'"), 'Swipe lock namespace');
-assert(files.transitions.includes("status = 'reconciliation_exception'"), 'provider reconciliation exception');
+assert(files.transitions.includes("then 'reconciliation_exception'"), 'provider reconciliation exception');
 assert(files.transitions.includes("'provider_reconciliation_required', true"), 'provider liability receipt');
 assert(files.transitions.includes("status = 'deleted'"), 'canonical deletion state');
 assert(files.transitions.includes('canonical_user_id = null'), 'canonical identity redaction');
