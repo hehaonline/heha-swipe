@@ -12,7 +12,7 @@ const INTERNAL_ROLES = new Set([
 
 export default function InternalDashboardShortcut() {
   const [visible, setVisible] = useState(false);
-  const [profileHost, setProfileHost] = useState(null);
+  const [dashboardHost, setDashboardHost] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,18 +54,18 @@ export default function InternalDashboardShortcut() {
   }, []);
 
   useEffect(() => {
-    const locateProfile = () => {
-      setProfileHost(document.querySelector(".profile-screen"));
+    const locateDashboardSlot = () => {
+      setDashboardHost(document.querySelector("[data-internal-dashboard-slot]"));
     };
 
-    locateProfile();
-    const observer = new MutationObserver(locateProfile);
+    locateDashboardSlot();
+    const observer = new MutationObserver(locateDashboardSlot);
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => observer.disconnect();
   }, []);
 
-  if (!visible || !profileHost) return null;
+  if (!visible || !dashboardHost) return null;
 
   return createPortal(
     <div className="profile-card card-like" aria-label="HEHA internal dashboard access">
@@ -81,6 +81,6 @@ export default function InternalDashboardShortcut() {
         Open HEHA Dashboard
       </button>
     </div>,
-    profileHost
+    dashboardHost
   );
 }
