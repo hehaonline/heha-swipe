@@ -1,0 +1,143 @@
+name: ONE HEHA S1 Review Proof
+
+on:
+  pull_request:
+    paths:
+      - 'contracts/one-heha-s1-swipe-foundation-v1.json'
+      - 'docs/architecture/one-heha-s1-swipe-identity-community-pass-foundation.md'
+      - 'scripts/verify-one-heha-s1-review.mjs'
+      - 'supabase/review_only/one_heha_s1/**'
+      - '.github/workflows/one-heha-s1-review-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: PostgreSQL ${{ matrix.postgres }} review proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['15', '17']
+
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      S1_BASE_SHA: a8abb46c4908c9f216c589dd35ab7369a8f6cba9
+
+    steps:
+      - name: Check out literal branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify exact review-only scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="$(git rev-parse HEAD^)"
+            head="$(git rev-parse HEAD)"
+          fi
+
+          git diff --check "$base" "$head"
+          mapfile -t files < <(git diff --name-only "$base" "$head" | sort)
+          printf '%s\n' "${files[@]}"
+
+          allowed='^(\.github/workflows/one-heha-s1-review-proof\.yml|contracts/one-heha-s1-swipe-foundation-v1\.json|docs/architecture/one-heha-s1-swipe-identity-community-pass-foundation\.md|scripts/verify-one-heha-s1-review\.mjs|supabase/review_only/one_heha_s1/000_minimal_baseline\.sql|supabase/review_only/one_heha_s1/001_private_identity\.sql|supabase/review_only/one_heha_s1/002_community_pass_foundation\.sql|supabase/review_only/one_heha_s1/003_transition_functions\.sql|supabase/review_only/one_heha_s1/proof/001_s1\.proof\.sql|supabase/review_only/one_heha_s1/proof/concurrency_two_client\.sh|supabase/review_only/one_heha_s1/rollback/001_s1\.rollback\.sql)$'
+
+          test "${#files[@]}" -eq 11
+          for file in "${files[@]}"; do
+            [[ "$file" =~ $allowed ]] || {
+              echo "unexpected changed file: $file" >&2
+              exit 1
+            }
+          done
+
+          if printf '%s\n' "${files[@]}" | grep -E '^(src/|supabase/migrations/|supabase/functions/|\.env|package(-lock)?\.json$)' >/dev/null; then
+            echo "application, standard migration, provider, environment, dependency or lockfile scope entered S1" >&2
+            exit 1
+          fi
+
+      - name: Verify deterministic source contract
+        run: node scripts/verify-one-heha-s1-review.mjs
+
+      - name: Apply synthetic baseline
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/000_minimal_baseline.sql
+
+      - name: Apply S1 review SQL
+        run: |
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/001_private_identity.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/003_transition_functions.sql
+
+      - name: Prove exact-file reapply
+        run: |
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/001_private_identity.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/003_transition_functions.sql
+
+      - name: Run structural and lifecycle proof
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql
+
+      - name: Run genuine two-client concurrency proof
+        run: |
+          chmod +x supabase/review_only/one_heha_s1/proof/concurrency_two_client.sh
+          supabase/review_only/one_heha_s1/proof/concurrency_two_client.sh
+
+      - name: Roll back disposable S1 objects
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/rollback/001_s1.rollback.sql
+
+      - name: Verify clean teardown
+        run: |
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          do $clean$
+          begin
+            if pg_catalog.to_regnamespace('one_heha_private') is not null
+               or pg_catalog.to_regnamespace('community_pass_private') is not null
+               or pg_catalog.to_regclass('public.community_pass_accounts') is not null
+               or pg_catalog.to_regclass('public.community_pass_entitlements') is not null
+               or pg_catalog.to_regclass('public.community_pass_stripe_event_inbox') is not null then
+              raise exception 'S1 rollback left review objects behind';
+            end if;
+          end;
+          $clean$;
+          SQL
+
+      - name: Reapply after rollback
+        run: |
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/001_private_identity.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/003_transition_functions.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql
