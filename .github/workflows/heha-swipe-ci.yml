@@ -22,7 +22,39 @@ jobs:
   ci:
     name: heha-swipe-ci
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
+
+    services:
+      postgres15:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+      postgres17:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 17432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+    env:
+      POSTGRES_URL_15: postgresql://postgres:postgres@localhost:15432/postgres
+      POSTGRES_URL_17: postgresql://postgres:postgres@localhost:17432/postgres
 
     steps:
       - name: Check out exact event revision
@@ -39,6 +71,11 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
       - name: Run deterministic repository tests
         run: |
           set -euo pipefail
@@ -49,11 +86,97 @@ jobs:
           node docs/migration-lineage/verify-evidence.mjs
           node docs/migration-lineage/verify-pr69-catalog.mjs --self-test
 
-      - name: Lint tracked JavaScript syntax
+      - name: Verify live-object manifest
         run: |
           set -euo pipefail
-          git ls-files -z -- '*.js' '*.mjs' '*.cjs' |
-            xargs -0 -r -n1 node --check
+          sha256sum -c docs/migration-lineage/live-object-manifest-2026-08-24.parts.sha256
+          cat docs/migration-lineage/live-object-manifest-2026-08-24.part-*.jsonl > /tmp/live-object-manifest-2026-08-24.jsonl
+          test "$(wc -l < /tmp/live-object-manifest-2026-08-24.jsonl)" -eq 274
+          test "$(wc -c < /tmp/live-object-manifest-2026-08-24.jsonl)" -eq 71078
+          echo "065bb72658cee40d194dbc4c6fe17c8f40d11343e1dcbc05f5b59cabca0c6779  /tmp/live-object-manifest-2026-08-24.jsonl" | sha256sum -c -
+          node docs/migration-lineage/verify-live-object-manifest.mjs /tmp/live-object-manifest-2026-08-24.jsonl
+          sha256sum -c docs/migration-lineage/live-object-tooling-manifest.sha256
+
+      - name: Verify capture query is read-only
+        run: |
+          set -euo pipefail
+          query=docs/migration-lineage/queries/deep-structure-manifest-capture.sql
+          if grep -Ev '^[[:space:]]*--' "$query" | grep -Eiq '(^|[[:space:];])(insert|update|delete|merge|alter|create|drop|truncate|grant|revoke|comment|copy|call|do)([[:space:](]|$)'; then
+            echo "Prepared capture SQL contains a disallowed mutation keyword outside comments." >&2
+            exit 1
+          fi
+
+      - name: Parse all tracked JavaScript and JSX
+        run: node scripts/verify-tracked-js-syntax.mjs
 
       - name: Build production bundle
         run: npm run build
+
+      - name: Apply synthetic S1 baseline
+        run: |
+          for DATABASE_URL in "$POSTGRES_URL_15" "$POSTGRES_URL_17"; do
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/000_minimal_baseline.sql
+          done
+
+      - name: Apply S1 review SQL
+        run: |
+          for DATABASE_URL in "$POSTGRES_URL_15" "$POSTGRES_URL_17"; do
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/001_private_identity.sql
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/003_transition_functions.sql
+          done
+
+      - name: Prove exact-file S1 reapply
+        run: |
+          for DATABASE_URL in "$POSTGRES_URL_15" "$POSTGRES_URL_17"; do
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/001_private_identity.sql
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/003_transition_functions.sql
+          done
+
+      - name: Run S1 structural and lifecycle proof
+        run: |
+          for DATABASE_URL in "$POSTGRES_URL_15" "$POSTGRES_URL_17"; do
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql
+          done
+
+      - name: Run genuine two-client S1 concurrency proof
+        run: |
+          chmod +x supabase/review_only/one_heha_s1/proof/concurrency_two_client.sh
+          for DATABASE_URL in "$POSTGRES_URL_15" "$POSTGRES_URL_17"; do
+            export DATABASE_URL
+            supabase/review_only/one_heha_s1/proof/concurrency_two_client.sh
+          done
+
+      - name: Roll back disposable S1 objects
+        run: |
+          for DATABASE_URL in "$POSTGRES_URL_15" "$POSTGRES_URL_17"; do
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/rollback/001_s1.rollback.sql
+          done
+
+      - name: Verify clean S1 teardown
+        run: |
+          for DATABASE_URL in "$POSTGRES_URL_15" "$POSTGRES_URL_17"; do
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          do $clean$
+          begin
+            if pg_catalog.to_regnamespace('one_heha_private') is not null
+               or pg_catalog.to_regnamespace('community_pass_private') is not null
+               or pg_catalog.to_regclass('public.community_pass_accounts') is not null
+               or pg_catalog.to_regclass('public.community_pass_entitlements') is not null
+               or pg_catalog.to_regclass('public.community_pass_stripe_event_inbox') is not null then
+              raise exception 'S1 rollback left review objects behind';
+            end if;
+          end;
+          $clean$;
+          SQL
+          done
+
+      - name: Reapply S1 after rollback
+        run: |
+          for DATABASE_URL in "$POSTGRES_URL_15" "$POSTGRES_URL_17"; do
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/001_private_identity.sql
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/003_transition_functions.sql
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql
+          done
