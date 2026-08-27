@@ -193,6 +193,14 @@ assert(files.concurrency.includes('same-request race'), 'same-request two-client
 assert(files.concurrency.includes('conflicting canonical-link race'), 'conflicting two-client race');
 assert(files.concurrency.includes('one stable link ID'), 'stable idempotent result');
 assert(files.concurrency.includes('exactly one winner'), 'conflict-safe winner');
+assert(files.concurrency.includes('start_canonical_barrier'), 'server-side canonical barrier holder');
+assert(files.concurrency.includes('prove_two_clients_waiting'), 'two-client barrier observation');
+assert(files.concurrency.includes("l.locktype = 'advisory'"), 'advisory-lock waiter proof');
+assert(files.concurrency.includes('and not l.granted'), 'both clients must be blocked before release');
+assert(
+  (files.concurrency.match(/prove_two_clients_waiting "/g) ?? []).length === 2,
+  'both race cases must use the two-client barrier',
+);
 assert(files.concurrency.startsWith('#!/usr/bin/env bash\nset -euo pipefail'), 'strict concurrency harness');
 
 for (const objectName of [
