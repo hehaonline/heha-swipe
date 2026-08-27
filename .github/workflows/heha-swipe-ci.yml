@@ -1,0 +1,59 @@
+name: HEHA Swipe CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  merge_group:
+    types:
+      - checks_requested
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heha-swipe-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: heha-swipe-ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out exact event revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Use Node.js 22.22.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.22.0
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run deterministic repository tests
+        run: |
+          set -euo pipefail
+          node scripts/verify-one-heha-s1-review.mjs
+          node docs/migration-lineage/verify-repository-ledger-map.mjs
+          node docs/migration-lineage/test-repository-ledger-map-negative.mjs
+          node docs/migration-lineage/test-private-capture-containment.mjs
+          node docs/migration-lineage/verify-evidence.mjs
+          node docs/migration-lineage/verify-pr69-catalog.mjs --self-test
+
+      - name: Lint tracked JavaScript syntax
+        run: |
+          set -euo pipefail
+          git ls-files -z -- '*.js' '*.mjs' '*.cjs' |
+            xargs -0 -r -n1 node --check
+
+      - name: Build production bundle
+        run: npm run build
