@@ -28,6 +28,7 @@ async function parseFile(path) {
   ]);
   await transformWithEsbuild(await readFile(path, 'utf8'), path, {
     loader: loaders.get(extension) ?? 'js',
+    format: 'esm',
     sourcemap: false
   });
 }
@@ -48,6 +49,8 @@ async function selfTest() {
     const jsx = join(fixtureRoot, 'component.jsx');
     const typescript = join(fixtureRoot, 'edge-function.ts');
     const invalidTypescript = join(fixtureRoot, 'invalid-edge-function.ts');
+    const sloppyJs = join(fixtureRoot, 'sloppy-script.js');
+    const legacyOctalJsx = join(fixtureRoot, 'legacy-octal.jsx');
     const manifest = join(fixtureRoot, 'manifest.json');
     const invalidManifest = join(fixtureRoot, 'invalid-manifest.json');
     await writeFile(safeCjs, "module.exports = { ready: true };\n");
@@ -56,6 +59,8 @@ async function selfTest() {
     await writeFile(jsx, "export default function Fixture(){ return <div />; }\n");
     await writeFile(typescript, "export const ready: boolean = true;\n");
     await writeFile(invalidTypescript, "export const broken: = true;\n");
+    await writeFile(sloppyJs, "with ({ ready: true }) { console.log(ready); }\n");
+    await writeFile(legacyOctalJsx, "export default function Fixture(){ const value = 010; return <div>{value}</div>; }\n");
     await writeFile(manifest, '{"name":"HEHA Swipe"}\n');
     await writeFile(invalidManifest, '{"name":}\n');
 
@@ -66,6 +71,8 @@ async function selfTest() {
     await assert.rejects(parseFile(awaitCjs));
     await assert.rejects(parseFile(importCjs));
     await assert.rejects(parseFile(invalidTypescript));
+    await assert.rejects(parseFile(sloppyJs));
+    await assert.rejects(parseFile(legacyOctalJsx));
     await assert.rejects(parseDeployedManifest(invalidManifest));
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
