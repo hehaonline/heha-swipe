@@ -60,6 +60,7 @@ jobs:
       - name: Check out exact event revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -113,6 +114,23 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
+      - name: Reject psql client meta-commands
+        shell: bash
+        run: |
+          set -euo pipefail
+          sql_files=(
+            supabase/review_only/one_heha_s1/000_minimal_baseline.sql
+            supabase/review_only/one_heha_s1/001_private_identity.sql
+            supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
+            supabase/review_only/one_heha_s1/003_transition_functions.sql
+            supabase/review_only/one_heha_s1/proof/001_s1.proof.sql
+            supabase/review_only/one_heha_s1/rollback/001_s1.rollback.sql
+          )
+          if grep -nE '^[[:space:]]*\\' "${sql_files[@]}"; then
+            echo 'psql client meta-commands are forbidden in S1 review SQL' >&2
+            exit 1
+          fi
+
       - name: Apply synthetic S1 baseline
         run: |
           for DATABASE_URL in "$POSTGRES_URL_15" "$POSTGRES_URL_17"; do
@@ -137,8 +155,14 @@ jobs:
 
       - name: Run S1 structural and lifecycle proof
         run: |
+          set -euo pipefail
+          proof_output="$(mktemp)"
+          trap 'rm -f "$proof_output"' EXIT
           for DATABASE_URL in "$POSTGRES_URL_15" "$POSTGRES_URL_17"; do
-            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql
+            : > "$proof_output"
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql 2>&1 | tee "$proof_output"
+            test "$(grep -Fc 'PASS: ONE HEHA S1 SQL proof verified 14/14 results' "$proof_output")" -eq 1
           done
 
       - name: Run genuine two-client S1 concurrency proof
@@ -175,9 +199,15 @@ jobs:
 
       - name: Reapply S1 after rollback
         run: |
+          set -euo pipefail
+          proof_output="$(mktemp)"
+          trap 'rm -f "$proof_output"' EXIT
           for DATABASE_URL in "$POSTGRES_URL_15" "$POSTGRES_URL_17"; do
             psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/001_private_identity.sql
             psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
             psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/003_transition_functions.sql
-            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql
+            : > "$proof_output"
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql 2>&1 | tee "$proof_output"
+            test "$(grep -Fc 'PASS: ONE HEHA S1 SQL proof verified 14/14 results' "$proof_output")" -eq 1
           done

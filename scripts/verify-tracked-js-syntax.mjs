@@ -2,10 +2,14 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, extname, join, resolve, sep } from 'node:path';
+import { Script } from 'node:vm';
 import { transformWithEsbuild } from 'vite';
+
+const EXPECTED_INDEX_HTML_SHA256 = '0d342c2e0d1cf38ef3e92c7036031afa7d2f7bce79a589cf9cf37569f5ab71fa';
 
 const JAVASCRIPT_MIME_ESSENCES = new Set([
   'application/ecmascript',
@@ -91,6 +95,15 @@ async function parseDeployedManifest(path) {
     assert.equal(parsed[field].includes('\\'), false, `${path} ${field} contains a backslash`);
     assert.equal(parsed[field].split('/').includes('..'), false, `${path} ${field} escapes scope`);
   }
+  const deploymentOrigin = 'https://heha.invalid';
+  const startUrl = new URL(parsed.start_url, deploymentOrigin);
+  const scopeUrl = new URL(parsed.scope, deploymentOrigin);
+  assert.equal(startUrl.origin, deploymentOrigin, `${path} start_url must remain same-origin`);
+  assert.equal(scopeUrl.origin, deploymentOrigin, `${path} scope must remain same-origin`);
+  assert.equal(startUrl.hash, '', `${path} start_url must not contain a fragment`);
+  assert.equal(scopeUrl.search, '', `${path} scope must not contain a query`);
+  assert.equal(scopeUrl.hash, '', `${path} scope must not contain a fragment`);
+  assert.ok(startUrl.href.startsWith(scopeUrl.href), `${path} start_url must be contained by scope`);
 
   assert.ok(Array.isArray(parsed.icons) && parsed.icons.length > 0, `${path} icons must be non-empty`);
   const publicRoot = resolve(dirname(path));
@@ -111,8 +124,15 @@ async function parseDeployedManifest(path) {
   }
 }
 
-async function parseInlineHtmlScripts(path) {
+async function parseInlineHtmlScripts(path, expectedSha256 = null) {
   const html = await readFile(path, 'utf8');
+  if (expectedSha256 !== null) {
+    assert.equal(
+      createHash('sha256').update(html, 'utf8').digest('hex'),
+      expectedSha256,
+      `${path} bytes changed; update the reviewed fingerprint before accepting inline HTML`,
+    );
+  }
   const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)];
   let parsed = 0;
   for (const [index, match] of scripts.entries()) {
@@ -122,11 +142,16 @@ async function parseInlineHtmlScripts(path) {
     const rawType = typeMatch?.[1] ?? typeMatch?.[2] ?? typeMatch?.[3] ?? '';
     const kind = inlineScriptKind(rawType);
     if (kind === 'data') continue;
-    await transformWithEsbuild(match[2], `${path}#inline-script-${index + 1}.js`, {
-      loader: 'js',
-      format: kind === 'module' ? 'esm' : 'iife',
-      sourcemap: false
-    });
+    const filename = `${path}#inline-script-${index + 1}.js`;
+    if (kind === 'classic') {
+      new Script(match[2], { filename });
+    } else {
+      await transformWithEsbuild(match[2], filename, {
+        loader: 'js',
+        format: 'esm',
+        sourcemap: false
+      });
+    }
     parsed += 1;
   }
   if (parsed === 0) throw new Error(`${path} must contain at least one executable inline script`);
@@ -148,12 +173,14 @@ async function selfTest() {
     const invalidManifest = join(fixtureRoot, 'invalid-manifest.json');
     const emptyManifest = join(fixtureRoot, 'empty-manifest.json');
     const missingIconManifest = join(fixtureRoot, 'missing-icon-manifest.json');
+    const escapedScopeManifest = join(fixtureRoot, 'escaped-scope-manifest.json');
     const html = join(fixtureRoot, 'index.html');
     const invalidHtml = join(fixtureRoot, 'invalid-index.html');
     const invalidDataSrcHtml = join(fixtureRoot, 'invalid-data-src-index.html');
     const invalidDataTypeHtml = join(fixtureRoot, 'invalid-data-type-index.html');
     const invalidSpacedTypeHtml = join(fixtureRoot, 'invalid-spaced-type-index.html');
     const invalidEncodedTypeHtml = join(fixtureRoot, 'invalid-encoded-type-index.html');
+    const invalidClassicModuleHtml = join(fixtureRoot, 'invalid-classic-module-index.html');
     await writeFile(safeCjs, "module.exports = { ready: true };\n");
     await writeFile(awaitCjs, "await Promise.resolve();\n");
     await writeFile(importCjs, "import value from './value.js';\n");
@@ -176,12 +203,17 @@ async function selfTest() {
       missingIconManifest,
       `${validManifest.replace('/icons/icon-192.png', '/icons/missing.png')}\n`
     );
+    await writeFile(
+      escapedScopeManifest,
+      `${validManifest.replace('"start_url":"/"', '"start_url":"/app/index.html"').replace('"scope":"/"', '"scope":"/other/"')}\n`
+    );
     await writeFile(html, '<script>const ready = true;</script><script type="module" src="/main.js"></script>\n');
     await writeFile(invalidHtml, '<script>const broken = ;</script>\n');
     await writeFile(invalidDataSrcHtml, '<script data-src="/ignored.js">const broken = ;</script>\n');
     await writeFile(invalidDataTypeHtml, '<script data-type="application/json">const broken = ;</script>\n');
     await writeFile(invalidSpacedTypeHtml, '<script type=" text/javascript ">const broken = ;</script>\n');
     await writeFile(invalidEncodedTypeHtml, '<script type="text&#x2f;javascript">const broken = ;</script>\n');
+    await writeFile(invalidClassicModuleHtml, '<script>export const moduleOnly = 1;</script>\n');
 
     await parseFile(safeCjs);
     await parseFile(jsx);
@@ -196,11 +228,13 @@ async function selfTest() {
     await assert.rejects(parseDeployedManifest(invalidManifest));
     await assert.rejects(parseDeployedManifest(emptyManifest));
     await assert.rejects(parseDeployedManifest(missingIconManifest));
+    await assert.rejects(parseDeployedManifest(escapedScopeManifest));
     await assert.rejects(parseInlineHtmlScripts(invalidHtml));
     await assert.rejects(parseInlineHtmlScripts(invalidDataSrcHtml));
     await assert.rejects(parseInlineHtmlScripts(invalidDataTypeHtml));
     await assert.rejects(parseInlineHtmlScripts(invalidSpacedTypeHtml));
     await assert.rejects(parseInlineHtmlScripts(invalidEncodedTypeHtml));
+    await assert.rejects(parseInlineHtmlScripts(invalidClassicModuleHtml));
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
   }
@@ -235,6 +269,6 @@ for (const path of tracked) {
 }
 
 await parseDeployedManifest('public/manifest.json');
-const inlineScriptCount = await parseInlineHtmlScripts('index.html');
+const inlineScriptCount = await parseInlineHtmlScripts('index.html', EXPECTED_INDEX_HTML_SHA256);
 
 console.log(`PASS: parsed ${tracked.length} tracked JS/JSX/MJS/CJS/TS/TSX/MTS/CTS files, public/manifest.json, and ${inlineScriptCount} inline HTML script(s).`);

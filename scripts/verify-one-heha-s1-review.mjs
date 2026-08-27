@@ -16,6 +16,7 @@ const paths = {
   concurrency: 'supabase/review_only/one_heha_s1/proof/concurrency_two_client.sh',
   documentation: 'docs/architecture/one-heha-s1-swipe-identity-community-pass-foundation.md',
   workflow: '.github/workflows/one-heha-s1-review-proof.yml',
+  universalWorkflow: '.github/workflows/heha-swipe-ci.yml',
 };
 
 const files = Object.fromEntries(
@@ -23,10 +24,36 @@ const files = Object.fromEntries(
 );
 const contract = JSON.parse(files.contract);
 
+const expectedGitBlobs = {
+  contract: '7d552274d0dc97160fa076feae6437385f07e600',
+  documentation: 'b570d1ed9d70c1b3ee29edfe8cc40e22f89ad015',
+  baseline: 'f71200ca712865db1f53a85e94696d4c7afb6228',
+  identity: 'a6fa29349be77e5a8956346ab812e7f9cce43fcf',
+  communityPass: 'c0bd41d9ee33d83f31e6609d81c3f6065079ef70',
+  transitions: '36a6fa1d2bb94045e4589da81db05c2faa219a98',
+  proof: 'a1b016e1892022010ee5572fefe6e35e4082c307',
+  rollback: '74b7933f9c6158a74ec8809a21b31b193b1cd69c',
+  concurrency: '916bbf0a997f258decb75e00b477e734cec999fb',
+  workflow: 'c24146fa63a2ed8f95d0bb472226f3aa29cedae3',
+  universalWorkflow: '3f11c2dc2c51e96d7b917042f0c57b68bbd65108',
+};
+
+function gitBlobSha(source) {
+  const bytes = Buffer.from(source, 'utf8');
+  return createHash('sha1')
+    .update(`blob ${bytes.length}\0`, 'utf8')
+    .update(bytes)
+    .digest('hex');
+}
+
 let checks = 0;
 function assert(condition, message) {
   checks += 1;
   if (!condition) throw new Error(`S1 verification failed: ${message}`);
+}
+
+for (const [key, expected] of Object.entries(expectedGitBlobs)) {
+  assert(gitBlobSha(files[key]) === expected, `reviewed blob fingerprint ${paths[key]}`);
 }
 
 function tableBlock(sql, qualifiedName) {
@@ -39,7 +66,7 @@ function tableBlock(sql, qualifiedName) {
 }
 
 function hasBareUserId(block) {
-  return /\n\s*user_id\s+/i.test(`\n${block}`);
+  return /\b(?:swipe_)?user_id\b/i.test(block);
 }
 
 assert(contract.contract_version === 'one-heha-s1-swipe-foundation-v1', 'contract version');
@@ -163,6 +190,8 @@ assert(files.transitions.includes("'provider_reconciliation_required', true"), '
 assert(files.transitions.includes("status = 'deleted'"), 'canonical deletion state');
 assert(files.transitions.includes('canonical_user_id = null'), 'canonical identity redaction');
 assert(files.transitions.includes('grant execute on function %s to service_role'), 'service-only grants');
+assert(files.transitions.includes('revoke all on function %s from public'), 'PUBLIC execute revoked');
+assert(!/grant\s+(?:all|execute)[\s\S]*\bto\s+public\b/i.test(files.transitions), 'PUBLIC execute grant prohibited');
 assert(!/grant\s+execute[\s\S]*\b(?:anon|authenticated)\b/i.test(files.transitions), 'no browser execute grant');
 
 for (const prohibited of [
@@ -244,6 +273,8 @@ assert(files.workflow.includes('concurrency_two_client.sh'), 'workflow runs genu
 assert(files.workflow.includes('001_s1.rollback.sql'), 'workflow runs rollback');
 assert(files.workflow.includes('reapply'), 'workflow proves reapply');
 assert(files.workflow.includes('Verify exact review-only scope'), 'workflow file-scope gate');
+assert(files.universalWorkflow.includes('Reject psql client meta-commands'), 'universal workflow rejects psql meta-commands');
+assert(files.universalWorkflow.includes('PASS: ONE HEHA S1 SQL proof verified 14/14 results'), 'universal workflow validates proof receipt');
 
 assert(files.documentation.includes('PR #128 remains donor-only'), 'donor-only Community Pass boundary');
 assert(files.documentation.includes('No Production authorization'), 'documentation Production boundary');
