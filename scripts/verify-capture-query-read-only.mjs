@@ -56,6 +56,7 @@ function isEscapeStringPrefix(text, quoteOffset) {
 export function readOnlyProblems(text, path = 'capture.sql') {
   const problems = [];
   const words = [];
+  const tokens = [];
   let index = 0;
   let state = 'normal';
   let blockDepth = 0;
@@ -166,6 +167,7 @@ export function readOnlyProblems(text, path = 'capture.sql') {
       while (isIdentifierPart(text[end])) end += 1;
       const word = text.slice(index, end).toLowerCase();
       words.push(word);
+      tokens.push({ type: 'word', value: word, offset: index });
       if (MUTATING_OR_SIDE_EFFECTING_WORDS.has(word)) {
         problems.push(
           `${path}:${lineNumber(text, index)}: disallowed SQL keyword ${word}`
@@ -174,6 +176,9 @@ export function readOnlyProblems(text, path = 'capture.sql') {
       index = end;
       continue;
     }
+    if (character === ';') {
+      tokens.push({ type: 'semicolon', value: ';', offset: index });
+    }
     index += 1;
   }
 
@@ -181,13 +186,59 @@ export function readOnlyProblems(text, path = 'capture.sql') {
     problems.push(`${path}: unterminated SQL ${state.replaceAll('-', ' ')}`);
   }
 
-  if (words.slice(0, 5).join(' ') !== 'begin set transaction read only') {
+  const statements = [[]];
+  for (const token of tokens) {
+    if (token.type === 'semicolon') {
+      if (statements.at(-1).length > 0) statements.push([]);
+      continue;
+    }
+    statements.at(-1).push(token);
+  }
+  if (statements.at(-1).length === 0) statements.pop();
+  const statementWords = statements.map((statement) =>
+    statement.map((token) => token.value)
+  );
+
+  if (
+    statementWords[0]?.join(' ') !== 'begin' ||
+    statementWords[1]?.join(' ') !== 'set transaction read only'
+  ) {
     problems.push(
       `${path}: first executable statements must begin the read-only transaction`
     );
   }
-  if (words.at(-1) !== 'commit') {
+  if (statementWords.at(-1)?.join(' ') !== 'commit') {
     problems.push(`${path}: final executable statement must be COMMIT`);
+  }
+
+  const transactionControl = new Set([
+    'abort',
+    'begin',
+    'commit',
+    'end',
+    'release',
+    'rollback',
+    'savepoint',
+    'start'
+  ]);
+  for (const [statementIndex, statement] of statements.entries()) {
+    const allowedOpening = statementIndex === 0 && statementWords[statementIndex].join(' ') === 'begin';
+    const allowedReadOnly =
+      statementIndex === 1 &&
+      statementWords[statementIndex].join(' ') === 'set transaction read only';
+    const allowedLocalSearchPath =
+      statementWords[statementIndex].join(' ') === 'set local search_path pg_catalog';
+    const allowedCommit =
+      statementIndex === statements.length - 1 &&
+      statementWords[statementIndex].join(' ') === 'commit';
+    if (allowedOpening || allowedReadOnly || allowedLocalSearchPath || allowedCommit) continue;
+
+    const first = statement[0];
+    if (first && (transactionControl.has(first.value) || first.value === 'set')) {
+      problems.push(
+        `${path}:${lineNumber(text, first.offset)}: transaction control is forbidden inside the capture`
+      );
+    }
   }
 
   return [...new Set(problems)];
@@ -206,6 +257,9 @@ commit;`;
 begin; set transaction read only; select 1; commit;`,
     'begin; set transaction read only; insert into x values (1); commit;',
     'begin; set transaction read only; select 1; \\g /tmp/out; commit;',
+    'begin; set transaction read only; commit; begin; set transaction read write; select 1 into created_by_capture; commit;',
+    'begin; set transaction read only; select 1; commit; select 2;',
+    'begin; set transaction read only; savepoint unsafe; select 1; commit;',
     "begin; set transaction read only; select 'safe\\'; drop table x; commit;",
     'begin; set transaction read only; /* nested /* comment */ update x; commit;',
     'select 1; commit;',

@@ -105,7 +105,7 @@ jobs:
           node scripts/verify-capture-query-read-only.mjs \
             docs/migration-lineage/queries/deep-structure-manifest-capture.sql
 
-      - name: Parse all tracked JavaScript and JSX
+      - name: Parse tracked JavaScript, JSX, TypeScript, and deployed manifest
         run: |
           node scripts/verify-tracked-js-syntax.mjs --self-test
           node scripts/verify-tracked-js-syntax.mjs
