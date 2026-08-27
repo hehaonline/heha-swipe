@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 const root = process.cwd();
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -197,9 +198,26 @@ assert(files.concurrency.includes('start_canonical_barrier'), 'server-side canon
 assert(files.concurrency.includes('prove_two_clients_waiting'), 'two-client barrier observation');
 assert(files.concurrency.includes("l.locktype = 'advisory'"), 'advisory-lock waiter proof');
 assert(files.concurrency.includes('and not l.granted'), 'both clients must be blocked before release');
+assert(files.concurrency.includes('l.database is not distinct from h.database'), 'waiters match holder database');
+assert(files.concurrency.includes('l.classid is not distinct from h.classid'), 'waiters match holder classid');
+assert(files.concurrency.includes('l.objid is not distinct from h.objid'), 'waiters match holder objid');
+assert(files.concurrency.includes('l.objsubid is not distinct from h.objsubid'), 'waiters match holder objsubid');
+assert(files.concurrency.includes('pg_catalog.pg_blocking_pids(a.pid)'), 'holder PID blocks both clients');
+assert(files.concurrency.includes('if [[ "$waiting" = "2:2:2" ]]'), 'two distinct clients and exact waiter count');
+assert(files.concurrency.includes('start_canonical_barrier "same-request" "50000000-0000-0000-0000-0000000000a1"'), 'same-request canonical barrier');
+assert(files.concurrency.includes('start_canonical_barrier "conflict" "50000000-0000-0000-0000-0000000000ff"'), 'conflicting-canonical barrier');
+assert(
+  (files.concurrency.match(/PGOPTIONS="-c statement_timeout=20s -c lock_timeout=15s"/g) ?? []).length === 4,
+  'all four clients must have bounded database timeouts',
+);
 assert(
   (files.concurrency.match(/prove_two_clients_waiting "/g) ?? []).length === 2,
   'both race cases must use the two-client barrier',
+);
+assert(
+  createHash('sha256').update(files.concurrency, 'utf8').digest('hex') ===
+    'd712e3893af8388a36f6089251162bb6d8227c25e7df04d739ef51be6c0bd3f8',
+  'reviewed concurrency harness fingerprint',
 );
 assert(files.concurrency.startsWith('#!/usr/bin/env bash\nset -euo pipefail'), 'strict concurrency harness');
 

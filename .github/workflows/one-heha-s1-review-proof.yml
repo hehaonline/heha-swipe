@@ -44,13 +44,14 @@ jobs:
 
     steps:
       - name: Check out literal branch head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Use Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22.22.0
 
@@ -75,9 +76,75 @@ jobs:
           mapfile -t files < <(git diff --name-only "$base" "$head" | sort)
           printf '%s\n' "${files[@]}"
 
-          allowed='^(\.github/workflows/one-heha-s1-review-proof\.yml|contracts/one-heha-s1-swipe-foundation-v1\.json|docs/architecture/one-heha-s1-swipe-identity-community-pass-foundation\.md|scripts/verify-one-heha-s1-review\.mjs|supabase/review_only/one_heha_s1/000_minimal_baseline\.sql|supabase/review_only/one_heha_s1/001_private_identity\.sql|supabase/review_only/one_heha_s1/002_community_pass_foundation\.sql|supabase/review_only/one_heha_s1/003_transition_functions\.sql|supabase/review_only/one_heha_s1/proof/001_s1\.proof\.sql|supabase/review_only/one_heha_s1/proof/concurrency_two_client\.sh|supabase/review_only/one_heha_s1/rollback/001_s1\.rollback\.sql)$'
+          allowed='^(\.github/workflows/(one-heha-s1-review-proof|heha-swipe-ci)\.yml|contracts/one-heha-s1-swipe-foundation-v1\.json|docs/architecture/one-heha-s1-swipe-identity-community-pass-foundation\.md|scripts/(verify-one-heha-s1-review|verify-capture-query-read-only|verify-tracked-js-syntax)\.mjs|supabase/review_only/one_heha_s1/.*)$'
 
-          test "${#files[@]}" -eq 11
+          test "${#files[@]}" -gt 0
+          for file in "${files[@]}"; do
+            [[ "$file" =~ $allowed ]] || {
+              echo "unexpected changed file: $file" >&2
+              exit 1
+            }
+          done
+
+          if printf '%s\n' "${files[@]}" | grep -E '^(src/|supabase/migrations/|supabase/functions/|\.env|package(-lock)?\.json$)' >/dev/null; then
+            echo "application, standard migration, provider, environment, dependency or lockfile scope entered S1" >&2
+            exit 1
+          fi
+
+      - name: Verify deterministic source contract
+        run: node scripts/verify-one-heha-s1-review.mjs
+
+      - name: Apply synthetic baseline
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/000_minimal_baseline.sql
+
+      - name: Apply S1 review SQL
+        run: |
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/001_private_identity.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/003_transition_functions.sql
+
+      - name: Prove exact-file reapply
+        run: |
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/001_private_identity.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/003_transition_functions.sql
+
+      - name: Run structural and lifecycle proof
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql
+
+      - name: Run genuine two-client concurrency proof
+        run: |
+          chmod +x supabase/review_only/one_heha_s1/proof/concurrency_two_client.sh
+          supabase/review_only/one_heha_s1/proof/concurrency_two_client.sh
+
+      - name: Roll back disposable S1 objects
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/rollback/001_s1.rollback.sql
+
+      - name: Verify clean teardown
+        run: |
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          do $clean$
+          begin
+            if pg_catalog.to_regnamespace('one_heha_private') is not null
+               or pg_catalog.to_regnamespace('community_pass_private') is not null
+               or pg_catalog.to_regclass('public.community_pass_accounts') is not null
+               or pg_catalog.to_regclass('public.community_pass_entitlements') is not null
+               or pg_catalog.to_regclass('public.community_pass_stripe_event_inbox') is not null then
+              raise exception 'S1 rollback left review objects behind';
+            end if;
+          end;
+          $clean$;
+          SQL
+
+      - name: Reapply after rollback
+        run: |
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/001_private_identity.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/003_transition_functions.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql
+
+
+          test "${#files[@]}" -gt 0
           for file in "${files[@]}"; do
             [[ "$file" =~ $allowed ]] || {
               echo "unexpected changed file: $file" >&2

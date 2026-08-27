@@ -7,6 +7,39 @@ import { tmpdir } from 'node:os';
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { transformWithEsbuild } from 'vite';
 
+const JAVASCRIPT_MIME_ESSENCES = new Set([
+  'application/ecmascript',
+  'application/javascript',
+  'application/x-ecmascript',
+  'application/x-javascript',
+  'text/ecmascript',
+  'text/javascript',
+  'text/javascript1.0',
+  'text/javascript1.1',
+  'text/javascript1.2',
+  'text/javascript1.3',
+  'text/javascript1.4',
+  'text/javascript1.5',
+  'text/jscript',
+  'text/livescript',
+  'text/x-ecmascript',
+  'text/x-javascript'
+]);
+
+function inlineScriptKind(rawType) {
+  const type = rawType.trim().toLowerCase();
+  if (type === '' || JAVASCRIPT_MIME_ESSENCES.has(type.split(';', 1)[0].trimEnd())) {
+    return 'classic';
+  }
+  if (type === 'module') return 'module';
+
+  // HTML parses character references before classifying the type attribute.
+  // Without a full HTML tokenizer, fail closed and parse the body as JavaScript
+  // whenever a raw character reference could hide a JavaScript MIME essence.
+  if (rawType.includes('&')) return 'classic';
+  return 'data';
+}
+
 async function parseFile(path) {
   const extension = extname(path);
   if (extension === '.cjs') {
@@ -84,13 +117,14 @@ async function parseInlineHtmlScripts(path) {
   let parsed = 0;
   for (const [index, match] of scripts.entries()) {
     const attributes = match[1];
-    if (/\bsrc\s*=/i.test(attributes)) continue;
-    const typeMatch = attributes.match(/\btype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
-    const type = (typeMatch?.[1] ?? typeMatch?.[2] ?? typeMatch?.[3] ?? '').toLowerCase();
-    if (type && !['module', 'text/javascript', 'application/javascript'].includes(type)) continue;
+    if (/(?:^|[\t\n\f\r ])src[\t\n\f\r ]*=/i.test(attributes)) continue;
+    const typeMatch = attributes.match(/(?:^|[\t\n\f\r ])type[\t\n\f\r ]*=[\t\n\f\r ]*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const rawType = typeMatch?.[1] ?? typeMatch?.[2] ?? typeMatch?.[3] ?? '';
+    const kind = inlineScriptKind(rawType);
+    if (kind === 'data') continue;
     await transformWithEsbuild(match[2], `${path}#inline-script-${index + 1}.js`, {
       loader: 'js',
-      format: type === 'module' ? 'esm' : 'iife',
+      format: kind === 'module' ? 'esm' : 'iife',
       sourcemap: false
     });
     parsed += 1;
@@ -116,6 +150,10 @@ async function selfTest() {
     const missingIconManifest = join(fixtureRoot, 'missing-icon-manifest.json');
     const html = join(fixtureRoot, 'index.html');
     const invalidHtml = join(fixtureRoot, 'invalid-index.html');
+    const invalidDataSrcHtml = join(fixtureRoot, 'invalid-data-src-index.html');
+    const invalidDataTypeHtml = join(fixtureRoot, 'invalid-data-type-index.html');
+    const invalidSpacedTypeHtml = join(fixtureRoot, 'invalid-spaced-type-index.html');
+    const invalidEncodedTypeHtml = join(fixtureRoot, 'invalid-encoded-type-index.html');
     await writeFile(safeCjs, "module.exports = { ready: true };\n");
     await writeFile(awaitCjs, "await Promise.resolve();\n");
     await writeFile(importCjs, "import value from './value.js';\n");
@@ -140,6 +178,10 @@ async function selfTest() {
     );
     await writeFile(html, '<script>const ready = true;</script><script type="module" src="/main.js"></script>\n');
     await writeFile(invalidHtml, '<script>const broken = ;</script>\n');
+    await writeFile(invalidDataSrcHtml, '<script data-src="/ignored.js">const broken = ;</script>\n');
+    await writeFile(invalidDataTypeHtml, '<script data-type="application/json">const broken = ;</script>\n');
+    await writeFile(invalidSpacedTypeHtml, '<script type=" text/javascript ">const broken = ;</script>\n');
+    await writeFile(invalidEncodedTypeHtml, '<script type="text&#x2f;javascript">const broken = ;</script>\n');
 
     await parseFile(safeCjs);
     await parseFile(jsx);
@@ -155,6 +197,10 @@ async function selfTest() {
     await assert.rejects(parseDeployedManifest(emptyManifest));
     await assert.rejects(parseDeployedManifest(missingIconManifest));
     await assert.rejects(parseInlineHtmlScripts(invalidHtml));
+    await assert.rejects(parseInlineHtmlScripts(invalidDataSrcHtml));
+    await assert.rejects(parseInlineHtmlScripts(invalidDataTypeHtml));
+    await assert.rejects(parseInlineHtmlScripts(invalidSpacedTypeHtml));
+    await assert.rejects(parseInlineHtmlScripts(invalidEncodedTypeHtml));
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
   }
