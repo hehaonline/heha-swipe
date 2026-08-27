@@ -85,6 +85,7 @@ jobs:
           node docs/migration-lineage/test-private-capture-containment.mjs
           node docs/migration-lineage/verify-evidence.mjs
           node docs/migration-lineage/verify-pr69-catalog.mjs --self-test
+          sha256sum -c docs/migration-lineage/repository-ledger-map-manifest.sha256
 
       - name: Verify live-object manifest
         run: |
@@ -100,14 +101,14 @@ jobs:
       - name: Verify capture query is read-only
         run: |
           set -euo pipefail
-          query=docs/migration-lineage/queries/deep-structure-manifest-capture.sql
-          if grep -Ev '^[[:space:]]*--' "$query" | grep -Eiq '(^|[[:space:];])(insert|update|delete|merge|alter|create|drop|truncate|grant|revoke|comment|copy|call|do)([[:space:](]|$)'; then
-            echo "Prepared capture SQL contains a disallowed mutation keyword outside comments." >&2
-            exit 1
-          fi
+          node scripts/verify-capture-query-read-only.mjs --self-test
+          node scripts/verify-capture-query-read-only.mjs \
+            docs/migration-lineage/queries/deep-structure-manifest-capture.sql
 
       - name: Parse all tracked JavaScript and JSX
-        run: node scripts/verify-tracked-js-syntax.mjs
+        run: |
+          node scripts/verify-tracked-js-syntax.mjs --self-test
+          node scripts/verify-tracked-js-syntax.mjs
 
       - name: Build production bundle
         run: npm run build
