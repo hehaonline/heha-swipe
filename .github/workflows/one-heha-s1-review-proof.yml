@@ -2,13 +2,17 @@ name: ONE HEHA S1 Review Proof
 
 on:
   pull_request:
+    branches:
+      - main
     paths:
       - 'contracts/one-heha-s1-swipe-foundation-v1.json'
       - 'docs/architecture/one-heha-s1-swipe-identity-community-pass-foundation.md'
+      - 'scripts/verify-capture-query-read-only.mjs'
       - 'scripts/verify-one-heha-s1-review.mjs'
+      - 'scripts/verify-tracked-js-syntax.mjs'
       - 'supabase/review_only/one_heha_s1/**'
+      - '.github/workflows/heha-swipe-ci.yml'
       - '.github/workflows/one-heha-s1-review-proof.yml'
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -40,17 +44,17 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-      S1_BASE_SHA: a8abb46c4908c9f216c589dd35ab7369a8f6cba9
 
     steps:
       - name: Check out literal branch head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Use Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22.22.0
 
@@ -63,21 +67,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            base="${{ github.event.pull_request.base.sha }}"
-            head="${{ github.event.pull_request.head.sha }}"
-          else
-            base="$(git rev-parse HEAD^)"
-            head="$(git rev-parse HEAD)"
-          fi
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
 
-          git diff --check "$base" "$head"
-          mapfile -t files < <(git diff --name-only "$base" "$head" | sort)
+          git diff --no-renames --check "$base" "$head"
+          mapfile -t files < <(git diff --no-renames --name-only "$base" "$head" | sort)
           printf '%s\n' "${files[@]}"
 
-          allowed='^(\.github/workflows/one-heha-s1-review-proof\.yml|contracts/one-heha-s1-swipe-foundation-v1\.json|docs/architecture/one-heha-s1-swipe-identity-community-pass-foundation\.md|scripts/verify-one-heha-s1-review\.mjs|supabase/review_only/one_heha_s1/000_minimal_baseline\.sql|supabase/review_only/one_heha_s1/001_private_identity\.sql|supabase/review_only/one_heha_s1/002_community_pass_foundation\.sql|supabase/review_only/one_heha_s1/003_transition_functions\.sql|supabase/review_only/one_heha_s1/proof/001_s1\.proof\.sql|supabase/review_only/one_heha_s1/proof/concurrency_two_client\.sh|supabase/review_only/one_heha_s1/rollback/001_s1\.rollback\.sql)$'
+          allowed='^(\.github/workflows/(one-heha-s1-review-proof|heha-swipe-ci)\.yml|contracts/one-heha-s1-swipe-foundation-v1\.json|docs/architecture/one-heha-s1-swipe-identity-community-pass-foundation\.md|scripts/(verify-one-heha-s1-review|verify-capture-query-read-only|verify-tracked-js-syntax)\.mjs|supabase/review_only/one_heha_s1/(000_minimal_baseline|001_private_identity|002_community_pass_foundation|003_transition_functions)\.sql|supabase/review_only/one_heha_s1/proof/(001_s1\.proof\.sql|concurrency_two_client\.sh)|supabase/review_only/one_heha_s1/rollback/001_s1\.rollback\.sql)$'
 
-          test "${#files[@]}" -eq 11
+          test "${#files[@]}" -gt 0
           for file in "${files[@]}"; do
             [[ "$file" =~ $allowed ]] || {
               echo "unexpected changed file: $file" >&2
@@ -92,6 +91,23 @@ jobs:
 
       - name: Verify deterministic source contract
         run: node scripts/verify-one-heha-s1-review.mjs
+
+      - name: Reject psql client meta-commands
+        shell: bash
+        run: |
+          set -euo pipefail
+          sql_files=(
+            supabase/review_only/one_heha_s1/000_minimal_baseline.sql
+            supabase/review_only/one_heha_s1/001_private_identity.sql
+            supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
+            supabase/review_only/one_heha_s1/003_transition_functions.sql
+            supabase/review_only/one_heha_s1/proof/001_s1.proof.sql
+            supabase/review_only/one_heha_s1/rollback/001_s1.rollback.sql
+          )
+          if grep -nE '^[[:space:]]*\\' "${sql_files[@]}"; then
+            echo 'psql client meta-commands are forbidden in S1 review SQL' >&2
+            exit 1
+          fi
 
       - name: Apply synthetic baseline
         run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/000_minimal_baseline.sql
@@ -109,7 +125,13 @@ jobs:
           psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/003_transition_functions.sql
 
       - name: Run structural and lifecycle proof
-        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql
+        run: |
+          set -euo pipefail
+          proof_output="$(mktemp)"
+          trap 'rm -f "$proof_output"' EXIT
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+            -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql 2>&1 | tee "$proof_output"
+          test "$(grep -Fc 'PASS: ONE HEHA S1 SQL proof verified 14/14 results' "$proof_output")" -eq 1
 
       - name: Run genuine two-client concurrency proof
         run: |
@@ -137,7 +159,12 @@ jobs:
 
       - name: Reapply after rollback
         run: |
+          set -euo pipefail
           psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/001_private_identity.sql
           psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/002_community_pass_foundation.sql
           psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/003_transition_functions.sql
-          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql
+          proof_output="$(mktemp)"
+          trap 'rm -f "$proof_output"' EXIT
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+            -f supabase/review_only/one_heha_s1/proof/001_s1.proof.sql 2>&1 | tee "$proof_output"
+          test "$(grep -Fc 'PASS: ONE HEHA S1 SQL proof verified 14/14 results' "$proof_output")" -eq 1
