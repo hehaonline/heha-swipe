@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" role="img" aria-labelledby="title desc">
+  <title id="title">Android install app guide</title>
+  <desc id="desc">Three illustrated steps: open the browser menu, choose Install app or Add to Home screen, then confirm.</desc>
+  <rect width="900" height="300" rx="30" fill="#fffaf2"/>
+  <g font-family="system-ui, sans-serif" text-anchor="middle">
+    <g transform="translate(25 25)">
+      <rect width="260" height="250" rx="26" fill="#fff" stroke="#eadfd2" stroke-width="4"/>
+      <circle cx="130" cy="92" r="48" fill="#eaf6f0"/>
+      <circle cx="130" cy="70" r="6" fill="#1c6f5a"/><circle cx="130" cy="92" r="6" fill="#1c6f5a"/><circle cx="130" cy="114" r="6" fill="#1c6f5a"/>
+      <text x="130" y="174" font-size="22" font-weight="800" fill="#163f34">1. Open menu</text>
+      <text x="130" y="208" font-size="16" fill="#53665f">Tap ⋮ or your browser menu.</text>
+    </g>
+    <g transform="translate(320 25)">
+      <rect width="260" height="250" rx="26" fill="#fff" stroke="#eadfd2" stroke-width="4"/>
+      <rect x="72" y="44" width="116" height="96" rx="18" fill="#fff0e8"/>
+      <path d="M130 59v48m-19-19l19 19 19-19M100 124h60" fill="none" stroke="#f28122" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="130" y="174" font-size="22" font-weight="800" fill="#163f34">2. Choose Install</text>
+      <text x="130" y="208" font-size="16" fill="#53665f">Or “Add to Home screen.”</text>
+    </g>
+    <g transform="translate(615 25)">
+      <rect width="260" height="250" rx="26" fill="#fff" stroke="#eadfd2" stroke-width="4"/>
+      <rect x="78" y="43" width="104" height="104" rx="24" fill="#f28122"/>
+      <path d="M103 95l18 18 37-42" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="130" y="174" font-size="22" font-weight="800" fill="#163f34">3. Confirm</text>
+      <text x="130" y="208" font-size="16" fill="#53665f">Look for the HEHA icon.</text>
+    </g>
+  </g>
+</svg>

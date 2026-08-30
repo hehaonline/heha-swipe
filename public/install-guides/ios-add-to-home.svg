@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" role="img" aria-labelledby="title desc">
+  <title id="title">iPhone add to Home Screen guide</title>
+  <desc id="desc">Three illustrated steps: open in Safari, tap Share, then tap Add to Home Screen.</desc>
+  <rect width="900" height="300" rx="30" fill="#fffaf2"/>
+  <g font-family="system-ui, sans-serif" text-anchor="middle">
+    <g transform="translate(25 25)">
+      <rect width="260" height="250" rx="26" fill="#fff" stroke="#eadfd2" stroke-width="4"/>
+      <circle cx="130" cy="92" r="48" fill="#eaf6f0"/>
+      <circle cx="130" cy="92" r="31" fill="none" stroke="#1c6f5a" stroke-width="7"/>
+      <path d="M130 59l10 32-10 34-10-34z" fill="#f28122"/>
+      <text x="130" y="174" font-size="22" font-weight="800" fill="#163f34">1. Open Safari</text>
+      <text x="130" y="208" font-size="16" fill="#53665f">Use the compass browser.</text>
+    </g>
+    <g transform="translate(320 25)">
+      <rect width="260" height="250" rx="26" fill="#fff" stroke="#eadfd2" stroke-width="4"/>
+      <circle cx="130" cy="92" r="48" fill="#fff0e8"/>
+      <path d="M130 126V56m0 0l-22 22m22-22l22 22M96 98v35h68V98" fill="none" stroke="#f28122" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="130" y="174" font-size="22" font-weight="800" fill="#163f34">2. Tap Share</text>
+      <text x="130" y="208" font-size="16" fill="#53665f">Find the square and arrow.</text>
+    </g>
+    <g transform="translate(615 25)">
+      <rect width="260" height="250" rx="26" fill="#fff" stroke="#eadfd2" stroke-width="4"/>
+      <rect x="78" y="43" width="104" height="104" rx="24" fill="#f28122"/>
+      <path d="M130 68v54m-27-27h54" stroke="#fff" stroke-width="9" stroke-linecap="round"/>
+      <text x="130" y="168" font-size="18" font-weight="800" fill="#163f34">3. Add to Home Screen</text>
+      <text x="130" y="208" font-size="16" fill="#53665f">Confirm Add in the corner.</text>
+    </g>
+  </g>
+</svg>

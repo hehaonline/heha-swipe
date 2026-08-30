@@ -1,0 +1,45 @@
+name: Partner onboarding review proof
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/partner-onboarding-review.yml"
+      - "docs/partner-onboarding-release-gates.md"
+      - "public/**"
+      - "scripts/verify-partner-onboarding-review.mjs"
+      - "src/**"
+      - "supabase/review_only/partner_onboarding_v1/**"
+      - "package.json"
+      - "package-lock.json"
+
+permissions:
+  contents: read
+
+jobs:
+  review-only-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify no executable migration entered this review lane
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only "origin/${{ github.base_ref }}...HEAD" > changed-files.txt
+          if grep -q '^supabase/migrations/' changed-files.txt; then
+            echo "Executable Supabase migrations are prohibited while SWP-016 is blocked."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+      - run: node scripts/verify-partner-onboarding-review.mjs
+      - run: node --check public/sw.js
+      - run: npm run build

@@ -4,9 +4,10 @@ import { supabase } from "../lib/supabase";
 const DIRECT_EDIT_STATUSES = ["draft", "submitted", "pending", "missing_info"];
 const CATEGORIES = [
   { value: "Restaurant", label: "Restaurants", emoji: "🥗" },
-  { value: "Vendor", label: "Markets", emoji: "🛒" },
+  { value: "Vendor", label: "Product vendors", emoji: "🛍️" },
+  { value: "Markets", label: "Grocery & farmers markets", emoji: "🛒" },
   { value: "Catering", label: "Catering", emoji: "🍱" },
-  { value: "PrivateChef", label: "Private Chefs", emoji: "👨‍🍳" },
+  { value: "Private Chef", label: "Private Chefs", emoji: "👨‍🍳" },
   { value: "Wellness", label: "Wellness", emoji: "🧘" },
   { value: "Coach", label: "Coaches", emoji: "🏆" },
   { value: "Service", label: "Services", emoji: "💆" },
@@ -14,6 +15,12 @@ const CATEGORIES = [
 ];
 
 const ARRAY_FIELDS = new Set(["categories", "tags", "offerings", "delivery_days"]);
+const LEGACY_CATEGORY_ALIASES = new Map([
+  ["PrivateChef", "Private Chef"],
+  ["FarmersMarket", "Markets"],
+  ["Market", "Markets"],
+  ["Grocery", "Markets"],
+]);
 const EDITABLE_FIELDS = [
   "name",
   "location",
@@ -50,9 +57,18 @@ function parseCommaList(value) {
   )];
 }
 
-function listingCategories(listing) {
+function rawListingCategories(listing) {
   if (Array.isArray(listing?.categories) && listing.categories.length) return listing.categories;
   return listing?.category ? [listing.category] : [];
+}
+
+function canonicalEditableCategory(value) {
+  const normalized = String(value || "").trim();
+  return LEGACY_CATEGORY_ALIASES.get(normalized) || normalized;
+}
+
+function listingCategories(listing) {
+  return [...new Set(rawListingCategories(listing).map(canonicalEditableCategory).filter(Boolean))];
 }
 
 function initialForm(listing) {
@@ -78,13 +94,16 @@ function initialForm(listing) {
 }
 
 function normalizedValue(field, value) {
+  if (field === "categories") {
+    return [...new Set(parseCommaList(value).map(canonicalEditableCategory).filter(Boolean))];
+  }
   if (ARRAY_FIELDS.has(field)) return parseCommaList(value);
   if (field === "instagram") return String(value || "").trim().replace(/^@/, "") || null;
   return String(value || "").trim() || null;
 }
 
 function currentValue(field, listing) {
-  if (field === "categories") return listingCategories(listing);
+  if (field === "categories") return rawListingCategories(listing);
   if (ARRAY_FIELDS.has(field)) return Array.isArray(listing?.[field]) ? listing[field] : [];
   if (field === "instagram") return String(listing?.instagram || "").trim().replace(/^@/, "") || null;
   return String(listing?.[field] || "").trim() || null;

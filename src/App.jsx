@@ -10,6 +10,10 @@ import PasswordResetScreen from "./components/PasswordResetScreen";
 import LocationModal, { getActiveLocationLabel } from "./components/LocationModal";
 import CommunityPassTab from "./components/CommunityPassTab";
 import { fetchActiveSupporterSubscription } from "./lib/supporterStatus";
+import { consumePartnerInviteFromLocation } from "./lib/partnerInvite";
+
+const initialPartnerInvite = consumePartnerInviteFromLocation();
+if (initialPartnerInvite) localStorage.setItem("heha_signup_role", "partner");
 
 const TABS = [
   { id: "swipe", label: "Discover", icon: "⌕" },
@@ -68,6 +72,7 @@ function SwipeLogo({ compact = false }) {
 }
 
 export default function App() {
+  const [partnerHubLaunch] = useState(() => new URLSearchParams(window.location.search).get("launch") === "partner_hub");
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [partners, setPartners] = useState([]);
@@ -201,6 +206,8 @@ export default function App() {
       if (ownedListingError) throw ownedListingError;
       const existing = ownedListings?.[0] || null;
       setMyListing(existing);
+
+      if (existing && partnerHubLaunch) setTab("deals");
 
       if (isPartnerProfile(nextProfile) || existing || signupIntent === "partner") {
         if (!existing) {
@@ -431,7 +438,7 @@ export default function App() {
         user={session.user}
         onComplete={() => {
           setShowPartnerWizard(false);
-          setTab("profile");
+          setTab("deals");
           loadData(session.user.id);
         }}
         onCancel={() => setShowPartnerWizard(false)}
@@ -452,7 +459,15 @@ export default function App() {
           <span className="location-pill-icon">📍</span>
           <span className="location-pill-label">{locationLabel || "Tampa Bay"}</span>
         </button>
-        <button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
+        <button
+          className="ghost-pill"
+          onClick={() => {
+            if (myListing) setTab("deals");
+            else setShowPartnerWizard(true);
+          }}
+        >
+          {myListing ? "Partner Hub" : "Get listed"}
+        </button>
       </header>
 
       {notice && <div className="toast-notice">{notice}</div>}
@@ -491,7 +506,10 @@ export default function App() {
           <CommunityPassTab
             user={session.user}
             profile={profile}
-            onListBusiness={() => setShowPartnerWizard(true)}
+            onListBusiness={() => {
+              if (myListing) setTab("deals");
+              else setShowPartnerWizard(true);
+            }}
           />
         )}
         {tab === "profile" && (
@@ -503,7 +521,10 @@ export default function App() {
             isBusiness={isPartnerProfile(profile) || !!myListing}
             listing={myListing}
             onSignOut={handleSignOut}
-            onListBusiness={() => setShowPartnerWizard(true)}
+            onListBusiness={() => {
+              if (myListing) setTab("deals");
+              else setShowPartnerWizard(true);
+            }}
             onRefresh={() => loadData(session.user.id)}
           />
         )}

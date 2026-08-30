@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { startSupporterCheckout } from "../lib/supporterCheckout";
 import { fetchActiveSupporterSubscription } from "../lib/supporterStatus";
@@ -6,6 +6,11 @@ import PartnerListingPreview from "./PartnerListingPreview";
 import PartnerProfileEditor from "./PartnerProfileEditor";
 import PartnerMediaManager from "./PartnerMediaManager";
 import PartnerCommunityOfferBuilder from "./PartnerCommunityOfferBuilder";
+import PartnerOnboardingChecklist from "./PartnerOnboardingChecklist";
+import { loadPartnerOnboardingCapabilities } from "../services/partnerOnboardingRepository";
+
+const PartnerAgreementFlow = lazy(() => import("./PartnerAgreementFlow"));
+const AppInstallGuide = lazy(() => import("./AppInstallGuide"));
 
 // Community Pass & Local Deals dashboard.
 // Partner/business users see a read-only Partner Hub instead of customer supporter
@@ -241,6 +246,8 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
   const [showEditor, setShowEditor] = useState(false);
   const [showMedia, setShowMedia] = useState(false);
   const [showOffer, setShowOffer] = useState(false);
+  const [showAgreement, setShowAgreement] = useState(false);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const status = normalizeStatus(listing?.status);
   const visible = Boolean(listing && VISIBLE_STATUSES.includes(status));
   const certified = listing?.heha_partner === true;
@@ -283,6 +290,24 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
     }
     setActionNote(null);
     setShowOffer(true);
+  };
+
+  const openAgreement = () => {
+    if (!listing) {
+      setActionNote("Submit a business profile before reviewing a partner agreement.");
+      return;
+    }
+    setActionNote(null);
+    setShowAgreement(true);
+  };
+
+  const openInstallGuide = () => {
+    if (!listing) {
+      setActionNote("Submit a business profile before starting the partner install guide.");
+      return;
+    }
+    setActionNote(null);
+    setShowInstallGuide(true);
   };
 
   const handleEditorSaved = async (_savedListing, note) => {
@@ -351,12 +376,25 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
         )}
       </section>
 
+      {listing && (
+        <PartnerOnboardingChecklist
+          listing={listing}
+          onEditProfile={openEditor}
+          onReviewAgreement={openAgreement}
+          onAddMedia={openMedia}
+          onInstallApps={openInstallGuide}
+          onPreview={openPreview}
+        />
+      )}
+
       <section className="partner-hub-actions card-like">
         <h2>Partner actions</h2>
         <div className="partner-action-grid">
           <button className="secondary-button" type="button" onClick={onRefresh}>Refresh status</button>
           <button className="secondary-button" type="button" onClick={openEditor}>{listing ? "Edit business profile" : "Start business profile"}</button>
           <button className="secondary-button" type="button" onClick={openMedia}>Add logo / photos</button>
+          <button className="secondary-button" type="button" onClick={openAgreement}>Review agreement</button>
+          <button className="secondary-button" type="button" onClick={openInstallGuide}>Install Swipe + Local</button>
           <button className="secondary-button" type="button" onClick={openPreview}>Preview listing</button>
           <button className="secondary-button" type="button" onClick={openOffer}>Community Offer</button>
           <button className="secondary-button" type="button" onClick={() => comingSoon("Request certification review")}>Request certification review</button>
@@ -390,6 +428,24 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
           onChanged={onRefresh}
         />
       )}
+      {showAgreement && listing && (
+        <Suspense fallback={<div className="inline-loader" role="status">Loading protected agreement…</div>}>
+          <PartnerAgreementFlow
+            user={user}
+            listing={listing}
+            onClose={() => setShowAgreement(false)}
+            onAccepted={async () => {
+              setActionNote("Agreement acceptance recorded. Download the receipt before closing; publication and ordering remain separately gated.");
+              await onRefresh?.();
+            }}
+          />
+        </Suspense>
+      )}
+      {showInstallGuide && listing && (
+        <Suspense fallback={<div className="inline-loader" role="status">Loading install guide…</div>}>
+          <AppInstallGuide listingId={listing.id} onClose={() => setShowInstallGuide(false)} />
+        </Suspense>
+      )}
     </>
   );
 }
@@ -410,16 +466,35 @@ export default function CommunityPassTab({ user, profile, onListBusiness }) {
     setListingLoading(true);
     setListingError(null);
     try {
-      const { data, error } = await supabase
+      const { data: baseListing, error } = await supabase
         .from("partners")
-        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner, logo_url, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours, contact, business_type, phone, delivery_days, pricing_notes")
+        .select("id, name, category, categories, status, created_at, updated_at, complete_pct, heha_partner, logo_url, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours, contact, business_type, phone, delivery_days, pricing_notes, local_eligible, local_lane, primary_cta_destination, primary_cta_path")
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (error) throw error;
-      setOwnerListing(data || null);
+      if (!baseListing) {
+        setOwnerListing(null);
+        return;
+      }
+
+      let nextListing = baseListing;
+      if (import.meta.env.VITE_ENABLE_PARTNER_ONBOARDING_CAPABILITIES === "true") {
+        try {
+          const capabilities = await loadPartnerOnboardingCapabilities(baseListing.id, user.id);
+          nextListing = { ...baseListing, onboarding_capabilities: capabilities };
+        } catch (releaseGateError) {
+          nextListing = {
+            ...baseListing,
+            onboarding_capabilities: null,
+            release_gate_error: releaseGateError.message || "Partner release receipts could not be loaded.",
+          };
+        }
+      }
+
+      setOwnerListing(nextListing);
     } catch (e) {
       setOwnerListing(null);
       setListingError(e);

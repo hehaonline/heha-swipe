@@ -1,0 +1,153 @@
+.agreement-sheet {
+  max-width: 760px;
+}
+
+.agreement-body {
+  padding: 10px 20px calc(34px + env(safe-area-inset-bottom, 0px));
+}
+
+.agreement-body > h2 {
+  margin: 4px 0 12px;
+  color: var(--heha-ink, #1f2a24);
+  font-size: clamp(24px, 7vw, 34px);
+  letter-spacing: -.04em;
+}
+
+.agreement-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: var(--heha-muted, #66716a);
+  font-size: 12px;
+}
+
+.agreement-version-row strong {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #fff0dc;
+  color: #8a531b;
+}
+
+.agreement-gate {
+  padding: 12px 14px;
+  border-radius: 13px;
+  background: var(--heha-sand, #f7f3ec);
+  color: var(--heha-ink, #35413a);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.agreement-gate.warning {
+  border: 1px solid #efc892;
+  background: #fff6e9;
+  color: #704a20;
+}
+
+.agreement-summary,
+.agreement-fineprint {
+  color: var(--heha-muted, #66716a);
+  line-height: 1.6;
+}
+
+.agreement-document {
+  max-height: min(48vh, 520px);
+  overflow-y: auto;
+  margin: 16px 0;
+  padding: 18px;
+  border: 1px solid var(--heha-border, #e6ddd0);
+  border-radius: 16px;
+  background: #fff;
+  outline: none;
+}
+
+.agreement-document:focus {
+  border-color: rgba(36, 118, 66, .62);
+  box-shadow: 0 0 0 4px rgba(36, 118, 66, .11);
+}
+
+.agreement-document section + section {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--heha-border, #ece7dd);
+}
+
+.agreement-document h3 {
+  margin: 0 0 9px;
+  color: var(--heha-ink, #1f2a24);
+  font-size: 17px;
+}
+
+.agreement-document p,
+.agreement-document li {
+  color: #46524b;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.agreement-document ul {
+  padding-left: 20px;
+}
+
+.agreement-signature-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+  padding: 18px;
+  border: 1px solid rgba(36, 118, 66, .24);
+  border-radius: 18px;
+  background: rgba(232, 245, 233, .48);
+}
+
+.agreement-signature-panel.locked {
+  border-color: var(--heha-border, #e6ddd0);
+  background: var(--heha-sand, #f7f3ec);
+}
+
+.agreement-signature-panel h3 {
+  margin: -8px 0 0;
+  color: var(--heha-ink, #1f2a24);
+  font-size: 21px;
+}
+
+.agreement-check-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  color: var(--heha-ink, #2b372f);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.agreement-check-row input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--heha-green, #247642);
+}
+
+.agreement-signature-field small {
+  color: #a4472f;
+}
+
+.agreement-acceptance-text {
+  margin: 0;
+  padding: 12px;
+  border-left: 4px solid var(--heha-green, #247642);
+  background: #fff;
+  color: var(--heha-ink, #2b372f);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.agreement-fineprint {
+  margin: 0;
+  font-size: 12px;
+}
+
+.success-banner .text-button {
+  display: block;
+  margin-top: 8px;
+}

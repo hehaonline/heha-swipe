@@ -1,11 +1,19 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
+import { createOrResumePartnerApplication } from "../services/partnerApplicationRepository";
+import { claimPartnerInvitation } from "../services/partnerClaimRepository";
+import {
+  clearPendingPartnerInviteToken,
+  pendingPartnerInviteRequestKey,
+  pendingPartnerInviteToken,
+} from "../lib/partnerInvite";
 
 const CATEGORIES = [
   { value: "Restaurant", label: "Restaurants", emoji: "🥗" },
-  { value: "Vendor", label: "Markets", emoji: "🛒" },
+  { value: "Vendor", label: "Product vendors", emoji: "🛍️" },
+  { value: "Markets", label: "Grocery & farmers markets", emoji: "🛒" },
   { value: "Catering", label: "Catering", emoji: "🍱" },
-  { value: "PrivateChef", label: "Private Chefs", emoji: "👨‍🍳" },
+  { value: "Private Chef", label: "Private Chefs", emoji: "👨‍🍳" },
   { value: "Wellness", label: "Wellness", emoji: "🧘" },
   { value: "Coach", label: "Coaches", emoji: "🏆" },
   { value: "Service", label: "Services", emoji: "💆" },
@@ -113,6 +121,8 @@ function categorySummary(categories = []) {
 }
 
 export default function PartnerWizard({ user, onComplete, onCancel }) {
+  const protectedApplicationEnabled = import.meta.env.VITE_ENABLE_PROTECTED_PARTNER_APPLICATION === "true";
+  const protectedClaimEnabled = import.meta.env.VITE_ENABLE_PROTECTED_PARTNER_CLAIM === "true";
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
@@ -120,8 +130,12 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
   const [newOffering, setNewOffering] = useState("");
   const [newItem, setNewItem] = useState({ name: "", price: "", emoji: "✦" });
   const [submittedListing, setSubmittedListing] = useState(null);
+  const [listingEntrySource, setListingEntrySource] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusError, setStatusError] = useState(null);
+  const [applicationRequestKey] = useState(() => crypto.randomUUID());
+  const [claimRequestKey] = useState(pendingPartnerInviteRequestKey);
+  const [inviteToken] = useState(pendingPartnerInviteToken);
 
   const activeStep = STEPS[step];
 
@@ -191,6 +205,10 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
     setLoading(true);
     setErrors({});
     try {
+      if (!protectedApplicationEnabled) {
+        throw new Error("Protected partner applications are still in review. Existing businesses must use their verified invitation link.");
+      }
+
       const completePct = [
         form.name,
         form.categories.length > 0,
@@ -204,57 +222,56 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
         form.items.length > 0,
       ].filter(Boolean).length * 10;
 
-      const { data, error } = await supabase.from("partners").insert({
-        owner_id: user.id,
-        name: form.name.trim(),
-        category: form.categories[0],
-        categories: form.categories,
-        neighborhood: form.neighborhood.trim(),
-        tagline: form.tagline.trim(),
-        bio: form.bio.trim(),
-        hours: operatingHoursSummary(form) || null,
-        delivery_days: orderedScheduleDays(form.scheduleDays),
-        business_type: form.business_type.trim() || null,
-        phone: form.phone.trim() || null,
-        contact: form.contact.trim() || null,
-        website: form.website.trim() || null,
-        instagram: normalizeInstagram(form.instagram) || null,
-        location: form.location.trim() || null,
-        offerings: form.offerings,
-        items: form.items,
-        photo_emoji: form.photo_emoji,
-        color: form.color,
-        status: "pending",
-        complete_pct: completePct,
-        heha_partner: false,
-      }).select().single();
+      const data = await createOrResumePartnerApplication({
+        actorId: user.id,
+        requestKey: applicationRequestKey,
+        application: {
+          name: form.name.trim(),
+          category: form.categories[0],
+          categories: form.categories,
+          neighborhood: form.neighborhood.trim(),
+          tagline: form.tagline.trim(),
+          bio: form.bio.trim(),
+          hours: operatingHoursSummary(form) || null,
+          delivery_days: orderedScheduleDays(form.scheduleDays),
+          business_type: form.business_type.trim() || null,
+          phone: form.phone.trim() || null,
+          contact: form.contact.trim() || null,
+          website: form.website.trim() || null,
+          instagram: normalizeInstagram(form.instagram) || null,
+          location: form.location.trim() || null,
+          offerings: form.offerings,
+          items: form.items,
+          photo_emoji: form.photo_emoji,
+          color: form.color,
+          complete_pct: completePct,
+        },
+      });
 
-      if (error) throw error;
-
-      try {
-        const webhookUrl = import.meta.env.VITE_MAKE_PARTNER_APPROVAL_WEBHOOK;
-        if (webhookUrl) {
-          await fetch(webhookUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              partner_id: data.id,
-              partner_name: data.name,
-              category: data.category,
-              categories: data.categories || form.categories,
-              neighborhood: data.neighborhood,
-              owner_email: user.email || user.phone,
-              status: "pending_review",
-            }),
-          });
-        }
-      } catch {
-        // Webhook issues should not block the user from submitting their listing.
-      }
-
+      setListingEntrySource("application");
       setSubmittedListing(data);
     } catch (error) {
       setErrors({ submit: error.message || "Could not submit this listing yet." });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const claimInvite = async () => {
+    if (!inviteToken || !claimRequestKey || !protectedClaimEnabled) return;
+    setLoading(true);
+    setErrors({});
+    try {
+      const listing = await claimPartnerInvitation({
+        actorId: user.id,
+        requestKey: claimRequestKey,
+        inviteToken,
+      });
+      clearPendingPartnerInviteToken();
+      setListingEntrySource("claim");
+      setSubmittedListing(listing);
+    } catch (error) {
+      setErrors({ submit: error.message || "The protected invitation could not be verified." });
     } finally {
       setLoading(false);
     }
@@ -280,10 +297,41 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
     }
   };
 
+  if (!submittedListing && inviteToken) {
+    return (
+      <PartnerAccessGate
+        title="Verify your private business invitation"
+        copy="This one-time link must match your signed-in account and the intended HEHA business profile. It cannot create a second profile or publish anything."
+        enabled={protectedClaimEnabled}
+        loading={loading}
+        error={errors.submit}
+        onContinue={claimInvite}
+        onCancel={onCancel}
+        buttonLabel="Verify invitation and continue"
+      />
+    );
+  }
+
+  if (!submittedListing && !protectedApplicationEnabled) {
+    return (
+      <PartnerAccessGate
+        title="Protected partner applications are in review"
+        copy="The older browser create path is disabled. New businesses unlock after server duplicate-prevention and authorization proof; invited businesses should reopen their private link."
+        enabled={false}
+        loading={false}
+        error={null}
+        onContinue={null}
+        onCancel={onCancel}
+        buttonLabel="Application not yet available"
+      />
+    );
+  }
+
   if (submittedListing) {
     return (
       <PartnerSubmissionStatus
         listing={submittedListing}
+        entrySource={listingEntrySource}
         loading={statusLoading}
         error={statusError}
         onRefresh={refreshSubmittedListing}
@@ -553,7 +601,13 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
 
             <div className="wizard-note">Listings are submitted as pending review. HEHA approval/verification is not automatic.</div>
             {errors.submit && <Error>{errors.submit}</Error>}
-            <button className="wizard-submit-button" type="button" disabled={loading} onClick={submit}>{loading ? "Submitting…" : "Submit for review"}</button>
+            <button className="wizard-submit-button" type="button" disabled={loading || !protectedApplicationEnabled} onClick={submit}>{loading ? "Submitting…" : "Submit for review"}</button>
+            {!protectedApplicationEnabled && (
+              <div className="wizard-note">
+                Submission is in protected review. Existing invited businesses must use their verified, recipient-bound link;
+                new self-applications unlock after idempotency, duplicate-prevention, and authorization proof pass.
+              </div>
+            )}
             <button className="wizard-text-back" type="button" onClick={back}>← Back to edit</button>
           </WizardPanel>
         )}
@@ -562,10 +616,38 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
   );
 }
 
-function PartnerSubmissionStatus({ listing, loading, error, onRefresh, onContinue }) {
+function PartnerAccessGate({ title, copy, enabled, loading, error, onContinue, onCancel, buttonLabel }) {
+  return (
+    <main className="partner-wizard-screen">
+      <section className="partner-wizard-shell">
+        <WizardTopbar onCancel={onCancel} />
+        <header className="wizard-step-header">
+          <span className="wizard-step-icon">⌁</span>
+          <div><p>Partner access</p><h1>{title}</h1></div>
+        </header>
+        <WizardPanel>
+          <p className="wizard-helper-copy">{copy}</p>
+          {!enabled && (
+            <div className="wizard-note">
+              Nothing has been claimed, submitted, published, or sent. HEHA will provide one protected resumable link after the release proof passes.
+            </div>
+          )}
+          {error && <Error>{error}</Error>}
+          <button className="wizard-submit-button" type="button" disabled={!enabled || loading} onClick={onContinue}>
+            {loading ? "Verifying…" : buttonLabel}
+          </button>
+        </WizardPanel>
+      </section>
+    </main>
+  );
+}
+
+function PartnerSubmissionStatus({ listing, entrySource, loading, error, onRefresh, onContinue }) {
   const status = String(listing?.status || "pending").toLowerCase();
   const visible = PUBLIC_STATUSES.includes(status);
   const certified = listing?.heha_partner === true;
+  const connectedByInvite = entrySource === "claim";
+  const awaitingReview = ["submitted", "pending"].includes(status);
   const listingCategories = Array.isArray(listing?.categories) && listing.categories.length
     ? listing.categories
     : listing?.category
@@ -581,20 +663,24 @@ function PartnerSubmissionStatus({ listing, loading, error, onRefresh, onContinu
             <strong>HEHA</strong>
             <em>swipe</em>
           </div>
-          <strong>Registration saved</strong>
+          <strong>{connectedByInvite ? "Business connected" : "Application saved"}</strong>
         </div>
 
         <header className="wizard-step-header">
           <span className="wizard-step-icon">✓</span>
           <div>
-            <p>Business registration</p>
-            <h1>Submitted</h1>
+            <p>{connectedByInvite ? "Private business invitation" : "Business application"}</p>
+            <h1>{connectedByInvite ? "Verified" : awaitingReview ? "Sent for review" : "Saved privately"}</h1>
           </div>
         </header>
 
         <WizardPanel>
           <p className="wizard-helper-copy">
-            Your business profile was submitted. HEHA reviews listings before they become publicly visible.
+            {connectedByInvite
+              ? "Your signed-in account is connected to this existing private business profile. No application was submitted by this claim."
+              : awaitingReview
+              ? "Your private business application is waiting for HEHA review."
+              : "Your private business application is saved and needs more information before HEHA review."}
           </p>
 
           <div className="wizard-review-card">
@@ -610,7 +696,7 @@ function PartnerSubmissionStatus({ listing, loading, error, onRefresh, onContinu
           <div className="wizard-review-list">
             {[
               ["Status", formatStatus(status)],
-              ["Submitted", formatDate(listing.created_at)],
+              ["Profile created", formatDate(listing.created_at)],
               ["Completion", completionLabel(listing.complete_pct)],
               ["Public visibility", visible ? "Visible" : "Hidden until review"],
               ["HEHA Certified", certified ? "Certified" : "Not certified yet"],
@@ -623,20 +709,23 @@ function PartnerSubmissionStatus({ listing, loading, error, onRefresh, onContinu
           </div>
 
           <div className="wizard-note">
-            Your submission is saved. Public visibility and HEHA Certified status remain separate HEHA review decisions.
+            {connectedByInvite
+              ? "Connecting your account did not submit, publish, certify, or make this business orderable."
+              : "Saving an application does not publish, certify, or make this business orderable."}
           </div>
 
           {error && <Error>{error}</Error>}
 
           <button className="wizard-submit-button" type="button" onClick={onContinue}>
-            Continue to business profile
+            Continue partner setup
           </button>
           <button className="wizard-text-back" type="button" onClick={onRefresh} disabled={loading}>
             {loading ? "Refreshing…" : "Refresh status"}
           </button>
 
           <p className="wizard-helper-copy">
-            Profile editing, logo/photo upload, and listing preview are the next reviewed Partner Hub tools. Your submitted information stays saved.
+            Your Partner Hub keeps the complete sequence in one place: business verification, profile/menu, the correct agreement,
+            photos, both home-screen installs, test order, and final publication approval. Your information stays saved.
           </p>
         </WizardPanel>
       </section>
@@ -652,7 +741,7 @@ function WizardTopbar({ onCancel }) {
         <strong>HEHA</strong>
         <em>swipe</em>
       </div>
-      <button type="button" onClick={onCancel}>Save & exit</button>
+      <button type="button" onClick={onCancel}>Exit setup</button>
     </div>
   );
 }

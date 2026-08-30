@@ -1,4 +1,5 @@
 const DEFAULT_HEHA_LOCAL_ORIGIN = "https://hehalocal.app";
+const APPROVED_HEHA_LOCAL_ORIGINS = new Set([DEFAULT_HEHA_LOCAL_ORIGIN]);
 
 // Temporary bridge for the three currently approved/orderable Swipe partners.
 // Remove this map after the canonical public partner relationship is exposed
@@ -20,11 +21,57 @@ const GENERIC_HEHA_LOCAL_LISTING_PATHS = new Set([
   "/restaurants/",
   "/vendors",
   "/vendors/",
+  "/market",
+  "/market/",
+  "/chef",
+  "/chef/",
+  "/group-orders",
+  "/group-orders/",
 ]);
 
+const SPECIFIC_HEHA_LOCAL_PROFILE_PATH = /^\/(?:restaurants|vendors|markets?|chef|group-orders)\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/?$/i;
+
+function approvedConfiguredOrigin(configuredValue) {
+  const configured = String(configuredValue || "").trim();
+  if (!configured) return null;
+  try {
+    const parsed = new URL(configured);
+    if (parsed.protocol !== "https:"
+        || !APPROVED_HEHA_LOCAL_ORIGINS.has(parsed.origin)
+        || !["", "/"].includes(parsed.pathname)
+        || parsed.search
+        || parsed.hash) {
+      return null;
+    }
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
 function localOrigin() {
-  const configured = String(import.meta.env.VITE_HEHA_LOCAL_URL || "").trim();
-  return (configured || DEFAULT_HEHA_LOCAL_ORIGIN).replace(/\/$/, "");
+  return approvedConfiguredOrigin(import.meta.env.VITE_HEHA_LOCAL_URL)
+    || DEFAULT_HEHA_LOCAL_ORIGIN;
+}
+
+export function isApprovedHehaLocalInstallConfiguration({ enabled, configuredUrl }) {
+  return enabled === true && Boolean(approvedConfiguredOrigin(configuredUrl));
+}
+
+export function isHehaLocalInstallEnabled() {
+  return isApprovedHehaLocalInstallConfiguration({
+    enabled: import.meta.env.VITE_ENABLE_HEHA_LOCAL_INSTALL === "true",
+    configuredUrl: import.meta.env.VITE_HEHA_LOCAL_URL,
+  });
+}
+
+export function hehaLocalInstallUrl() {
+  if (!isHehaLocalInstallEnabled()) return null;
+  return `${approvedConfiguredOrigin(import.meta.env.VITE_HEHA_LOCAL_URL)}/`;
+}
+
+export function hehaLocalHomeUrl() {
+  return `${localOrigin()}/`;
 }
 
 function legacyItemUrl(item) {
@@ -51,7 +98,8 @@ export function hasSpecificHehaLocalDestination(partner) {
 
   const configuredPath = normalizedConfiguredPath(partner);
   if (!configuredPath) return false;
-  return !isGenericHehaLocalListingPath(configuredPath);
+  if (isGenericHehaLocalListingPath(configuredPath)) return false;
+  return SPECIFIC_HEHA_LOCAL_PROFILE_PATH.test(configuredPath);
 }
 
 export function isHehaLocalPartner(partner) {
