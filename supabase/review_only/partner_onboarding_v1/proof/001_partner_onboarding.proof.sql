@@ -3405,16 +3405,37 @@ select pg_temp.expect_partner_denied(
     'synthetic_conflicting_signer_revocation'
   )$sql$
 );
+
+-- The disposable harness computes exact source digests outside the restricted
+-- actor role. Authenticated reviewers receive only these fixed synthetic
+-- snapshots; no private digest helper is exposed to an application role.
+reset role;
+insert into pg_temp.partner_onboarding_proof_state(key, value)
+select 'main_profile_sha256_before_change',
+       partner_onboarding_private.partner_profile_sha256(
+         '10000000-0000-4000-8000-0000000000a1'
+       );
+insert into pg_temp.partner_onboarding_proof_state(key, value)
+select 'main_media_sha256_before_change',
+       partner_onboarding_private.partner_media_sha256(
+         '10000000-0000-4000-8000-0000000000a1'
+       );
+insert into pg_temp.partner_onboarding_proof_state(key, value)
+select 'main_preview_sha256_before_change',
+       partner_onboarding_private.partner_preview_sha256(
+         '10000000-0000-4000-8000-0000000000a1'
+       );
+
+set local role authenticated;
 select pg_catalog.set_config(
   'request.jwt.claim.sub', '00000000-0000-4000-8000-000000000106', true
 );
 select pg_temp.expect_partner_denied(
-  'SIGNER_REVOCATION_STALE_RELEASE_DENIAL',
+  'release remains denied after signer revocation',
   $sql$select partner_onboarding_private.finalize_partner_release_v1(
     '10000000-0000-4000-8000-0000000000a1',
-    partner_onboarding_private.partner_preview_sha256(
-      '10000000-0000-4000-8000-0000000000a1'
-    ),
+    (select value from pg_temp.partner_onboarding_proof_state
+     where key = 'main_preview_sha256_before_change'),
     '30000000-0000-4000-8000-000000000033',
     '00000000-0000-4000-8000-000000000106'
   )$sql$
@@ -3542,7 +3563,8 @@ select pg_temp.expect_partner_denied(
   'release switch defaults off independently',
   $sql$select partner_onboarding_private.finalize_partner_release_v1(
     '10000000-0000-4000-8000-0000000000a1',
-    partner_onboarding_private.partner_preview_sha256('10000000-0000-4000-8000-0000000000a1'),
+    (select value from pg_temp.partner_onboarding_proof_state
+     where key = 'main_preview_sha256_before_change'),
     '30000000-0000-4000-8000-000000000040',
     '00000000-0000-4000-8000-000000000106'
   )$sql$
@@ -3562,7 +3584,8 @@ select pg_temp.expect_partner_denied(
   'release requires complete current evidence set',
   $sql$select partner_onboarding_private.finalize_partner_release_v1(
     '10000000-0000-4000-8000-0000000000a1',
-    partner_onboarding_private.partner_preview_sha256('10000000-0000-4000-8000-0000000000a1'),
+    (select value from pg_temp.partner_onboarding_proof_state
+     where key = 'main_preview_sha256_before_change'),
     '30000000-0000-4000-8000-000000000041',
     '00000000-0000-4000-8000-000000000106'
   )$sql$
@@ -3580,7 +3603,8 @@ select pg_catalog.set_config(
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'profile_evidence', partner_onboarding_private.issue_partner_evidence_v1(
   '10000000-0000-4000-8000-0000000000a1', 'profile',
-  partner_onboarding_private.partner_profile_sha256('10000000-0000-4000-8000-0000000000a1'),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_profile_sha256_before_change'),
   '{"status":"verified","review":"synthetic profile"}'::jsonb,
   '30000000-0000-4000-8000-000000000050',
   '00000000-0000-4000-8000-000000000105'
@@ -3588,7 +3612,8 @@ select 'profile_evidence', partner_onboarding_private.issue_partner_evidence_v1(
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'media_evidence', partner_onboarding_private.issue_partner_evidence_v1(
   '10000000-0000-4000-8000-0000000000a1', 'media',
-  partner_onboarding_private.partner_media_sha256('10000000-0000-4000-8000-0000000000a1'),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_media_sha256_before_change'),
   '{"status":"verified","review":"synthetic media"}'::jsonb,
   '30000000-0000-4000-8000-000000000051',
   '00000000-0000-4000-8000-000000000105'
@@ -3644,7 +3669,8 @@ select 'smoke_evidence', partner_onboarding_private.issue_partner_evidence_v1(
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'consent_evidence', partner_onboarding_private.issue_partner_evidence_v1(
   '10000000-0000-4000-8000-0000000000a1', 'partner_consent',
-  partner_onboarding_private.partner_preview_sha256('10000000-0000-4000-8000-0000000000a1'),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_preview_sha256_before_change'),
   '{"status":"approved","approved":true,"review":"synthetic partner consent"}'::jsonb,
   '30000000-0000-4000-8000-000000000055',
   '00000000-0000-4000-8000-000000000105'
@@ -3652,11 +3678,14 @@ select 'consent_evidence', partner_onboarding_private.issue_partner_evidence_v1(
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'heha_review_evidence', partner_onboarding_private.issue_partner_evidence_v1(
   '10000000-0000-4000-8000-0000000000a1', 'heha_review',
-  partner_onboarding_private.partner_preview_sha256('10000000-0000-4000-8000-0000000000a1'),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_preview_sha256_before_change'),
   '{"status":"approved","approved":true,"review":"synthetic HEHA review"}'::jsonb,
   '30000000-0000-4000-8000-000000000056',
   '00000000-0000-4000-8000-000000000105'
 )::text;
+
+reset role;
 
 do $application_invite_owner_binding$
 declare
@@ -3686,6 +3715,7 @@ begin
 end;
 $application_invite_owner_binding$;
 
+set local role authenticated;
 select pg_catalog.set_config(
   'request.jwt.claim.sub', '00000000-0000-4000-8000-000000000106', true
 );
@@ -3693,14 +3723,16 @@ select pg_catalog.set_config(
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'release_first', partner_onboarding_private.finalize_partner_release_v1(
   '10000000-0000-4000-8000-0000000000a1',
-  partner_onboarding_private.partner_preview_sha256('10000000-0000-4000-8000-0000000000a1'),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_preview_sha256_before_change'),
   '30000000-0000-4000-8000-000000000060',
   '00000000-0000-4000-8000-000000000106'
 )::text;
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'release_replay', partner_onboarding_private.finalize_partner_release_v1(
   '10000000-0000-4000-8000-0000000000a1',
-  partner_onboarding_private.partner_preview_sha256('10000000-0000-4000-8000-0000000000a1'),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_preview_sha256_before_change'),
   '30000000-0000-4000-8000-000000000060',
   '00000000-0000-4000-8000-000000000106'
 )::text;
@@ -4198,9 +4230,8 @@ select pg_temp.expect_partner_denied(
   'release request replay after kill-switch invalidation denied generically',
   $sql$select partner_onboarding_private.finalize_partner_release_v1(
     '10000000-0000-4000-8000-0000000000a1',
-    partner_onboarding_private.partner_preview_sha256(
-      '10000000-0000-4000-8000-0000000000a1'
-    ),
+    (select value from pg_temp.partner_onboarding_proof_state
+     where key = 'main_preview_sha256_before_change'),
     '30000000-0000-4000-8000-000000000060',
     '00000000-0000-4000-8000-000000000106'
   )$sql$
@@ -4208,9 +4239,8 @@ select pg_temp.expect_partner_denied(
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'release_second', partner_onboarding_private.finalize_partner_release_v1(
   '10000000-0000-4000-8000-0000000000a1',
-  partner_onboarding_private.partner_preview_sha256(
-    '10000000-0000-4000-8000-0000000000a1'
-  ),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_preview_sha256_before_change'),
   '30000000-0000-4000-8000-000000000063',
   '00000000-0000-4000-8000-000000000106'
 )::text;
@@ -4716,9 +4746,8 @@ select pg_catalog.set_config(
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'release_third', partner_onboarding_private.finalize_partner_release_v1(
   '10000000-0000-4000-8000-0000000000a1',
-  partner_onboarding_private.partner_preview_sha256(
-    '10000000-0000-4000-8000-0000000000a1'
-  ),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_preview_sha256_before_change'),
   '30000000-0000-4000-8000-000000000074',
   '00000000-0000-4000-8000-000000000106'
 )::text;
@@ -4867,6 +4896,17 @@ select pg_temp.expect_partner_denied(
 );
 reset role;
 
+insert into pg_temp.partner_onboarding_proof_state(key, value)
+select 'main_profile_sha256_after_change',
+       partner_onboarding_private.partner_profile_sha256(
+         '10000000-0000-4000-8000-0000000000a1'
+       );
+insert into pg_temp.partner_onboarding_proof_state(key, value)
+select 'main_preview_sha256_after_change',
+       partner_onboarding_private.partner_preview_sha256(
+         '10000000-0000-4000-8000-0000000000a1'
+       );
+
 set local role authenticated;
 select pg_catalog.set_config(
   'request.jwt.claim.sub', '00000000-0000-4000-8000-000000000105', true
@@ -4875,9 +4915,8 @@ insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'profile_evidence_after_change',
        partner_onboarding_private.issue_partner_evidence_v1(
   '10000000-0000-4000-8000-0000000000a1', 'profile',
-  partner_onboarding_private.partner_profile_sha256(
-    '10000000-0000-4000-8000-0000000000a1'
-  ),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_profile_sha256_after_change'),
   '{"status":"verified","review":"synthetic successor profile"}'::jsonb,
   '30000000-0000-4000-8000-000000000077',
   '00000000-0000-4000-8000-000000000105'
@@ -4886,9 +4925,8 @@ insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'consent_evidence_after_change',
        partner_onboarding_private.issue_partner_evidence_v1(
   '10000000-0000-4000-8000-0000000000a1', 'partner_consent',
-  partner_onboarding_private.partner_preview_sha256(
-    '10000000-0000-4000-8000-0000000000a1'
-  ),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_preview_sha256_after_change'),
   '{"status":"approved","approved":true,"review":"synthetic successor consent"}'::jsonb,
   '30000000-0000-4000-8000-000000000078',
   '00000000-0000-4000-8000-000000000105'
@@ -4897,9 +4935,8 @@ insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'heha_review_evidence_after_change',
        partner_onboarding_private.issue_partner_evidence_v1(
   '10000000-0000-4000-8000-0000000000a1', 'heha_review',
-  partner_onboarding_private.partner_preview_sha256(
-    '10000000-0000-4000-8000-0000000000a1'
-  ),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_preview_sha256_after_change'),
   '{"status":"approved","approved":true,"review":"synthetic successor HEHA review"}'::jsonb,
   '30000000-0000-4000-8000-000000000079',
   '00000000-0000-4000-8000-000000000105'
@@ -4912,9 +4949,8 @@ select pg_catalog.set_config(
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'release_fourth', partner_onboarding_private.finalize_partner_release_v1(
   '10000000-0000-4000-8000-0000000000a1',
-  partner_onboarding_private.partner_preview_sha256(
-    '10000000-0000-4000-8000-0000000000a1'
-  ),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_preview_sha256_after_change'),
   '30000000-0000-4000-8000-000000000080',
   '00000000-0000-4000-8000-000000000106'
 )::text;
@@ -5078,9 +5114,8 @@ select pg_temp.expect_partner_denied(
   'revoked newest evidence cannot release by falling back',
   $sql$select partner_onboarding_private.finalize_partner_release_v1(
     '10000000-0000-4000-8000-0000000000a1',
-    partner_onboarding_private.partner_preview_sha256(
-      '10000000-0000-4000-8000-0000000000a1'
-    ),
+    (select value from pg_temp.partner_onboarding_proof_state
+     where key = 'main_preview_sha256_after_change'),
     '30000000-0000-4000-8000-000000000084',
     '00000000-0000-4000-8000-000000000106'
   )$sql$
@@ -5124,9 +5159,8 @@ select pg_catalog.set_config(
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'release_fifth', partner_onboarding_private.finalize_partner_release_v1(
   '10000000-0000-4000-8000-0000000000a1',
-  partner_onboarding_private.partner_preview_sha256(
-    '10000000-0000-4000-8000-0000000000a1'
-  ),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_preview_sha256_after_change'),
   '30000000-0000-4000-8000-000000000086',
   '00000000-0000-4000-8000-000000000106'
 )::text;
@@ -5223,6 +5257,8 @@ select partner_onboarding_private.select_partner_agreement_version_v1(
    where key = 'agreement_version_second'),
   '00000000-0000-4000-8000-000000000104'
 );
+reset role;
+
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'epoch_after_agreement_v2', release_epoch::text
 from partner_onboarding_private.partner_state
@@ -5232,11 +5268,17 @@ select 'selected_at_agreement_v2', selected_at::text
 from partner_onboarding_private.current_agreement_versions
 where legal_relationship_type = 'restaurant';
 
+set local role authenticated;
+select pg_catalog.set_config(
+  'request.jwt.claim.sub', '00000000-0000-4000-8000-000000000104', true
+);
 select partner_onboarding_private.select_partner_agreement_version_v1(
   (select value::uuid from pg_temp.partner_onboarding_proof_state
    where key = 'agreement_version_second'),
   '00000000-0000-4000-8000-000000000104'
 );
+reset role;
+
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'epoch_after_agreement_v2_replay', release_epoch::text
 from partner_onboarding_private.partner_state
@@ -5246,16 +5288,21 @@ select 'selected_at_agreement_v2_replay', selected_at::text
 from partner_onboarding_private.current_agreement_versions
 where legal_relationship_type = 'restaurant';
 
+set local role authenticated;
+select pg_catalog.set_config(
+  'request.jwt.claim.sub', '00000000-0000-4000-8000-000000000104', true
+);
 select partner_onboarding_private.select_partner_agreement_version_v1(
   (select value::uuid from pg_temp.partner_onboarding_proof_state
    where key = 'agreement_version'),
   '00000000-0000-4000-8000-000000000104'
 );
+reset role;
+
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'epoch_after_agreement_v1_reselection', release_epoch::text
 from partner_onboarding_private.partner_state
 where partner_id = '10000000-0000-4000-8000-0000000000a1';
-reset role;
 
 do $agreement_selection_monotonicity$
 declare
@@ -5325,9 +5372,8 @@ select pg_temp.expect_partner_denied(
   'reselected v1 cannot release on stale v1 acceptance',
   $sql$select partner_onboarding_private.finalize_partner_release_v1(
     '10000000-0000-4000-8000-0000000000a1',
-    partner_onboarding_private.partner_preview_sha256(
-      '10000000-0000-4000-8000-0000000000a1'
-    ),
+    (select value from pg_temp.partner_onboarding_proof_state
+     where key = 'main_preview_sha256_after_change'),
     '30000000-0000-4000-8000-000000000089',
     '00000000-0000-4000-8000-000000000106'
   )$sql$
@@ -5404,9 +5450,8 @@ select pg_catalog.set_config(
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'release_sixth', partner_onboarding_private.finalize_partner_release_v1(
   '10000000-0000-4000-8000-0000000000a1',
-  partner_onboarding_private.partner_preview_sha256(
-    '10000000-0000-4000-8000-0000000000a1'
-  ),
+  (select value from pg_temp.partner_onboarding_proof_state
+   where key = 'main_preview_sha256_after_change'),
   '30000000-0000-4000-8000-000000000092',
   '00000000-0000-4000-8000-000000000106'
 )::text;

@@ -360,15 +360,23 @@ else
   expect_generic_loser "$TMP_DIR/claim-conflict-2.err"
 fi
 
+DOCUMENT_SHA="$("${PSQL[@]}" -c "
+  select partner_onboarding_private.sha256_text(
+    'SYNTHETIC CONCURRENCY DOCUMENT -- NO LEGAL EFFECT'
+  );
+")"
+if [[ ! "$DOCUMENT_SHA" =~ ^[0-9a-f]{64}$ ]]; then
+  echo 'owner-side agreement document digest capture failed' >&2
+  exit 1
+fi
+
 AGREEMENT_ID="$(run_authenticated "$LEGAL_ADMIN" "
   select partner_onboarding_private.register_partner_agreement_version_v1(
     'restaurant', 'restaurant-concurrency-v1',
     'Synthetic Concurrency Restaurant Agreement',
     pg_catalog.clock_timestamp() - interval '1 day',
     'SYNTHETIC CONCURRENCY DOCUMENT -- NO LEGAL EFFECT',
-    partner_onboarding_private.sha256_text(
-      'SYNTHETIC CONCURRENCY DOCUMENT -- NO LEGAL EFFECT'
-    ),
+    '$DOCUMENT_SHA',
     'I agree to the synthetic concurrency terms.',
     '{\"privacy\":\"synthetic-concurrency-v1\"}'::jsonb,
     'SYNTHETIC-CONCURRENCY-LEGAL-REVIEW', '$LEGAL_ADMIN',
@@ -394,12 +402,6 @@ run_authenticated "$REVIEWER" "
     'partner-onboarding-concurrency-acceptance', '$REVIEWER'
   );
 " >/dev/null
-
-DOCUMENT_SHA="$("${PSQL[@]}" -c "
-  select partner_onboarding_private.sha256_text(
-    'SYNTHETIC CONCURRENCY DOCUMENT -- NO LEGAL EFFECT'
-  );
-")"
 
 # Identical acceptance requests return one immutable receipt.
 same_acceptance_sql="select (
@@ -461,18 +463,39 @@ fi
 
 # Register the complete synthetic release evidence for both partners, with
 # distinct Swipe and Local identities.
+PARTNER_ONE_PREVIEW_SHA=''
+PARTNER_TWO_PREVIEW_SHA=''
 for partner_pair in "$PARTNER_ONE:$SHARED_LOCAL_TARGET" "$PARTNER_TWO:$SHARED_LOCAL_TARGET"; do
   IFS=: read -r partner_id local_partner_id <<<"$partner_pair"
+  PARTNER_PROFILE_SHA="$("${PSQL[@]}" -c "
+    select partner_onboarding_private.partner_profile_sha256('$partner_id');
+  ")"
+  PARTNER_MEDIA_SHA="$("${PSQL[@]}" -c "
+    select partner_onboarding_private.partner_media_sha256('$partner_id');
+  ")"
+  PARTNER_PREVIEW_SHA="$("${PSQL[@]}" -c "
+    select partner_onboarding_private.partner_preview_sha256('$partner_id');
+  ")"
+  if [[ ! "$PARTNER_PROFILE_SHA" =~ ^[0-9a-f]{64}$
+        || ! "$PARTNER_MEDIA_SHA" =~ ^[0-9a-f]{64}$
+        || ! "$PARTNER_PREVIEW_SHA" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "owner-side digest capture failed for synthetic partner $partner_id" >&2
+    exit 1
+  fi
+  case "$partner_id" in
+    "$PARTNER_ONE") PARTNER_ONE_PREVIEW_SHA="$PARTNER_PREVIEW_SHA" ;;
+    "$PARTNER_TWO") PARTNER_TWO_PREVIEW_SHA="$PARTNER_PREVIEW_SHA" ;;
+  esac
   run_authenticated "$EVIDENCE_REVIEWER" "
     select partner_onboarding_private.issue_partner_evidence_v1(
       '$partner_id', 'profile',
-      partner_onboarding_private.partner_profile_sha256('$partner_id'),
+      '$PARTNER_PROFILE_SHA',
       '{\"status\":\"verified\",\"source\":\"concurrency\"}'::jsonb,
       pg_catalog.gen_random_uuid(), '$EVIDENCE_REVIEWER'
     );
     select partner_onboarding_private.issue_partner_evidence_v1(
       '$partner_id', 'media',
-      partner_onboarding_private.partner_media_sha256('$partner_id'),
+      '$PARTNER_MEDIA_SHA',
       '{\"status\":\"verified\",\"source\":\"concurrency\"}'::jsonb,
       pg_catalog.gen_random_uuid(), '$EVIDENCE_REVIEWER'
     );
@@ -505,13 +528,13 @@ for partner_pair in "$PARTNER_ONE:$SHARED_LOCAL_TARGET" "$PARTNER_TWO:$SHARED_LO
     );
     select partner_onboarding_private.issue_partner_evidence_v1(
       '$partner_id', 'partner_consent',
-      partner_onboarding_private.partner_preview_sha256('$partner_id'),
+      '$PARTNER_PREVIEW_SHA',
       '{\"status\":\"approved\",\"approved\":true}'::jsonb,
       pg_catalog.gen_random_uuid(), '$EVIDENCE_REVIEWER'
     );
     select partner_onboarding_private.issue_partner_evidence_v1(
       '$partner_id', 'heha_review',
-      partner_onboarding_private.partner_preview_sha256('$partner_id'),
+      '$PARTNER_PREVIEW_SHA',
       '{\"status\":\"approved\",\"approved\":true}'::jsonb,
       pg_catalog.gen_random_uuid(), '$EVIDENCE_REVIEWER'
     );
@@ -529,7 +552,7 @@ run_authenticated "$REVIEWER" "
 same_release_sql="select (
   partner_onboarding_private.finalize_partner_release_v1(
     '$PARTNER_ONE',
-    partner_onboarding_private.partner_preview_sha256('$PARTNER_ONE'),
+    '$PARTNER_ONE_PREVIEW_SHA',
     '92000000-0000-4000-8000-000000000020', '$RELEASE_REVIEWER'
   ) ->> 'release_receipt_id'
 )::uuid;"
@@ -553,14 +576,14 @@ fi
 conflict_release_one="select (
   partner_onboarding_private.finalize_partner_release_v1(
     '$PARTNER_TWO',
-    partner_onboarding_private.partner_preview_sha256('$PARTNER_TWO'),
+    '$PARTNER_TWO_PREVIEW_SHA',
     '92000000-0000-4000-8000-000000000021', '$RELEASE_REVIEWER'
   ) ->> 'release_receipt_id'
 )::uuid;"
 conflict_release_two="select (
   partner_onboarding_private.finalize_partner_release_v1(
     '$PARTNER_TWO',
-    partner_onboarding_private.partner_preview_sha256('$PARTNER_TWO'),
+    '$PARTNER_TWO_PREVIEW_SHA',
     '92000000-0000-4000-8000-000000000022', '$RELEASE_REVIEWER'
   ) ->> 'release_receipt_id'
 )::uuid;"
@@ -842,10 +865,17 @@ fi
 # finalization wins, the trigger immediately invalidates it; if the edit wins,
 # stale profile/preview evidence denies finalization. Either ordering ends with
 # no current release or public card and never deadlocks.
+PROFILE_RACE_PREVIEW_SHA="$("${PSQL[@]}" -c "
+  select partner_onboarding_private.partner_preview_sha256('$PARTNER_ONE');
+")"
+if [[ ! "$PROFILE_RACE_PREVIEW_SHA" =~ ^[0-9a-f]{64}$ ]]; then
+  echo 'owner-side profile-race preview digest capture failed' >&2
+  exit 1
+fi
 profile_race_release_sql="select (
   partner_onboarding_private.finalize_partner_release_v1(
     '$PARTNER_ONE',
-    partner_onboarding_private.partner_preview_sha256('$PARTNER_ONE'),
+    '$PROFILE_RACE_PREVIEW_SHA',
     '92000000-0000-4000-8000-000000000026', '$RELEASE_REVIEWER'
   ) ->> 'release_receipt_id'
 )::uuid;"

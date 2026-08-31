@@ -13,6 +13,21 @@ function assert(condition, message) {
   if (!condition) throw new Error(`Partner onboarding verification failed: ${message}`);
 }
 
+function restrictedSqlRoleMatches(sql, pattern) {
+  let role = "owner";
+  const matches = [];
+  for (const [index, line] of sql.split("\n").entries()) {
+    const roleMatch = /^\s*set\s+local\s+role\s+(authenticated|anon|service_role)\s*;/i.exec(line);
+    if (roleMatch) role = roleMatch[1].toLowerCase();
+    if (/^\s*reset\s+role\s*;/i.test(line)) role = "owner";
+    pattern.lastIndex = 0;
+    if (role !== "owner" && pattern.test(line)) {
+      matches.push({ line: index + 1, role, source: line.trim() });
+    }
+  }
+  return matches;
+}
+
 function functionSection(sql, qualifiedName) {
   const escaped = qualifiedName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const startPattern = new RegExp(
@@ -220,6 +235,20 @@ for (const [documentSnapshot, expectedSha256] of [
 assert(
   !/partner_onboarding_private\.sha256_text\(\s*'SYNTHETIC(?: SUCCESSOR)? DOCUMENT -- NO LEGAL EFFECT'/i.test(database.proof),
   "role-scoped agreement proof never calls a private hash helper from an authenticated expression",
+);
+assert(
+  restrictedSqlRoleMatches(
+    database.proof,
+    /partner_onboarding_private\.partner_(?:profile|media|preview)_sha256\s*\(/i,
+  ).length === 0,
+  "restricted proof roles consume owner-captured digests instead of private hash helpers",
+);
+assert(
+  restrictedSqlRoleMatches(
+    database.proof,
+    /\b(?:from|join)\s+partner_onboarding_private\.(?:partner_state|partner_invites|current_agreement_versions)\b/i,
+  ).length === 0,
+  "restricted proof roles never read private lifecycle tables for harness snapshots",
 );
 
 for (const [layerName, sql] of Object.entries({
@@ -1499,6 +1528,29 @@ assert(database.concurrency.includes('mktemp -d'), "two-client proof isolates it
 assert(database.concurrency.includes("trap"), "two-client proof cleans temporary output");
 assert(database.concurrency.includes("&"), "two-client proof starts concurrent clients");
 assert(database.concurrency.includes("wait"), "two-client proof waits for both clients");
+const concurrencyLines = database.concurrency.split("\n");
+const concurrencyPrivateHashLines = concurrencyLines
+  .map((line, index) => ({ line, index }))
+  .filter(({ line }) => /partner_onboarding_private\.(?:sha256_text|partner_(?:profile|media|preview)_sha256)\s*\(/i.test(line));
+assert(
+  concurrencyPrivateHashLines.length === 5
+    && concurrencyPrivateHashLines.every(({ index }) => (
+      concurrencyLines.slice(Math.max(0, index - 2), index + 1).join("\n")
+        .includes('"${PSQL[@]}" -c "')
+    )),
+  "two-client proof computes private hashes only through the owner-side harness",
+);
+for (const capturedHash of [
+  "$DOCUMENT_SHA",
+  "$PARTNER_PROFILE_SHA",
+  "$PARTNER_MEDIA_SHA",
+  "$PARTNER_PREVIEW_SHA",
+  "$PARTNER_ONE_PREVIEW_SHA",
+  "$PARTNER_TWO_PREVIEW_SHA",
+  "$PROFILE_RACE_PREVIEW_SHA",
+]) {
+  assert(database.concurrency.includes(`'${capturedHash}'`), `two-client restricted transitions consume captured hash ${capturedHash}`);
+}
 const concurrencySeedStart = database.concurrency.indexOf('"${PSQL[@]}" <<SQL');
 const concurrencySeedEnd = database.concurrency.indexOf("\nSQL", concurrencySeedStart);
 const concurrencySeed = concurrencySeedStart >= 0 && concurrencySeedEnd > concurrencySeedStart
