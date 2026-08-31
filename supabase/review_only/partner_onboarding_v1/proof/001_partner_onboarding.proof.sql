@@ -3152,7 +3152,7 @@ select 'agreement_version', partner_onboarding_private.register_partner_agreemen
   'Synthetic Restaurant Agreement',
   pg_catalog.clock_timestamp() - interval '1 day',
   'SYNTHETIC DOCUMENT -- NO LEGAL EFFECT',
-  partner_onboarding_private.sha256_text('SYNTHETIC DOCUMENT -- NO LEGAL EFFECT'),
+  '1d6f45eae21a6538bce2b0b172f6c024937f230d87122783bbf897f3dd103786',
   'I agree to the synthetic terms.',
   '{"privacy":"synthetic-v1","fees":"synthetic-v1"}'::jsonb,
   'SYNTHETIC-LEGAL-REVIEW-ONLY',
@@ -3266,7 +3266,7 @@ insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'acceptance_first', public.record_category_partner_agreement_acceptance_v1(
   '10000000-0000-4000-8000-0000000000a1',
   (select value::uuid from pg_temp.partner_onboarding_proof_state where key = 'agreement_version'),
-  partner_onboarding_private.sha256_text('SYNTHETIC DOCUMENT -- NO LEGAL EFFECT'),
+  '1d6f45eae21a6538bce2b0b172f6c024937f230d87122783bbf897f3dd103786',
   '30000000-0000-4000-8000-000000000030',
   '{"typed_signature":"Signer B","signer_title":"Authorized Representative","assent_text":"I agree to the synthetic terms.","signer_legal_name":"Signer B","assertions_version":"heha-partner-acceptance-v1","electronic_records_consent":true,"signer_authority_confirmed":true,"reviewed_complete_agreement":true}'::jsonb
 )::text;
@@ -3274,7 +3274,7 @@ insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'acceptance_replay', public.record_category_partner_agreement_acceptance_v1(
   '10000000-0000-4000-8000-0000000000a1',
   (select value::uuid from pg_temp.partner_onboarding_proof_state where key = 'agreement_version'),
-  partner_onboarding_private.sha256_text('SYNTHETIC DOCUMENT -- NO LEGAL EFFECT'),
+  '1d6f45eae21a6538bce2b0b172f6c024937f230d87122783bbf897f3dd103786',
   '30000000-0000-4000-8000-000000000030',
   '{"assertions_version":"heha-partner-acceptance-v1","assent_text":"I agree to the synthetic terms.","electronic_records_consent":true,"reviewed_complete_agreement":true,"signer_authority_confirmed":true,"signer_legal_name":"Signer B","signer_title":"Authorized Representative","typed_signature":"Signer B"}'::jsonb
 )::text;
@@ -3283,7 +3283,7 @@ select pg_temp.expect_partner_denied(
   $sql$select public.record_category_partner_agreement_acceptance_v1(
     '10000000-0000-4000-8000-0000000000a1',
     (select value::uuid from pg_temp.partner_onboarding_proof_state where key = 'agreement_version'),
-    partner_onboarding_private.sha256_text('SYNTHETIC DOCUMENT -- NO LEGAL EFFECT'),
+    '1d6f45eae21a6538bce2b0b172f6c024937f230d87122783bbf897f3dd103786',
     '30000000-0000-4000-8000-000000000030',
     '{"assertions_version":"heha-partner-acceptance-v1","assent_text":"I agree to the synthetic terms.","electronic_records_consent":true,"reviewed_complete_agreement":true,"signer_authority_confirmed":true,"signer_legal_name":"Signer B","signer_title":"Changed Title","typed_signature":"Signer B"}'::jsonb
   )$sql$
@@ -3413,7 +3413,7 @@ select pg_temp.expect_partner_denied(
   $sql$select public.record_category_partner_agreement_acceptance_v1(
     '10000000-0000-4000-8000-0000000000a1',
     (select value::uuid from pg_temp.partner_onboarding_proof_state where key = 'agreement_version'),
-    partner_onboarding_private.sha256_text('SYNTHETIC DOCUMENT -- NO LEGAL EFFECT'),
+    '1d6f45eae21a6538bce2b0b172f6c024937f230d87122783bbf897f3dd103786',
     '30000000-0000-4000-8000-000000000030',
     '{"assertions_version":"heha-partner-acceptance-v1","assent_text":"I agree to the synthetic terms.","electronic_records_consent":true,"reviewed_complete_agreement":true,"signer_authority_confirmed":true,"signer_legal_name":"Signer B","signer_title":"Authorized Representative","typed_signature":"Signer B"}'::jsonb
   )$sql$
@@ -3429,7 +3429,7 @@ select 'acceptance_after_signer_recovery',
        public.record_category_partner_agreement_acceptance_v1(
   '10000000-0000-4000-8000-0000000000a1',
   (select value::uuid from pg_temp.partner_onboarding_proof_state where key = 'agreement_version'),
-  partner_onboarding_private.sha256_text('SYNTHETIC DOCUMENT -- NO LEGAL EFFECT'),
+  '1d6f45eae21a6538bce2b0b172f6c024937f230d87122783bbf897f3dd103786',
   '30000000-0000-4000-8000-000000000034',
   '{"assertions_version":"heha-partner-acceptance-v1","assent_text":"I agree to the synthetic terms.","electronic_records_consent":true,"reviewed_complete_agreement":true,"signer_authority_confirmed":true,"signer_legal_name":"Signer D","signer_title":"Authorized Representative","typed_signature":"Signer D"}'::jsonb
 )::text;
@@ -5166,9 +5166,7 @@ select 'agreement_version_second',
   'Synthetic Restaurant Agreement Successor',
   pg_catalog.clock_timestamp() - interval '1 hour',
   'SYNTHETIC SUCCESSOR DOCUMENT -- NO LEGAL EFFECT',
-  partner_onboarding_private.sha256_text(
-    'SYNTHETIC SUCCESSOR DOCUMENT -- NO LEGAL EFFECT'
-  ),
+  'baf033d7708656202534ee6293a88afd73fa2ae0cfbe3709ecf67460a5fb3145',
   'I agree to the synthetic successor terms.',
   '{"privacy":"synthetic-v2","fees":"synthetic-v2"}'::jsonb,
   'SYNTHETIC-LEGAL-REVIEW-SUCCESSOR',
@@ -5301,9 +5299,7 @@ select 'acceptance_fresh_v1',
   '10000000-0000-4000-8000-0000000000a1',
   (select value::uuid from pg_temp.partner_onboarding_proof_state
    where key = 'agreement_version'),
-  partner_onboarding_private.sha256_text(
-    'SYNTHETIC DOCUMENT -- NO LEGAL EFFECT'
-  ),
+  '1d6f45eae21a6538bce2b0b172f6c024937f230d87122783bbf897f3dd103786',
   '30000000-0000-4000-8000-000000000090',
   '{"assertions_version":"heha-partner-acceptance-v1","assent_text":"I agree to the synthetic terms.","electronic_records_consent":true,"reviewed_complete_agreement":true,"signer_authority_confirmed":true,"signer_legal_name":"Signer D","signer_title":"Authorized Representative","typed_signature":"Signer D"}'::jsonb
 )::text;
@@ -5313,9 +5309,7 @@ select 'acceptance_fresh_v1_replay',
   '10000000-0000-4000-8000-0000000000a1',
   (select value::uuid from pg_temp.partner_onboarding_proof_state
    where key = 'agreement_version'),
-  partner_onboarding_private.sha256_text(
-    'SYNTHETIC DOCUMENT -- NO LEGAL EFFECT'
-  ),
+  '1d6f45eae21a6538bce2b0b172f6c024937f230d87122783bbf897f3dd103786',
   '30000000-0000-4000-8000-000000000090',
   '{"typed_signature":"Signer D","signer_title":"Authorized Representative","assent_text":"I agree to the synthetic terms.","signer_legal_name":"Signer D","assertions_version":"heha-partner-acceptance-v1","electronic_records_consent":true,"signer_authority_confirmed":true,"reviewed_complete_agreement":true}'::jsonb
 )::text;
@@ -5325,9 +5319,7 @@ select pg_temp.expect_partner_denied(
     '10000000-0000-4000-8000-0000000000a1',
     (select value::uuid from pg_temp.partner_onboarding_proof_state
      where key = 'agreement_version'),
-    partner_onboarding_private.sha256_text(
-      'SYNTHETIC DOCUMENT -- NO LEGAL EFFECT'
-    ),
+    '1d6f45eae21a6538bce2b0b172f6c024937f230d87122783bbf897f3dd103786',
     '30000000-0000-4000-8000-000000000091',
     '{"assertions_version":"heha-partner-acceptance-v1","assent_text":"I agree to the synthetic terms.","electronic_records_consent":true,"reviewed_complete_agreement":true,"signer_authority_confirmed":true,"signer_legal_name":"Signer D","signer_title":"Authorized Representative","typed_signature":"Signer D"}'::jsonb
   )$sql$
@@ -5596,9 +5588,7 @@ select pg_temp.expect_partner_denied(
     '10000000-0000-4000-8000-0000000000a1',
     (select value::uuid from pg_temp.partner_onboarding_proof_state
      where key = 'agreement_version'),
-    partner_onboarding_private.sha256_text(
-      'SYNTHETIC DOCUMENT -- NO LEGAL EFFECT'
-    ),
+    '1d6f45eae21a6538bce2b0b172f6c024937f230d87122783bbf897f3dd103786',
     '30000000-0000-4000-8000-000000000090',
     '{"assertions_version":"heha-partner-acceptance-v1","assent_text":"I agree to the synthetic terms.","electronic_records_consent":true,"reviewed_complete_agreement":true,"signer_authority_confirmed":true,"signer_legal_name":"Signer B","signer_title":"Authorized Representative","typed_signature":"Signer B"}'::jsonb
   )$sql$
@@ -5655,9 +5645,7 @@ select 'recovery_acceptance',
   '10000000-0000-4000-8000-0000000000a1',
   (select value::uuid from pg_temp.partner_onboarding_proof_state
    where key = 'agreement_version'),
-  partner_onboarding_private.sha256_text(
-    'SYNTHETIC DOCUMENT -- NO LEGAL EFFECT'
-  ),
+  '1d6f45eae21a6538bce2b0b172f6c024937f230d87122783bbf897f3dd103786',
   '30000000-0000-4000-8000-000000000096',
   '{"assertions_version":"heha-partner-acceptance-v1","assent_text":"I agree to the synthetic terms.","electronic_records_consent":true,"reviewed_complete_agreement":true,"signer_authority_confirmed":true,"signer_legal_name":"Signer B","signer_title":"Authorized Representative","typed_signature":"Signer B"}'::jsonb
 )::text;

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 const root = process.cwd();
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
@@ -198,6 +199,27 @@ for (const filePath of Object.values(databasePaths)) {
 
 const database = Object.fromEntries(
   Object.entries(databasePaths).map(([key, filePath]) => [key, read(filePath)]),
+);
+
+for (const [documentSnapshot, expectedSha256] of [
+  [
+    "SYNTHETIC DOCUMENT -- NO LEGAL EFFECT",
+    "1d6f45eae21a6538bce2b0b172f6c024937f230d87122783bbf897f3dd103786",
+  ],
+  [
+    "SYNTHETIC SUCCESSOR DOCUMENT -- NO LEGAL EFFECT",
+    "baf033d7708656202534ee6293a88afd73fa2ae0cfbe3709ecf67460a5fb3145",
+  ],
+]) {
+  assert(
+    createHash("sha256").update(documentSnapshot, "utf8").digest("hex") === expectedSha256,
+    `synthetic agreement document has the reviewed SHA-256 vector: ${documentSnapshot}`,
+  );
+  assert(database.proof.includes(`'${expectedSha256}'`), `database proof embeds the reviewed document digest: ${documentSnapshot}`);
+}
+assert(
+  !/partner_onboarding_private\.sha256_text\(\s*'SYNTHETIC(?: SUCCESSOR)? DOCUMENT -- NO LEGAL EFFECT'/i.test(database.proof),
+  "role-scoped agreement proof never calls a private hash helper from an authenticated expression",
 );
 
 for (const [layerName, sql] of Object.entries({
