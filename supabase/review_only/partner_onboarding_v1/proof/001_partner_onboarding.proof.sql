@@ -1344,6 +1344,36 @@ set local role authenticated;
 select pg_catalog.set_config(
   'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000e5', true
 );
+select pg_temp.expect_partner_denied(
+  '31-byte invitation token denied',
+  $sql$select partner_onboarding_private.issue_partner_invitation_v1(
+    '10000000-0000-4000-8000-0000000000a1',
+    '00000000-0000-4000-8000-0000000000a1',
+    'restaurant', 'operator_only', pg_catalog.repeat('a', 31),
+    pg_catalog.clock_timestamp() + interval '2 days',
+    '00000000-0000-4000-8000-0000000000e5'
+  )$sql$
+);
+select pg_temp.expect_partner_denied(
+  '513-byte invitation token denied',
+  $sql$select partner_onboarding_private.issue_partner_invitation_v1(
+    '10000000-0000-4000-8000-0000000000a1',
+    '00000000-0000-4000-8000-0000000000a1',
+    'restaurant', 'operator_only', pg_catalog.repeat('a', 513),
+    pg_catalog.clock_timestamp() + interval '2 days',
+    '00000000-0000-4000-8000-0000000000e5'
+  )$sql$
+);
+select pg_temp.expect_partner_denied(
+  'non-ASCII-allowlist invitation token denied',
+  $sql$select partner_onboarding_private.issue_partner_invitation_v1(
+    '10000000-0000-4000-8000-0000000000a1',
+    '00000000-0000-4000-8000-0000000000a1',
+    'restaurant', 'operator_only', pg_catalog.repeat('a', 31) || '!',
+    pg_catalog.clock_timestamp() + interval '2 days',
+    '00000000-0000-4000-8000-0000000000e5'
+  )$sql$
+);
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'main_invite', partner_onboarding_private.issue_partner_invitation_v1(
   '10000000-0000-4000-8000-0000000000a1',
@@ -2789,6 +2819,27 @@ $profile_correction_cross_provenance_replay$;
 set local role authenticated;
 select pg_catalog.set_config(
   'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true
+);
+select pg_temp.expect_partner_denied(
+  '31-byte claim token denied',
+  $sql$select public.claim_partner_invitation_v1(
+    pg_catalog.repeat('a', 31),
+    '30000000-0000-4000-8000-00000000f101'
+  )$sql$
+);
+select pg_temp.expect_partner_denied(
+  '513-byte claim token denied',
+  $sql$select public.claim_partner_invitation_v1(
+    pg_catalog.repeat('a', 513),
+    '30000000-0000-4000-8000-00000000f102'
+  )$sql$
+);
+select pg_temp.expect_partner_denied(
+  'non-ASCII-allowlist claim token denied',
+  $sql$select public.claim_partner_invitation_v1(
+    pg_catalog.repeat('a', 31) || '!',
+    '30000000-0000-4000-8000-00000000f103'
+  )$sql$
 );
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'claim_first', public.claim_partner_invitation_v1(

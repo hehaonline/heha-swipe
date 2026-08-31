@@ -1226,7 +1226,8 @@ begin
      )
      or p_claim_role is distinct from 'operator_only'
      or p_raw_token is null
-     or p_raw_token !~ '^[A-Za-z0-9_-]{32,512}$'
+     or pg_catalog.octet_length(p_raw_token) not between 32 and 512
+     or p_raw_token !~ '^[A-Za-z0-9_-]+$'
      or p_expires_at is null
      or p_expires_at <= pg_catalog.clock_timestamp()
      or p_expires_at > pg_catalog.clock_timestamp() + interval '30 days' then
@@ -2925,7 +2926,8 @@ begin
      or v_actor_email is null
      or p_request_key is null
      or p_invite_token is null
-     or p_invite_token !~ '^[A-Za-z0-9_-]{32,512}$' then
+     or pg_catalog.octet_length(p_invite_token) not between 32 and 512
+     or p_invite_token !~ '^[A-Za-z0-9_-]+$' then
     perform partner_onboarding_private.raise_partner_request_denied_v1();
   end if;
 

@@ -573,6 +573,38 @@ assert(/reclassification_pending\s+boolean\s+not\s+null\s+default\s+false/i.test
 assert(database.proof.includes("partner_reclassification_resets"), "runtime proof inventories reclassification reset receipts under forced RLS");
 assert(database.rollback.includes("partner_reclassification_resets"), "rollback inventories reclassification reset receipts");
 assert(!/\b(?:raw_)?invite_token\s+(?:text|bytea|varchar)/i.test(database.foundation), "raw invitation token is never stored");
+const issueInvitationSection = functionSection(
+  database.transitions,
+  "partner_onboarding_private.issue_partner_invitation_v1",
+);
+const claimInvitationSection = functionSection(
+  database.transitions,
+  "public.claim_partner_invitation_v1",
+);
+for (const [section, parameter, label] of [
+  [issueInvitationSection, "p_raw_token", "invitation issuance"],
+  [claimInvitationSection, "p_invite_token", "invitation claim"],
+]) {
+  assert(
+    section.includes(`pg_catalog.octet_length(${parameter}) not between 32 and 512`),
+    `${label} enforces the exact token byte-length boundary outside PostgreSQL regex bounds`,
+  );
+  assert(
+    section.includes(`${parameter} !~ '^[A-Za-z0-9_-]+$'`),
+    `${label} enforces the opaque ASCII token allowlist`,
+  );
+  assert(!section.includes("{32,512}"), `${label} avoids unsupported PostgreSQL repetition bounds`);
+}
+for (const boundaryLabel of [
+  "31-byte invitation token denied",
+  "513-byte invitation token denied",
+  "non-ASCII-allowlist invitation token denied",
+  "31-byte claim token denied",
+  "513-byte claim token denied",
+  "non-ASCII-allowlist claim token denied",
+]) {
+  assert(database.proof.includes(boundaryLabel), `runtime proof covers ${boundaryLabel}`);
+}
 assert(/unique\s*\(\s*surface\s*,\s*target_receipt_id\s*\)/i.test(database.foundation), "surface receipt replay has a stable uniqueness boundary");
 assert(!/unique\s*\(\s*surface\s*,\s*target_partner_id\s*\)/i.test(database.foundation), "historical target IDs can be reused by a successor release");
 
