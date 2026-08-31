@@ -3851,6 +3851,8 @@ declare
   v_hours jsonb;
   v_correction_number integer;
   v_correction_id uuid;
+  v_review_error_state text;
+  v_review_error_message text;
 begin
   v_actor_email := partner_onboarding_private.verified_auth_email_v1(v_actor);
   if v_actor is null
@@ -4280,6 +4282,16 @@ begin
     'status', v_application.status
   );
 exception when others then
+  get stacked diagnostics
+    v_review_error_state = returned_sqlstate,
+    v_review_error_message = message_text;
+  if coalesce(pg_catalog.current_setting('heha.review_only', true), '') = 'on'
+     and pg_catalog.current_database() = 'partner_onboarding_review'
+     and coalesce(pg_catalog.host(pg_catalog.inet_server_addr()), '')
+       in ('127.0.0.1', '::1') then
+    raise notice 'HEHA_REVIEW_APPLICATION_CORRECTION [%] %',
+      v_review_error_state, v_review_error_message;
+  end if;
   raise exception using errcode = 'P0001', message = 'HEHA_PARTNER_REQUEST_DENIED';
 end;
 $function$;
@@ -4310,6 +4322,8 @@ declare
   v_previous_state_sha256 text;
   v_resulting_profile_sha256 text;
   v_private_profile_status text;
+  v_review_error_state text;
+  v_review_error_message text;
 begin
   if v_actor is null
      or partner_onboarding_private.verified_auth_email_v1(v_actor) is null
@@ -4507,6 +4521,16 @@ begin
     'status', v_private_profile_status
   );
 exception when others then
+  get stacked diagnostics
+    v_review_error_state = returned_sqlstate,
+    v_review_error_message = message_text;
+  if coalesce(pg_catalog.current_setting('heha.review_only', true), '') = 'on'
+     and pg_catalog.current_database() = 'partner_onboarding_review'
+     and coalesce(pg_catalog.host(pg_catalog.inet_server_addr()), '')
+       in ('127.0.0.1', '::1') then
+    raise notice 'HEHA_REVIEW_PROFILE_ROUTER [%] %',
+      v_review_error_state, v_review_error_message;
+  end if;
   raise exception using errcode = 'P0001', message = 'HEHA_PARTNER_REQUEST_DENIED';
 end;
 $function$;
