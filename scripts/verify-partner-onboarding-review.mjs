@@ -537,6 +537,8 @@ assert(
 );
 assert(reviewWorkflow.includes("security_invoker=true"), "workflow rechecks restored legacy view execution semantics");
 assert(reviewWorkflow.includes("restored unsafe ACL/options"), "workflow rechecks restored legacy view ACLs");
+assert(!reviewWorkflow.includes("pg_catalog.position("), "workflow avoids invalid schema-qualified POSITION syntax");
+assert(reviewWorkflow.includes("pg_catalog.strpos("), "workflow uses schema-qualified string-position checks");
 assert(reviewWorkflow.includes("relation.relrowsecurity") && reviewWorkflow.includes("relation.relforcerowsecurity"), "workflow rechecks restored raw-table RLS");
 assert(reviewWorkflow.includes("pg_get_expr(policy.polqual"), "workflow rechecks restored legacy policy semantics");
 assert(!reviewWorkflow.includes('"${#files[@]}" -eq'), "workflow does not depend on a brittle exact changed-file count");

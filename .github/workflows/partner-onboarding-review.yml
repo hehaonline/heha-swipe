@@ -894,36 +894,42 @@ jobs:
                  where namespace.nspname = 'public'
                    and relation.relname = 'partners'
                    and policy.polname = 'Synthetic legacy public status visibility'
-                   and pg_catalog.position(
-                     'status' in pg_catalog.lower(
+                   and pg_catalog.strpos(
+                     pg_catalog.lower(
                        pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
-                     )
+                     ),
+                     'status'
                    ) > 0
-                   and pg_catalog.position(
-                     'approved' in pg_catalog.lower(
+                   and pg_catalog.strpos(
+                     pg_catalog.lower(
                        pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
-                     )
+                     ),
+                     'approved'
                    ) > 0
-                   and pg_catalog.position(
-                     'live' in pg_catalog.lower(
+                   and pg_catalog.strpos(
+                     pg_catalog.lower(
                        pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
-                     )
+                     ),
+                     'live'
                    ) > 0
-                   and pg_catalog.position(
-                     'is_test_record' in pg_catalog.lower(
+                   and pg_catalog.strpos(
+                     pg_catalog.lower(
                        pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
-                     )
+                     ),
+                     'is_test_record'
                    ) > 0
                    and (
-                     pg_catalog.position(
-                       'false' in pg_catalog.lower(
+                     pg_catalog.strpos(
+                       pg_catalog.lower(
                          pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
-                       )
+                       ),
+                       'false'
                      ) > 0
-                     or pg_catalog.position(
-                       'not ' in pg_catalog.lower(
+                     or pg_catalog.strpos(
+                       pg_catalog.lower(
                          pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
-                       )
+                       ),
+                       'not '
                      ) > 0
                    )
                ) then
@@ -973,15 +979,17 @@ jobs:
                      )
                      from pg_catalog.unnest(policy.polroles) role_oid
                    ) = array['authenticated']::text[]
-                   and pg_catalog.position(
-                     'auth.uid' in pg_catalog.lower(
+                   and pg_catalog.strpos(
+                     pg_catalog.lower(
                        pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
-                     )
+                     ),
+                     'auth.uid'
                    ) > 0
-                   and pg_catalog.position(
-                     'owner_id' in pg_catalog.lower(
+                   and pg_catalog.strpos(
+                     pg_catalog.lower(
                        pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
-                     )
+                     ),
+                     'owner_id'
                    ) > 0
                )
                or not exists (
@@ -1002,15 +1010,17 @@ jobs:
                      )
                      from pg_catalog.unnest(policy.polroles) role_oid
                    ) = array['authenticated']::text[]
-                   and pg_catalog.position(
-                     'owner_id' in pg_catalog.lower(
+                   and pg_catalog.strpos(
+                     pg_catalog.lower(
                        pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid)
-                     )
+                     ),
+                     'owner_id'
                    ) > 0
-                   and pg_catalog.position(
-                     'pending' in pg_catalog.lower(
+                   and pg_catalog.strpos(
+                     pg_catalog.lower(
                        pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid)
-                     )
+                     ),
+                     'pending'
                    ) > 0
                )
                or not exists (
@@ -1031,15 +1041,17 @@ jobs:
                      )
                      from pg_catalog.unnest(policy.polroles) role_oid
                    ) = array['authenticated']::text[]
-                   and pg_catalog.position(
-                     'owner_id' in pg_catalog.lower(
+                   and pg_catalog.strpos(
+                     pg_catalog.lower(
                        pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
-                     )
+                     ),
+                     'owner_id'
                    ) > 0
-                   and pg_catalog.position(
-                     'pending' in pg_catalog.lower(
+                   and pg_catalog.strpos(
+                     pg_catalog.lower(
                        pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid)
-                     )
+                     ),
+                     'pending'
                    ) > 0
                ) then
               raise exception 'Partner-onboarding rollback restored an unexpected partner policy inventory';
@@ -1057,24 +1069,24 @@ jobs:
               select pg_catalog.lower(pg_catalog.pg_get_viewdef(v_view::pg_catalog.regclass, true))
               into v_definition;
 
-              if pg_catalog.position('partners' in v_definition) = 0
-                 or pg_catalog.position('status' in v_definition) = 0
-                 or pg_catalog.position('approved' in v_definition) = 0
-                 or pg_catalog.position('live' in v_definition) = 0
-                 or pg_catalog.position('is_test_record' in v_definition) = 0
-                 or pg_catalog.position('partner_release_receipts' in v_definition) > 0
-                 or pg_catalog.position('partner_surface_activation_receipts' in v_definition) > 0 then
+              if pg_catalog.strpos(v_definition, 'partners') = 0
+                 or pg_catalog.strpos(v_definition, 'status') = 0
+                 or pg_catalog.strpos(v_definition, 'approved') = 0
+                 or pg_catalog.strpos(v_definition, 'live') = 0
+                 or pg_catalog.strpos(v_definition, 'is_test_record') = 0
+                 or pg_catalog.strpos(v_definition, 'partner_release_receipts') > 0
+                 or pg_catalog.strpos(v_definition, 'partner_surface_activation_receipts') > 0 then
                 raise exception 'Partner-onboarding rollback restored unexpected semantics for %', v_view;
               end if;
 
               if (v_view = 'public.public_partner_directory'
-                    and pg_catalog.position('website_eligible' in v_definition) = 0)
+                    and pg_catalog.strpos(v_definition, 'website_eligible') = 0)
                  or (v_view = 'public.public_swipe_partners'
-                    and pg_catalog.position('swipe_eligible' in v_definition) = 0)
+                    and pg_catalog.strpos(v_definition, 'swipe_eligible') = 0)
                  or (v_view = 'public.public_local_partners'
                     and (
-                      pg_catalog.position('local_eligible' in v_definition) = 0
-                      or pg_catalog.position('local_lane' in v_definition) = 0
+                      pg_catalog.strpos(v_definition, 'local_eligible') = 0
+                      or pg_catalog.strpos(v_definition, 'local_lane') = 0
                     )) then
                 raise exception 'Partner-onboarding rollback restored the wrong eligibility boundary for %', v_view;
               end if;
