@@ -897,6 +897,20 @@ for (const claimedCorrectionProofMarker of [
 ]) {
   assert(database.proof.includes(claimedCorrectionProofMarker), `claimed-profile proof covers ${claimedCorrectionProofMarker}`);
 }
+for (const appendOnlyProofLabel of [
+  "application profile correction router receipt is append-only",
+  "claimed profile correction receipt is immutable",
+  "claimed profile router receipt is append-only",
+  "unclaimed reclassification reset receipt is append-only",
+  "agreement document append-only",
+  "acceptance assertions append-only",
+]) {
+  const escapedLabel = appendOnlyProofLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  assert(
+    new RegExp(`expect_sqlstate\\(\\s*'${escapedLabel}'\\s*,\\s*'42501'`, "i").test(database.proof),
+    `append-only proof locks SQLSTATE 42501 for ${appendOnlyProofLabel}`,
+  );
+}
 
 const capabilitySection = functionSection(
   database.transitions,

@@ -2120,8 +2120,8 @@ begin
 end;
 $application_revision_receipt$;
 
-select pg_temp.expect_partner_denied(
-  'application profile correction router receipt is append-only',
+select pg_temp.expect_sqlstate(
+  'application profile correction router receipt is append-only', '42501',
   $sql$update partner_onboarding_private.partner_profile_correction_requests
        set private_profile_status = 'missing_info'
        where actor_id = '00000000-0000-4000-8000-0000000000c3'
@@ -3100,8 +3100,8 @@ begin
 end;
 $claimed_profile_revision_receipt$;
 
-select pg_temp.expect_partner_denied(
-  'claimed profile correction receipt is immutable',
+select pg_temp.expect_sqlstate(
+  'claimed profile correction receipt is immutable', '42501',
   $sql$update partner_onboarding_private.partner_claim_profile_corrections
        set correction_sha256 = repeat('0', 64)
        where id = (
@@ -3110,8 +3110,8 @@ select pg_temp.expect_partner_denied(
          where key = 'claimed_profile_revision_first'
        )$sql$
 );
-select pg_temp.expect_partner_denied(
-  'claimed profile router receipt is append-only',
+select pg_temp.expect_sqlstate(
+  'claimed profile router receipt is append-only', '42501',
   $sql$update partner_onboarding_private.partner_profile_correction_requests
        set private_profile_status = 'missing_info'
        where actor_id = '00000000-0000-4000-8000-0000000000a1'
