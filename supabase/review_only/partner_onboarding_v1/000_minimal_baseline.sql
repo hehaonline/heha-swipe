@@ -16,7 +16,7 @@ do $review_only_guard$
 begin
   if coalesce(pg_catalog.current_setting('heha.review_only', true), '') <> 'on'
      or pg_catalog.current_database() <> 'partner_onboarding_review'
-     or coalesce(pg_catalog.inet_server_addr()::text, '') not in ('127.0.0.1', '::1') then
+     or coalesce(pg_catalog.host(pg_catalog.inet_server_addr()), '') not in ('127.0.0.1', '::1') then
     raise exception 'HEHA_REVIEW_ONLY_GUARD'
       using errcode = '42501',
             hint = 'Requires loopback database partner_onboarding_review and externally supplied heha.review_only=on.';

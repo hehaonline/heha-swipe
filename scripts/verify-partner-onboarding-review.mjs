@@ -69,8 +69,9 @@ function hasCanonicalReviewGuard(guardBody) {
   const settingCheck = String.raw`coalesce\s*\(\s*(?:pg_catalog\.)?current_setting\s*\(\s*'heha\.review_only'\s*,\s*true\s*\)\s*,\s*''\s*\)\s*<>\s*'on'`;
   const databaseCheck = String.raw`(?:pg_catalog\.)?current_database\s*\(\s*\)\s*<>\s*'partner_onboarding_review'`;
   const serverAddress = String.raw`(?:pg_catalog\.)?inet_server_addr\s*\(\s*\)`;
+  const serverHost = String.raw`(?:pg_catalog\.)?host\s*\(\s*${serverAddress}\s*\)`;
   const loopbackList = String.raw`\(\s*'127\.0\.0\.1'\s*,\s*'::1'\s*\)`;
-  const addressCheck = String.raw`(?:coalesce\s*\(\s*${serverAddress}\s*::\s*text\s*,\s*''\s*\)\s+not\s+in\s*${loopbackList}|${serverAddress}\s+is\s+null\s+or\s+${serverAddress}\s*::\s*text\s+not\s+in\s*${loopbackList})`;
+  const addressCheck = String.raw`coalesce\s*\(\s*${serverHost}\s*,\s*''\s*\)\s+not\s+in\s*${loopbackList}`;
   const completeGuard = new RegExp(
     String.raw`^\s*begin\s+if\s+${settingCheck}\s+or\s+${databaseCheck}\s+or\s+${addressCheck}\s+then\s+raise\s+exception\s+'HEHA_REVIEW_ONLY_GUARD'\s+using\s+errcode\s*=\s*'42501'\s*,\s*hint\s*=\s*'[^']+'\s*;\s*end\s+if\s*;\s*end\s*;?\s*$`,
     "i",
@@ -120,6 +121,17 @@ assert(
     perform 'if coalesce(current_setting(''heha.review_only'', true), '''') <> ''on'' then raise exception';
   end;`),
   "review guard verifier ignores lookalike tokens in SQL string literals",
+);
+assert(
+  !hasCanonicalReviewGuard(`begin
+    if coalesce(current_setting('heha.review_only', true), '') <> 'on'
+       or current_database() <> 'partner_onboarding_review'
+       or coalesce(inet_server_addr()::text, '') not in ('127.0.0.1', '::1') then
+      raise exception 'HEHA_REVIEW_ONLY_GUARD'
+        using errcode = '42501', hint = 'old text cast';
+    end if;
+  end;`),
+  "review guard verifier rejects CIDR-bearing inet text casts",
 );
 
 const directPartnerInsertPattern = /\.from\s*\(\s*(["'])partners\1\s*\)\s*\.insert\s*\(/i;
@@ -1346,7 +1358,7 @@ assert(database.proof.includes("HEHA_REVIEW_ONLY_GUARD"), "proof has a stable re
 assert(database.concurrency.includes('DATABASE_URL'), "two-client proof targets only the disposable database");
 assert(database.concurrency.includes("HEHA_REVIEW_ONLY_GUARD"), "two-client proof has a stable review-only denial");
 assert(database.concurrency.includes("current_setting('heha.review_only', true)"), "two-client proof verifies the external database guard");
-assert(database.concurrency.includes("inet_server_addr") && database.concurrency.includes("127.0.0.1") && database.concurrency.includes("::1"), "two-client proof accepts only a loopback database server");
+assert(/pg_catalog\.host\s*\(\s*pg_catalog\.inet_server_addr\s*\(\s*\)\s*\)/i.test(database.concurrency) && database.concurrency.includes("127.0.0.1") && database.concurrency.includes("::1"), "two-client proof normalizes the server address before accepting only loopback");
 assert(!/(?:^|\n)\s*(?:export\s+)?PGOPTIONS\s*=/.test(database.concurrency), "two-client proof cannot self-authorize the review-only guard");
 assert(database.concurrency.includes('mktemp -d'), "two-client proof isolates its output");
 assert(database.concurrency.includes("trap"), "two-client proof cleans temporary output");

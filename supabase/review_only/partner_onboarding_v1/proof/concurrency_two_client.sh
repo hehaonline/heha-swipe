@@ -8,7 +8,7 @@ set -euo pipefail
 PSQL=(psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -qAt)
 
 PREFLIGHT="$("${PSQL[@]}" -c "
-  select coalesce(pg_catalog.inet_server_addr()::text, 'missing')
+  select coalesce(pg_catalog.host(pg_catalog.inet_server_addr()), 'missing')
     || ':' || pg_catalog.current_database()
     || ':' || coalesce(pg_catalog.current_setting('heha.review_only', true), '');
 ")"
