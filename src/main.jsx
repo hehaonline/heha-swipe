@@ -15,12 +15,78 @@ import "./community-pass.css";
 import "./partner-media.css";
 import "./partner-offers.css";
 import "./embed.css";
+import "./app-install-guide.css";
+import "./partner-agreement.css";
+import "./partner-onboarding-checklist.css";
+import "./lib/pwaInstall";
 import App from "./App.jsx";
 import AdminApp from "./components/admin/AdminApp.jsx";
 import InternalDashboardShortcut from "./components/InternalDashboardShortcut.jsx";
 import BecomePartnerEmbed from "./components/embed/BecomePartnerEmbed.jsx";
 import PartnerDirectoryEmbed from "./components/embed/PartnerDirectoryEmbed.jsx";
 import { supabase } from "./lib/supabase";
+import { partnerInviteUrlRequiresHardStop } from "./lib/partnerInvite";
+
+const partnerPwaEnabled = import.meta.env.VITE_ENABLE_HEHA_SWIPE_PWA === "true";
+const LEGACY_HEHA_PWA_CACHES = new Set(["heha-v1"]);
+
+function enableInstallMetadata() {
+  const addMeta = (name, content) => {
+    const meta = document.createElement("meta");
+    meta.name = name;
+    meta.content = content;
+    document.head.appendChild(meta);
+  };
+  const addLink = (rel, href, sizes = null) => {
+    const link = document.createElement("link");
+    link.rel = rel;
+    link.href = href;
+    if (sizes) link.sizes = sizes;
+    document.head.appendChild(link);
+  };
+
+  addMeta("apple-mobile-web-app-capable", "yes");
+  addMeta("apple-mobile-web-app-title", "HEHA Swipe");
+  addMeta("apple-mobile-web-app-status-bar-style", "default");
+  addLink("manifest", "/manifest.json");
+  addLink("apple-touch-icon", "/icons/icon-180.png", "180x180");
+}
+
+if (partnerPwaEnabled) enableInstallMetadata();
+
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    if (partnerPwaEnabled) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {
+        // The application remains usable online if PWA registration is unavailable.
+      });
+      return;
+    }
+
+    // A disabled/rolled-back release must also retire an older HEHA Swipe
+    // worker and its private shell caches. This does not touch other origins or
+    // unrelated cache namespaces.
+    navigator.serviceWorker.getRegistrations()
+      .then((registrations) => Promise.all(registrations
+        .filter((registration) => {
+          const scriptUrl = registration.active?.scriptURL
+            || registration.waiting?.scriptURL
+            || registration.installing?.scriptURL
+            || "";
+          return new URL(scriptUrl || "/", window.location.origin).pathname === "/sw.js";
+        })
+        .map((registration) => registration.unregister())))
+      .catch(() => {});
+
+    if ("caches" in window) {
+      caches.keys()
+        .then((keys) => Promise.all(keys
+          .filter((key) => key.startsWith("heha-swipe-shell-") || LEGACY_HEHA_PWA_CACHES.has(key))
+          .map((key) => caches.delete(key))))
+        .catch(() => {});
+    }
+  });
+}
 
 const SIGNUP_ROLE_KEY = "heha_signup_role";
 
@@ -42,6 +108,7 @@ function embedFromPath() {
 }
 
 function Root() {
+  if (partnerInviteUrlRequiresHardStop()) return <InviteUrlSafetyStop />;
   const isAdminRoute = shouldRenderAdminApp();
   const embed = embedFromPath();
 
@@ -54,6 +121,18 @@ function Root() {
       <App />
       <InternalDashboardShortcut />
     </>
+  );
+}
+
+function InviteUrlSafetyStop() {
+  return (
+    <main className="partner-wizard-screen">
+      <section className="partner-wizard-shell">
+        <div className="wizard-note" role="alert">
+          HEHA could not safely remove the private invitation from this browser's address bar. Close this tab and ask HEHA for a new protected link. Do not copy or share the current URL.
+        </div>
+      </section>
+    </main>
   );
 }
 

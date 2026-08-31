@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="HEHA Swipe app icon">
+  <rect width="512" height="512" fill="#fffaf2"/>
+  <rect x="56" y="56" width="400" height="400" rx="112" fill="#f28122"/>
+  <rect x="98" y="98" width="316" height="316" rx="88" fill="#ffffff"/>
+  <rect x="128" y="128" width="92" height="92" rx="24" fill="#f28122"/>
+  <path d="M154 151h18v17h17v-17h18v48h-18v-18h-17v18h-18z" fill="#ffffff"/>
+  <text x="128" y="288" fill="#1f2a24" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="800" letter-spacing="-5">HEHA</text>
+  <text x="131" y="346" fill="#247642" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="700" letter-spacing="4">SWIPE</text>
+</svg>

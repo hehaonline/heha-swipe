@@ -100,6 +100,7 @@ a { color: inherit; }
 .auth-form { display: grid; gap: 9px; }
 .auth-form label, .field-block span, .field-label { color: var(--heha-green-dark); font-weight: 800; font-size: 13px; }
 .auth-form input, .field-block input, .field-block textarea, .field-block select { width: 100%; border: 1.5px solid var(--heha-line); border-radius: 16px; padding: 13px 14px; background: #fff; color: var(--heha-ink); outline: none; }
+.auth-form input:focus-visible, .field-block input:focus-visible, .field-block textarea:focus-visible, .field-block select:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid #1c6f5a; outline-offset: 3px; }
 .field-block textarea { min-height: 110px; resize: vertical; }
 .divider { display: flex; align-items: center; gap: 12px; color: var(--heha-muted); font-size: 12px; margin: 20px 0; }
 .divider::before, .divider::after { content: ''; height: 1px; flex: 1; background: var(--heha-line); }

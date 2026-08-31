@@ -1,13 +1,5 @@
 const DEFAULT_HEHA_LOCAL_ORIGIN = "https://hehalocal.app";
-
-// Temporary bridge for the three currently approved/orderable Swipe partners.
-// Remove this map after the canonical public partner relationship is exposed
-// directly to Swipe through the approved cross-app routing model.
-const LOCAL_PROFILE_PATH_BY_SWIPE_PARTNER_ID = {
-  "2fbe55b6-f7ba-453d-8923-72f22946fea9": "/restaurants/2961f869-915b-4fa3-82db-8c6364c2e274",
-  "3f5b29bc-662b-40b9-ad06-6dcb6592b396": "/restaurants/dccd000b-49d5-43e2-b684-704698d7f934",
-  "b7a71d3e-8eb7-46dd-8703-02f1cbdbd451": "/vendors/94654184-7c9d-4527-b642-f78c3f75ac24",
-};
+const APPROVED_HEHA_LOCAL_ORIGINS = new Set([DEFAULT_HEHA_LOCAL_ORIGIN]);
 
 // Generic HEHA Local listing routes that do not point at a specific partner
 // profile. A CTA that promises a partner's "full menu" must never resolve
@@ -20,15 +12,57 @@ const GENERIC_HEHA_LOCAL_LISTING_PATHS = new Set([
   "/restaurants/",
   "/vendors",
   "/vendors/",
+  "/market",
+  "/market/",
+  "/chef",
+  "/chef/",
+  "/group-orders",
+  "/group-orders/",
 ]);
 
-function localOrigin() {
-  const configured = String(import.meta.env.VITE_HEHA_LOCAL_URL || "").trim();
-  return (configured || DEFAULT_HEHA_LOCAL_ORIGIN).replace(/\/$/, "");
+const SPECIFIC_HEHA_LOCAL_PROFILE_PATH = /^\/(?:restaurants|vendors|market|chef|group-orders)\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function approvedConfiguredOrigin(configuredValue) {
+  const configured = String(configuredValue || "").trim();
+  if (!configured) return null;
+  try {
+    const parsed = new URL(configured);
+    if (parsed.protocol !== "https:"
+        || !APPROVED_HEHA_LOCAL_ORIGINS.has(parsed.origin)
+        || !["", "/"].includes(parsed.pathname)
+        || parsed.search
+        || parsed.hash) {
+      return null;
+    }
+    return parsed.origin;
+  } catch {
+    return null;
+  }
 }
 
-function legacyItemUrl(item) {
-  return item?.url || item?.product_url || item?.link || null;
+function localOrigin() {
+  return approvedConfiguredOrigin(import.meta.env.VITE_HEHA_LOCAL_URL)
+    || DEFAULT_HEHA_LOCAL_ORIGIN;
+}
+
+export function isApprovedHehaLocalInstallConfiguration({ enabled, configuredUrl }) {
+  return enabled === true && Boolean(approvedConfiguredOrigin(configuredUrl));
+}
+
+export function isHehaLocalInstallEnabled() {
+  return isApprovedHehaLocalInstallConfiguration({
+    enabled: import.meta.env.VITE_ENABLE_HEHA_LOCAL_INSTALL === "true",
+    configuredUrl: import.meta.env.VITE_HEHA_LOCAL_URL,
+  });
+}
+
+export function hehaLocalInstallUrl() {
+  if (!isHehaLocalInstallEnabled()) return null;
+  return `${approvedConfiguredOrigin(import.meta.env.VITE_HEHA_LOCAL_URL)}/`;
+}
+
+export function hehaLocalHomeUrl() {
+  return `${localOrigin()}/`;
 }
 
 function normalizedConfiguredPath(partner) {
@@ -47,11 +81,10 @@ function isGenericHehaLocalListingPath(path) {
 // an individual partner profile (e.g. /restaurants/<id> or /vendors/<id>)
 // rather than a generic listing route like "/restaurants" or "/vendors".
 export function hasSpecificHehaLocalDestination(partner) {
-  if (LOCAL_PROFILE_PATH_BY_SWIPE_PARTNER_ID[partner?.id]) return true;
-
   const configuredPath = normalizedConfiguredPath(partner);
   if (!configuredPath) return false;
-  return !isGenericHehaLocalListingPath(configuredPath);
+  if (isGenericHehaLocalListingPath(configuredPath)) return false;
+  return SPECIFIC_HEHA_LOCAL_PROFILE_PATH.test(configuredPath);
 }
 
 export function isHehaLocalPartner(partner) {
@@ -63,19 +96,19 @@ export function isHehaLocalPartner(partner) {
 }
 
 export function hehaLocalProfilePath(partner) {
-  const mappedPath = LOCAL_PROFILE_PATH_BY_SWIPE_PARTNER_ID[partner?.id];
-  if (mappedPath) return mappedPath;
-
   const configuredPath = normalizedConfiguredPath(partner);
-  return configuredPath || "/restaurants";
+  return hasSpecificHehaLocalDestination(partner) ? configuredPath : null;
 }
 
 export function hehaLocalProfileUrl(partner) {
-  return `${localOrigin()}${hehaLocalProfilePath(partner)}`;
+  const path = hehaLocalProfilePath(partner);
+  return path ? `${localOrigin()}${path}` : null;
 }
 
 export function hehaLocalItemUrl(partner, item) {
-  const url = new URL(hehaLocalProfileUrl(partner));
+  const profileUrl = hehaLocalProfileUrl(partner);
+  if (!profileUrl) return null;
+  const url = new URL(profileUrl);
   // HEHA Local currently opens item details by the public product name.
   // Keep IDs on the Swipe item for lineage, but prefer the name in the URL.
   const itemIdentity = item?.name || item?.local_product_id || item?.product_id;
@@ -87,7 +120,7 @@ export function partnerOrderUrl(partner, item = null) {
   if (isHehaLocalPartner(partner)) {
     return item ? hehaLocalItemUrl(partner, item) : hehaLocalProfileUrl(partner);
   }
-  return item ? legacyItemUrl(item) : null;
+  return null;
 }
 
 export function partnerOrderLabel(partner, selectedItem = null) {
@@ -99,5 +132,5 @@ export function partnerOrderLabel(partner, selectedItem = null) {
         ? "View products in HEHA Local"
         : "View full menu in HEHA Local";
   }
-  return selectedItem ? "Order selected item on HEHA" : "Select an item to order";
+  return "Ordering unavailable";
 }

@@ -1,19 +1,42 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import {
+  buildProtectedPartnerProfileSnapshot,
+  claimedProfileHasStructuredHours,
+  hasVerifiedPartnerClaim,
+} from "../lib/partnerProfileCorrection";
+import { revisePartnerProfile } from "../services/partnerApplicationRepository";
 
-const DIRECT_EDIT_STATUSES = ["draft", "submitted", "pending", "missing_info"];
+const PROTECTED_APPLICATION_STATUSES = ["draft", "submitted", "pending", "missing_info"];
+const PROFILE_REQUEST_LOAD_ERROR = "We could not check your latest profile request. Try again, or ask HEHA for help.";
+const PROFILE_REQUEST_SAVE_ERROR = "We could not submit these profile changes. Try again, or ask HEHA for help.";
+const PROTECTED_CORRECTION_SAVE_ERROR = "We could not save this protected correction. Try again, or ask HEHA to resend your private partner link.";
 const CATEGORIES = [
   { value: "Restaurant", label: "Restaurants", emoji: "🥗" },
-  { value: "Vendor", label: "Markets", emoji: "🛒" },
+  { value: "Vendor", label: "Product vendors", emoji: "🛍️" },
+  { value: "Markets", label: "Grocery & farmers markets", emoji: "🛒" },
   { value: "Catering", label: "Catering", emoji: "🍱" },
-  { value: "PrivateChef", label: "Private Chefs", emoji: "👨‍🍳" },
+  { value: "Private Chef", label: "Private Chefs", emoji: "👨‍🍳" },
   { value: "Wellness", label: "Wellness", emoji: "🧘" },
   { value: "Coach", label: "Coaches", emoji: "🏆" },
   { value: "Service", label: "Services", emoji: "💆" },
   { value: "Events", label: "Events", emoji: "🎉" },
 ];
+const PROTECTED_APPLICATION_CATEGORIES = CATEGORIES.slice(0, 5);
+const CLAIM_LOCKED_FIELDS = new Set([
+  "name",
+  "location",
+  "business_type",
+  "neighborhood",
+]);
 
 const ARRAY_FIELDS = new Set(["categories", "tags", "offerings", "delivery_days"]);
+const LEGACY_CATEGORY_ALIASES = new Map([
+  ["PrivateChef", "Private Chef"],
+  ["FarmersMarket", "Markets"],
+  ["Market", "Markets"],
+  ["Grocery", "Markets"],
+]);
 const EDITABLE_FIELDS = [
   "name",
   "location",
@@ -50,12 +73,24 @@ function parseCommaList(value) {
   )];
 }
 
-function listingCategories(listing) {
+function rawListingCategories(listing) {
   if (Array.isArray(listing?.categories) && listing.categories.length) return listing.categories;
   return listing?.category ? [listing.category] : [];
 }
 
+function canonicalEditableCategory(value) {
+  const normalized = String(value || "").trim();
+  return LEGACY_CATEGORY_ALIASES.get(normalized) || normalized;
+}
+
+function listingCategories(listing) {
+  return [...new Set(rawListingCategories(listing).map(canonicalEditableCategory).filter(Boolean))];
+}
+
 function initialForm(listing) {
+  const hours = typeof listing?.hours === "string"
+    ? listing.hours
+    : listing?.hours?.summary || "";
   return {
     name: listing?.name || "",
     categories: listingCategories(listing),
@@ -65,7 +100,7 @@ function initialForm(listing) {
     website: listing?.website || "",
     bio: listing?.bio || "",
     tags: toCommaList(listing?.tags),
-    hours: listing?.hours || "",
+    hours,
     business_type: listing?.business_type || "",
     offerings: toCommaList(listing?.offerings),
     neighborhood: listing?.neighborhood || "",
@@ -78,20 +113,32 @@ function initialForm(listing) {
 }
 
 function normalizedValue(field, value) {
+  if (field === "categories") {
+    return [...new Set(parseCommaList(value).map(canonicalEditableCategory).filter(Boolean))];
+  }
   if (ARRAY_FIELDS.has(field)) return parseCommaList(value);
   if (field === "instagram") return String(value || "").trim().replace(/^@/, "") || null;
   return String(value || "").trim() || null;
 }
 
 function currentValue(field, listing) {
-  if (field === "categories") return listingCategories(listing);
+  if (field === "categories") return rawListingCategories(listing);
   if (ARRAY_FIELDS.has(field)) return Array.isArray(listing?.[field]) ? listing[field] : [];
+  if (field === "hours") {
+    return typeof listing?.hours === "string"
+      ? listing.hours.trim() || null
+      : String(listing?.hours?.summary || "").trim() || null;
+  }
   if (field === "instagram") return String(listing?.instagram || "").trim().replace(/^@/, "") || null;
   return String(listing?.[field] || "").trim() || null;
 }
 
-function buildChanges(form, listing) {
+function buildChanges(form, listing, { claimBound, structuredHoursLocked }) {
   const changes = EDITABLE_FIELDS.reduce((nextChanges, field) => {
+    if ((claimBound && CLAIM_LOCKED_FIELDS.has(field))
+        || (structuredHoursLocked && field === "hours")) {
+      return nextChanges;
+    }
     const nextValue = normalizedValue(field, form[field]);
     const existingValue = currentValue(field, listing);
     if (JSON.stringify(nextValue) !== JSON.stringify(existingValue)) {
@@ -100,16 +147,18 @@ function buildChanges(form, listing) {
     return nextChanges;
   }, {});
 
-  const categories = normalizedValue("categories", form.categories);
-  const existingCategories = currentValue("categories", listing);
-  if (JSON.stringify(categories) !== JSON.stringify(existingCategories)) {
-    changes.categories = categories;
-  }
+  if (!claimBound) {
+    const categories = normalizedValue("categories", form.categories);
+    const existingCategories = currentValue("categories", listing);
+    if (JSON.stringify(categories) !== JSON.stringify(existingCategories)) {
+      changes.categories = categories;
+    }
 
-  const primaryCategory = categories[0] || null;
-  const existingPrimaryCategory = String(listing?.category || "").trim() || null;
-  if (primaryCategory !== existingPrimaryCategory) {
-    changes.category = primaryCategory;
+    const primaryCategory = categories[0] || null;
+    const existingPrimaryCategory = String(listing?.category || "").trim() || null;
+    if (primaryCategory !== existingPrimaryCategory) {
+      changes.category = primaryCategory;
+    }
   }
 
   return changes;
@@ -128,15 +177,24 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
   const [message, setMessage] = useState(null);
   const [latestRequest, setLatestRequest] = useState(null);
   const [requestLoading, setRequestLoading] = useState(false);
+  const [correctionRequestKey] = useState(() => crypto.randomUUID());
 
-  const listingStatus = String(listing?.status || "pending").toLowerCase();
-  const directEdit = DIRECT_EDIT_STATUSES.includes(listingStatus);
-  const changes = useMemo(() => buildChanges(form, listing), [form, listing]);
+  const listingStatus = String(listing?.status || "pending").trim().toLowerCase();
+  const protectedCorrection = PROTECTED_APPLICATION_STATUSES.includes(listingStatus);
+  const claimBound = hasVerifiedPartnerClaim(listing?.onboarding_capabilities, {
+    partnerId: listing?.id,
+    actorId: user?.id,
+  });
+  const structuredHoursLocked = claimBound && claimedProfileHasStructuredHours(listing);
+  const changes = useMemo(
+    () => buildChanges(form, listing, { claimBound, structuredHoursLocked }),
+    [claimBound, form, listing, structuredHoursLocked],
+  );
   const changeCount = Object.keys(changes).length;
-  const alreadyAwaitingReview = !directEdit && latestRequest?.status === "submitted";
+  const alreadyAwaitingReview = !protectedCorrection && latestRequest?.status === "submitted";
 
   useEffect(() => {
-    if (directEdit || !user?.id || !listing?.id) return;
+    if (protectedCorrection || !user?.id || !listing?.id) return;
     let cancelled = false;
     setRequestLoading(true);
     supabase
@@ -149,8 +207,11 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
       .maybeSingle()
       .then(({ data, error: requestError }) => {
         if (cancelled) return;
-        if (requestError) setError(requestError.message || "Could not load your latest change request.");
+        if (requestError) setError(PROFILE_REQUEST_LOAD_ERROR);
         else setLatestRequest(data || null);
+      })
+      .catch(() => {
+        if (!cancelled) setError(PROFILE_REQUEST_LOAD_ERROR);
       })
       .finally(() => {
         if (!cancelled) setRequestLoading(false);
@@ -158,7 +219,7 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
     return () => {
       cancelled = true;
     };
-  }, [directEdit, listing?.id, user?.id]);
+  }, [protectedCorrection, listing?.id, user?.id]);
 
   const set = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -169,9 +230,13 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
   const toggleCategory = (value) => {
     setForm((current) => ({
       ...current,
-      categories: current.categories.includes(value)
-        ? current.categories.filter((category) => category !== value)
-        : [...current.categories, value],
+      categories: claimBound
+        ? current.categories
+        : protectedCorrection
+          ? (current.categories.includes(value) ? [] : [value])
+        : current.categories.includes(value)
+          ? current.categories.filter((category) => category !== value)
+          : [...current.categories, value],
     }));
     setError(null);
     setMessage(null);
@@ -193,17 +258,28 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
         return;
       }
 
-      if (directEdit) {
-        const { data, error: updateError } = await supabase
-          .from("partners")
-          .update(changes)
-          .eq("id", listing.id)
-          .eq("owner_id", user.id)
-          .select("id, name, category, categories, status, created_at, updated_at, complete_pct, heha_partner, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours, contact, business_type, phone, delivery_days, pricing_notes")
-          .single();
+      if (protectedCorrection) {
+        if (!user?.id || !listing?.id) {
+          setError(PROTECTED_CORRECTION_SAVE_ERROR);
+          return;
+        }
 
-        if (updateError) throw updateError;
-        await onSaved?.(data, "Business profile updated. Your listing remains in HEHA review.");
+        const profileSnapshot = buildProtectedPartnerProfileSnapshot(form, listing, { claimBound });
+        if (!claimBound && profileSnapshot.categories.length !== 1) {
+          setError("Choose exactly one HEHA business relationship.");
+          return;
+        }
+
+        await revisePartnerProfile({
+          actorId: user.id,
+          partnerId: listing.id,
+          requestKey: correctionRequestKey,
+          profileSnapshot,
+        });
+        await onSaved?.(
+          { ...listing, ...changes },
+          "Protected profile correction recorded. Your profile remains private until HEHA review and release proof are complete."
+        );
         return;
       }
 
@@ -225,8 +301,8 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
       if (requestError) throw requestError;
       setLatestRequest(data);
       await onSaved?.(listing, "Profile changes submitted for HEHA review. Your current public listing stays unchanged until approved.");
-    } catch (saveError) {
-      setError(saveError.message || "Could not save these business profile changes yet.");
+    } catch {
+      setError(protectedCorrection ? PROTECTED_CORRECTION_SAVE_ERROR : PROFILE_REQUEST_SAVE_ERROR);
     } finally {
       setBusy(false);
     }
@@ -247,12 +323,14 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
           <p className="eyebrow">Business profile</p>
           <h2>Edit {listing?.name || "your business"}</h2>
           <p className="preview-tagline">
-            {directEdit
-              ? "Your listing is still in pre-approval review, so safe profile fields can be updated directly."
+            {protectedCorrection
+              ? claimBound
+                ? "Your claimed listing is private. Business identity stays locked to the invitation; operational edits receive a protected correction receipt."
+                : "Your listing is still private. Saving creates a protected correction receipt and does not publish it."
               : "Your current listing stays unchanged while HEHA reviews submitted profile edits."}
           </p>
 
-          {!directEdit && latestRequest && (
+          {!protectedCorrection && latestRequest && (
             <div className="partner-cert-note">
               Latest change request: <strong>{formatStatus(latestRequest.status)}</strong>
               {latestRequest.review_note ? ` — ${latestRequest.review_note}` : ""}
@@ -261,18 +339,26 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
 
           <div className="profile-form partner-editor-form">
             <Field label="Business name">
-              <input value={form.name} onChange={(event) => set("name", event.target.value)} />
+              <input value={form.name} onChange={(event) => set("name", event.target.value)} disabled={claimBound} />
             </Field>
 
-            <Field label="Categories" hint="choose one or more; first selected is primary">
+            <Field
+              label="Categories"
+              hint={claimBound
+                ? "locked to your verified invitation"
+                : protectedCorrection
+                ? "choose exactly one legal relationship"
+                : "choose one or more; first selected is primary"}
+            >
               <div className="wizard-chip-grid">
-                {CATEGORIES.map((category) => (
+                {(protectedCorrection ? PROTECTED_APPLICATION_CATEGORIES : CATEGORIES).map((category) => (
                   <button
                     type="button"
                     key={category.value}
                     className={form.categories.includes(category.value) ? "selected" : ""}
                     onClick={() => toggleCategory(category.value)}
                     aria-pressed={form.categories.includes(category.value)}
+                    disabled={claimBound}
                   >
                     <span>{category.emoji}</span>
                     {category.label}
@@ -282,7 +368,7 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
             </Field>
 
             <Field label="Neighborhood">
-              <input value={form.neighborhood} onChange={(event) => set("neighborhood", event.target.value)} placeholder="South Tampa, Hyde Park…" />
+              <input value={form.neighborhood} onChange={(event) => set("neighborhood", event.target.value)} placeholder="South Tampa, Hyde Park…" disabled={claimBound} />
             </Field>
 
             <Field label="Card headline">
@@ -294,11 +380,11 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
             </Field>
 
             <Field label="Business type">
-              <input value={form.business_type} onChange={(event) => set("business_type", event.target.value)} placeholder="Studio, mobile, online, brick & mortar…" />
+              <input value={form.business_type} onChange={(event) => set("business_type", event.target.value)} placeholder="Studio, mobile, online, brick & mortar…" disabled={claimBound} />
             </Field>
 
-            <Field label="Hours">
-              <input value={form.hours} onChange={(event) => set("hours", event.target.value)} placeholder="Mon–Fri 8am–6pm" />
+            <Field label="Hours" hint={structuredHoursLocked ? "structured schedule preserved; use HEHA support to change it" : null}>
+              <input value={form.hours} onChange={(event) => set("hours", event.target.value)} placeholder="Mon–Fri 8am–6pm" disabled={structuredHoursLocked} />
             </Field>
 
             <Field label="Business phone">
@@ -318,7 +404,7 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
             </Field>
 
             <Field label="Business address / service area">
-              <textarea value={form.location} onChange={(event) => set("location", event.target.value)} />
+              <textarea value={form.location} onChange={(event) => set("location", event.target.value)} disabled={claimBound} />
             </Field>
 
             <Field label="Offerings" hint="comma-separated">
@@ -326,11 +412,11 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
             </Field>
 
             <Field label="Health / discovery tags" hint="comma-separated">
-              <textarea value={form.tags} onChange={(event) => set("tags", event.target.value)} placeholder="movement, wellness, local" />
+              <textarea value={form.tags} onChange={(event) => set("tags", event.target.value)} placeholder="movement, wellness, local" disabled={protectedCorrection} />
             </Field>
 
             <Field label="Price range">
-              <input value={form.price_range} onChange={(event) => set("price_range", event.target.value)} placeholder="$, $$, or a short range" />
+              <input value={form.price_range} onChange={(event) => set("price_range", event.target.value)} placeholder="$, $$, or a short range" disabled={protectedCorrection} />
             </Field>
 
             <Field label="Delivery / availability days" hint="comma-separated, if applicable">
@@ -338,13 +424,15 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
             </Field>
 
             <Field label="Pricing notes">
-              <textarea value={form.pricing_notes} onChange={(event) => set("pricing_notes", event.target.value)} placeholder="Optional pricing context" />
+              <textarea value={form.pricing_notes} onChange={(event) => set("pricing_notes", event.target.value)} placeholder="Optional pricing context" disabled={protectedCorrection} />
             </Field>
           </div>
 
           <div className="partner-cert-note">
-            {directEdit
-              ? `${changeCount} profile field${changeCount === 1 ? "" : "s"} changed. HEHA-controlled status and certification cannot be edited here.`
+            {protectedCorrection
+              ? claimBound
+                ? `${changeCount} operational profile field${changeCount === 1 ? "" : "s"} changed. Invitation-bound identity and classification stay locked; publishing stays blocked.`
+                : `${changeCount} application field${changeCount === 1 ? "" : "s"} changed. Identity and category changes are collision-checked and receipt-bound; publishing stays blocked.`
               : `${changeCount} profile field${changeCount === 1 ? "" : "s"} changed. Saving submits the edits for HEHA review; it does not change the live listing immediately.`}
           </div>
 
@@ -361,8 +449,8 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
             >
               {busy
                 ? "Saving…"
-                : directEdit
-                ? "Save business profile"
+                : protectedCorrection
+                ? "Save protected correction"
                 : alreadyAwaitingReview
                 ? "Changes already under review"
                 : "Submit changes for HEHA review"}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
-const VISIBLE_LISTING_STATUSES = ["approved", "listed", "live"];
+const VISIBLE_LISTING_STATUSES = ["approved", "live"];
 
 function formatMonthYear(value) {
   if (!value) return "recently";
