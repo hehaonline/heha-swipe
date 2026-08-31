@@ -461,6 +461,9 @@ declare
   ];
   v_expected text[];
   v_actual text[];
+  v_client_oids oid[];
+  v_public_read_oids oid[];
+  v_stable_oids oid[];
   v_signature text;
   v_oid oid;
   v_config text[];
@@ -473,6 +476,31 @@ begin
          )
   into v_expected
   from pg_catalog.unnest(v_expected_input) signature;
+
+  select pg_catalog.array_agg(
+           pg_catalog.to_regprocedure(signature)::oid order by 1
+         )
+  into v_client_oids
+  from pg_catalog.unnest(v_client_input) signature;
+
+  select pg_catalog.array_agg(
+           pg_catalog.to_regprocedure(signature)::oid order by 1
+         )
+  into v_public_read_oids
+  from pg_catalog.unnest(v_public_read_input) signature;
+
+  select pg_catalog.array_agg(
+           pg_catalog.to_regprocedure(signature)::oid order by 1
+         )
+  into v_stable_oids
+  from pg_catalog.unnest(array[
+    'public.get_partner_agreement_for_acceptance_v1(uuid)',
+    'public.get_partner_onboarding_capabilities_v1(uuid)',
+    'public.get_partner_orderability_receipt_v1(uuid)',
+    'public.list_my_partner_onboarding_assignments_v1()',
+    'public.partner_card_is_current_v1(uuid,text,uuid,uuid)',
+    'public.partner_has_current_release_v1(uuid,text)'
+  ]::text[]) signature;
 
   select pg_catalog.array_agg(
            p.oid::pg_catalog.regprocedure::text
@@ -517,11 +545,13 @@ begin
         v_signature;
     end if;
 
-    v_allow_anon := v_signature = any(v_public_read_input);
+    v_allow_anon := v_oid = any(v_public_read_oids);
     v_allow_authenticated :=
-      v_signature = any(v_client_input) or v_allow_anon;
+      v_oid = any(v_client_oids) or v_allow_anon;
     v_allow_service :=
-      v_signature = 'public.get_partner_orderability_receipt_v1(uuid)';
+      v_oid = pg_catalog.to_regprocedure(
+        'public.get_partner_orderability_receipt_v1(uuid)'
+      )::oid;
 
     if not exists (
       select 1
@@ -543,14 +573,7 @@ begin
         and procedure.proleakproof is false
         and procedure.proisstrict is false
         and procedure.provolatile = case
-          when v_signature = any(array[
-            'public.get_partner_agreement_for_acceptance_v1(uuid)',
-            'public.get_partner_onboarding_capabilities_v1(uuid)',
-            'public.get_partner_orderability_receipt_v1(uuid)',
-            'public.list_my_partner_onboarding_assignments_v1()',
-            'public.partner_card_is_current_v1(uuid,text,uuid,uuid)',
-            'public.partner_has_current_release_v1(uuid,text)'
-          ]::text[]) then 's'::"char"
+          when v_oid = any(v_stable_oids) then 's'::"char"
           else 'v'::"char"
         end
         and procedure.proparallel = 'u'
@@ -761,7 +784,7 @@ declare
     'partner_onboarding_private.set_runtime_config_v1(boolean,boolean,boolean,boolean,boolean,boolean,text,uuid)'
   ];
   v_expected text[];
-  v_authenticated text[];
+  v_authenticated_oids oid[];
   v_actual text[];
   v_signature text;
   v_oid oid;
@@ -770,8 +793,10 @@ begin
   select pg_catalog.array_agg(pg_catalog.to_regprocedure(signature)::text order by 1)
   into v_expected
   from pg_catalog.unnest(v_expected_input) signature;
-  select pg_catalog.array_agg(pg_catalog.to_regprocedure(signature)::text order by 1)
-  into v_authenticated
+  select pg_catalog.array_agg(
+           pg_catalog.to_regprocedure(signature)::oid order by 1
+         )
+  into v_authenticated_oids
   from pg_catalog.unnest(v_authenticated_input) signature;
   select pg_catalog.array_agg(p.oid::pg_catalog.regprocedure::text order by p.oid::pg_catalog.regprocedure::text)
   into v_actual
@@ -791,7 +816,7 @@ begin
        or pg_catalog.has_function_privilege('service_role', v_oid, 'EXECUTE')
        or pg_catalog.has_function_privilege('supabase_auth_admin', v_oid, 'EXECUTE')
        or pg_catalog.has_function_privilege('authenticated', v_oid, 'EXECUTE')
-          is distinct from (v_signature = any(v_authenticated)) then
+          is distinct from (v_oid = any(v_authenticated_oids)) then
       raise exception 'Private function role ACL mismatch for %', v_signature;
     end if;
 

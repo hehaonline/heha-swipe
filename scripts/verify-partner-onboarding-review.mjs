@@ -625,6 +625,17 @@ assert(reviewWorkflow.includes("verify-partner-public-routines.sh"), "workflow c
 assert(reviewWorkflow.includes("pg_get_functiondef") && reviewWorkflow.includes("prokind"), "workflow snapshots public routine definitions and metadata");
 assert(reviewWorkflow.includes("public.revise_partner_profile_v1(uuid,uuid,jsonb)"), "workflow inventories the unified profile correction RPC");
 assert(reviewWorkflow.includes("Expected 11 HEHA public functions"), "workflow rejects an unreviewed public routine overload");
+for (const oidAllowlistPrimitive of [
+  "v_oid = any(v_public_read_oids)",
+  "v_oid = any(v_client_oids)",
+  "v_oid = any(v_stable_oids)",
+]) {
+  assert(database.proof.includes(oidAllowlistPrimitive), `runtime proof classifies public functions by OID via ${oidAllowlistPrimitive}`);
+}
+assert(!database.proof.includes("v_signature = any(v_public_read_input)"), "runtime proof never compares rendered regprocedure text to a qualified ACL allowlist");
+assert(!database.proof.includes("v_signature = any(v_client_input)"), "runtime proof never compares rendered regprocedure text to a qualified client allowlist");
+assert(database.proof.includes("v_oid = any(v_authenticated_oids)"), "private function ACL proof classifies authenticated functions by OID");
+assert(!database.proof.includes("v_signature = any(v_authenticated)"), "private ACL proof never compares rendered regprocedure text to an allowlist");
 for (const exactAclPrimitive of ["aclexplode", "acl.grantor", "acl.is_grantable", "pg_roles"]) {
   assert(reviewWorkflow.includes(exactAclPrimitive), `workflow rejects unexpected public-function ACL metadata via ${exactAclPrimitive}`);
   assert(database.proof.includes(exactAclPrimitive), `runtime proof rejects unexpected public-function ACL metadata via ${exactAclPrimitive}`);
