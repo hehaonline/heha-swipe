@@ -3049,19 +3049,26 @@ begin
        select 1
        from public.partners partner
        where partner.id = '10000000-0000-4000-8000-0000000000a1'
-         and pg_catalog.to_jsonb(partner.name) is not distinct from
+         and coalesce(pg_catalog.to_jsonb(partner.name), 'null'::jsonb)
+           is not distinct from
            v_before -> 'name'
-         and pg_catalog.to_jsonb(partner.category) is not distinct from
+         and coalesce(pg_catalog.to_jsonb(partner.category), 'null'::jsonb)
+           is not distinct from
            v_before -> 'category'
-         and pg_catalog.to_jsonb(partner.categories) is not distinct from
+         and coalesce(pg_catalog.to_jsonb(partner.categories), 'null'::jsonb)
+           is not distinct from
            v_before -> 'categories'
-         and pg_catalog.to_jsonb(partner.business_type) is not distinct from
+         and coalesce(pg_catalog.to_jsonb(partner.business_type), 'null'::jsonb)
+           is not distinct from
            v_before -> 'business_type'
-         and pg_catalog.to_jsonb(partner.location) is not distinct from
+         and coalesce(pg_catalog.to_jsonb(partner.location), 'null'::jsonb)
+           is not distinct from
            v_before -> 'location'
-         and pg_catalog.to_jsonb(partner.neighborhood) is not distinct from
+         and coalesce(pg_catalog.to_jsonb(partner.neighborhood), 'null'::jsonb)
+           is not distinct from
            v_before -> 'neighborhood'
-         and partner.hours is not distinct from v_before -> 'hours'
+         and coalesce(partner.hours, 'null'::jsonb) is not distinct from
+           v_before -> 'hours'
          and partner.category is null
          and partner.categories = array['Restaurant']::text[]
          and partner.hours =

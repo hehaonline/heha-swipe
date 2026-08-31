@@ -906,6 +906,23 @@ for (const claimedCorrectionProofMarker of [
 ]) {
   assert(database.proof.includes(claimedCorrectionProofMarker), `claimed-profile proof covers ${claimedCorrectionProofMarker}`);
 }
+for (const nullableProfileField of [
+  "name",
+  "category",
+  "categories",
+  "business_type",
+  "location",
+  "neighborhood",
+]) {
+  assert(
+    new RegExp(`coalesce\\(\\s*pg_catalog\\.to_jsonb\\(partner\\.${nullableProfileField}\\)\\s*,\\s*'null'::jsonb\\)\\s+is\\s+not\\s+distinct\\s+from\\s+v_before\\s*->\\s*'${nullableProfileField}'`, "i").test(database.proof),
+    `claimed-profile proof binds SQL NULL ${nullableProfileField} as canonical JSON null`,
+  );
+}
+assert(
+  /coalesce\(\s*partner\.hours\s*,\s*'null'::jsonb\)\s+is\s+not\s+distinct\s+from\s+v_before\s*->\s*'hours'/i.test(database.proof),
+  "claimed-profile proof binds SQL NULL hours as canonical JSON null",
+);
 for (const appendOnlyProofLabel of [
   "application profile correction router receipt is append-only",
   "claimed profile correction receipt is immutable",
