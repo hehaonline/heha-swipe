@@ -854,8 +854,8 @@ declare
     'signer_authority_confirmed', true,
     'reviewed_complete_agreement', true
   );
-  v_expected constant text := '{"assertions_version":"heha-partner-acceptance-v1","assent_text":"I agree to the synthetic terms.","electronic_records_consent":true,"reviewed_complete_agreement":true,"signer_authority_confirmed":true,"signer_legal_name":"Signer B","signer_title":"Authorized Representative","typed_signature":"Signer B"}';
-  v_expected_sha constant text := '0cc7082fb2d7746985cce79eeb1d652378910a2f71fbe1f1accd3fe85096134d';
+  v_expected constant text := '{"assent_text":"I agree to the synthetic terms.","assertions_version":"heha-partner-acceptance-v1","electronic_records_consent":true,"reviewed_complete_agreement":true,"signer_authority_confirmed":true,"signer_legal_name":"Signer B","signer_title":"Authorized Representative","typed_signature":"Signer B"}';
+  v_expected_sha constant text := '5327bdf5a2d33cdc26368ead401444941f8ef5cdb88f0d4ef0d4b8def19947f6';
 begin
   if partner_onboarding_private.canonical_json(v_assertions) <> v_expected
      or partner_onboarding_private.sha256_text(v_expected) <> v_expected_sha
@@ -3251,7 +3251,7 @@ begin
      or v_first ->> 'accepted_owner_id' <> '00000000-0000-4000-8000-0000000000a1'
      or v_first ->> 'accepted_by' <> '00000000-0000-4000-8000-0000000000b2'
      or v_first ->> 'acceptance_id' <> v_replay ->> 'acceptance_id'
-     or v_first ->> 'assertions_sha256' <> '0cc7082fb2d7746985cce79eeb1d652378910a2f71fbe1f1accd3fe85096134d'
+     or v_first ->> 'assertions_sha256' <> '5327bdf5a2d33cdc26368ead401444941f8ef5cdb88f0d4ef0d4b8def19947f6'
      or v_first -> 'assertions_snapshot' <> v_replay -> 'assertions_snapshot'
      or v_first ->> 'receipt_status' <> 'verified' then
     raise exception 'Agreement load/acceptance receipt contract mismatch';

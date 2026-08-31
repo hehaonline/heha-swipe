@@ -21,6 +21,23 @@ function assertionsHash(value) {
   return createHash("sha256").update(canonicalJson(value)).digest("hex");
 }
 
+test("canonical assertions match the server golden vector", () => {
+  const assertions = {
+    typed_signature: "Signer B",
+    signer_title: "Authorized Representative",
+    assent_text: "I agree to the synthetic terms.",
+    signer_legal_name: "Signer B",
+    assertions_version: "heha-partner-acceptance-v1",
+    electronic_records_consent: true,
+    signer_authority_confirmed: true,
+    reviewed_complete_agreement: true,
+  };
+  const canonical = '{"assent_text":"I agree to the synthetic terms.","assertions_version":"heha-partner-acceptance-v1","electronic_records_consent":true,"reviewed_complete_agreement":true,"signer_authority_confirmed":true,"signer_legal_name":"Signer B","signer_title":"Authorized Representative","typed_signature":"Signer B"}';
+
+  assert.equal(canonicalJson(assertions), canonical);
+  assert.equal(assertionsHash(assertions), "5327bdf5a2d33cdc26368ead401444941f8ef5cdb88f0d4ef0d4b8def19947f6");
+});
+
 function envelope(overrides = {}) {
   return {
     partner_id: partnerId,
