@@ -1169,6 +1169,14 @@ assert(database.rollback.includes("partner_onboarding_private.require_active_sta
 
 assert(database.transitions.includes("HEHA_PARTNER_REQUEST_DENIED"), "protected RPCs share one external denial");
 assert(database.transitions.includes("P0001"), "protected RPC denials use the locked SQLSTATE");
+assert(
+  !/pg_catalog\.(?:coalesce|nullif|least|greatest)\s*\(/i.test(reviewDatabaseSql),
+  "PostgreSQL conditional expressions are never schema-qualified in the review package",
+);
+assert(
+  !/\b(?:get\s+stacked\s+diagnostics|returned_sqlstate|message_text|raise\s+notice|HEHA_REVIEW_(?:APPLICATION|PROFILE)|v_review_error_)\b/i.test(database.transitions),
+  "temporary correction diagnostics are absent from the review package",
+);
 assert((database.transitions.match(/partner-onboarding:business:/g) || []).length >= 2, "invitation and application share the normalized business-key lock");
 assert(database.foundation.includes("partner_onboarding_private.partner_business_key_corrections"), "foundation stores append-only business-key corrections");
 for (const helperName of [
