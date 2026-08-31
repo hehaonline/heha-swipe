@@ -1,7 +1,7 @@
 # HEHA Partner Onboarding — Canonical Task List
 
-Status: **Review-only implementation candidate**  
-Primary pilot: **Pure Kitchen / Sachiko**  
+Status: **Review-only implementation candidate**
+Primary pilot: **Pure Kitchen / Sachiko**
 Public launch: **Blocked until every applicable gate has evidence**
 
 ## Definition of done for one partner
