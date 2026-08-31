@@ -1257,14 +1257,6 @@ $staff_separation_of_duties$;
 
 set local role authenticated;
 select pg_catalog.set_config(
-  'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000d4', true
-);
-insert into pg_temp.partner_onboarding_proof_state(key, value)
-select 'other_tenant_assignments', public.list_my_partner_onboarding_assignments_v1()::text;
-reset role;
-
-set local role authenticated;
-select pg_catalog.set_config(
   'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000e5', true
 );
 select pg_temp.expect_partner_denied(
@@ -3207,6 +3199,14 @@ reset role;
 
 set local role authenticated;
 select pg_catalog.set_config(
+  'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000d4', true
+);
+insert into pg_temp.partner_onboarding_proof_state(key, value)
+select 'other_tenant_assignments', public.list_my_partner_onboarding_assignments_v1()::text;
+reset role;
+
+set local role authenticated;
+select pg_catalog.set_config(
   'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000e5', true
 );
 insert into pg_temp.partner_onboarding_proof_state(key, value)
@@ -3231,8 +3231,6 @@ declare
     where key = 'unassigned_actor_assignments'
   );
 begin
-  raise notice 'HEHA_REVIEW_ASSIGNMENTS operator=% signer=% other=% unassigned=%',
-    v_operator, v_signer, v_other_tenant, v_unassigned;
   if v_operator ->> 'projection_version' is distinct from
        'heha-partner-assignments-v1'
      or v_operator ->> 'authorized_actor_id' is distinct from

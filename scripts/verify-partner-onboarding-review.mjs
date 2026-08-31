@@ -1036,6 +1036,11 @@ assert(assignmentSection.includes("authorized_actor_id"), "assignment projection
 assert(assignmentSection.includes("authorized_signer"), "assignment projection supports an independently authorized signer");
 assert(database.proof.includes("other_tenant_assignments"), "assignment proof includes a different partner tenant");
 assert(
+  database.proof.indexOf("select 'other_tenant_assignments'")
+    > database.proof.indexOf("select 'legacy_live_profile_claim'"),
+  "different-tenant assignment snapshot is captured after its claim becomes current",
+);
+assert(
   /v_other_tenant\s*#>>\s*'\{assignments,0,partner_id\}'\s+is\s+distinct\s+from\s*'10000000-0000-4000-8000-0000000000d4'/i.test(database.proof),
   "different-tenant projection is exact-bound to only its own partner",
 );
@@ -1246,7 +1251,9 @@ assert(
   "PostgreSQL conditional expressions are never schema-qualified in the review package",
 );
 assert(
-  !/\b(?:get\s+stacked\s+diagnostics|returned_sqlstate|message_text|raise\s+notice|HEHA_REVIEW_(?:APPLICATION|PROFILE)|v_review_error_)\b/i.test(database.transitions),
+  !/\b(?:get\s+stacked\s+diagnostics|returned_sqlstate|message_text|raise\s+notice|HEHA_REVIEW_(?:APPLICATION|PROFILE)|v_review_error_)\b/i.test(
+    `${database.transitions}\n${database.proof}`,
+  ),
   "temporary correction diagnostics are absent from the review package",
 );
 assert((database.transitions.match(/partner-onboarding:business:/g) || []).length >= 2, "invitation and application share the normalized business-key lock");
