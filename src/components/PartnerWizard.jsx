@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
+import { releasePolicy } from "../lib/releasePolicy";
 
 const CATEGORIES = [
   { value: "Restaurant", label: "Restaurants", emoji: "🥗" },
@@ -232,7 +233,9 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
       if (error) throw error;
 
       try {
-        const webhookUrl = import.meta.env.VITE_MAKE_PARTNER_APPROVAL_WEBHOOK;
+        const webhookUrl = releasePolicy.outboundWebhooks
+          ? import.meta.env.VITE_MAKE_PARTNER_APPROVAL_WEBHOOK
+          : null;
         if (webhookUrl) {
           await fetch(webhookUrl, {
             method: "POST",

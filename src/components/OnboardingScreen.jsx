@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
 import { startSupporterCheckout as startSupporterCheckoutFlow } from "../lib/supporterCheckout";
+import { releasePolicy } from "../lib/releasePolicy";
 
 const HEHA_INSTAGRAM_URL = import.meta.env.VITE_HEHA_INSTAGRAM_URL || "https://www.instagram.com/heha.online/";
 
 function getInitialRole() {
+  if (!releasePolicy.partnerSelfService) return "customer";
   return localStorage.getItem("heha_signup_role") || null;
 }
 
@@ -144,7 +146,7 @@ const saveProfile = async () => {
   }
 
   const isPartner = role === "partner";
-  const freeCustomerNeedsInstagram = !isPartner && access === "free";
+  const freeCustomerNeedsInstagram = releasePolicy.instagram && !isPartner && access === "free";
 
   return (
     <main className="onboarding-screen">
@@ -164,16 +166,24 @@ const saveProfile = async () => {
           >
             <span>🌱</span>
             <h2>Free</h2>
-            <p>{isPartner ? "Create a starter listing without paying today." : "Follow HEHA on Instagram, then explore and save local businesses for free."}</p>
+            <p>
+              {isPartner
+                ? "Create a starter listing without paying today."
+                : releasePolicy.instagram
+                ? "Follow HEHA on Instagram, then explore and save local businesses for free."
+                : "Explore and save local businesses for free."}
+            </p>
           </button>
-          <button className={access === "supporter" ? "choice-card featured active-plan" : "choice-card featured"} onClick={() => setAccess("supporter")}>
-            <span>✦</span>
-            <h2>Supporter</h2>
-            <p>Support HEHA Swipe monthly and keep the local discovery network growing.</p>
-          </button>
+          {releasePolicy.payments && (
+            <button className={access === "supporter" ? "choice-card featured active-plan" : "choice-card featured"} onClick={() => setAccess("supporter")}>
+              <span>✦</span>
+              <h2>Supporter</h2>
+              <p>Support HEHA Swipe monthly and keep the local discovery network growing.</p>
+            </button>
+          )}
         </div>
 
-        {access === "supporter" && (
+        {releasePolicy.payments && access === "supporter" && (
           <div className="slider-card">
             <p className="eyebrow">Support HEHA Swipe monthly</p>
             <div className="slider-header">
@@ -207,7 +217,7 @@ const saveProfile = async () => {
           </div>
         )}
 
-        {access === "supporter" ? (
+        {releasePolicy.payments && access === "supporter" ? (
           <>
             <button className="primary-button" onClick={startSupporterCheckout} disabled={loading}>
               {loading ? "Opening checkout..." : "Start monthly support"}
