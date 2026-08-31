@@ -3231,6 +3231,8 @@ declare
     where key = 'unassigned_actor_assignments'
   );
 begin
+  raise notice 'HEHA_REVIEW_ASSIGNMENTS operator=% signer=% other=% unassigned=%',
+    v_operator, v_signer, v_other_tenant, v_unassigned;
   if v_operator ->> 'projection_version' is distinct from
        'heha-partner-assignments-v1'
      or v_operator ->> 'authorized_actor_id' is distinct from
