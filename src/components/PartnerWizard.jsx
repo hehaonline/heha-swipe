@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
-import { createOrResumePartnerApplication } from "../services/partnerApplicationRepository";
+import {
+  createOrResumePartnerApplication,
+  revisePartnerProfile,
+} from "../services/partnerApplicationRepository";
 import { claimPartnerInvitation } from "../services/partnerClaimRepository";
 import {
   clearPendingPartnerInviteToken,
@@ -14,10 +17,6 @@ const CATEGORIES = [
   { value: "Markets", label: "Grocery & farmers markets", emoji: "🛒" },
   { value: "Catering", label: "Catering", emoji: "🍱" },
   { value: "Private Chef", label: "Private Chefs", emoji: "👨‍🍳" },
-  { value: "Wellness", label: "Wellness", emoji: "🧘" },
-  { value: "Coach", label: "Coaches", emoji: "🏆" },
-  { value: "Service", label: "Services", emoji: "💆" },
-  { value: "Events", label: "Events", emoji: "🎉" },
 ];
 
 const CATEGORY_EMOJIS = Object.fromEntries(CATEGORIES.map((category) => [category.value, category.emoji]));
@@ -133,7 +132,8 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
   const [listingEntrySource, setListingEntrySource] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusError, setStatusError] = useState(null);
-  const [applicationRequestKey] = useState(() => crypto.randomUUID());
+  const [applicationRequestKey, setApplicationRequestKey] = useState(() => crypto.randomUUID());
+  const [applicationPartnerId, setApplicationPartnerId] = useState(null);
   const [claimRequestKey] = useState(pendingPartnerInviteRequestKey);
   const [inviteToken] = useState(pendingPartnerInviteToken);
 
@@ -146,9 +146,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
 
   const toggleCategory = (value) => {
     setForm((current) => {
-      const selected = current.categories.includes(value)
-        ? current.categories.filter((category) => category !== value)
-        : [...current.categories, value];
+      const selected = current.categories.includes(value) ? [] : [value];
 
       return {
         ...current,
@@ -222,10 +220,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
         form.items.length > 0,
       ].filter(Boolean).length * 10;
 
-      const data = await createOrResumePartnerApplication({
-        actorId: user.id,
-        requestKey: applicationRequestKey,
-        application: {
+      const application = {
           name: form.name.trim(),
           category: form.categories[0],
           categories: form.categories,
@@ -245,16 +240,41 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
           photo_emoji: form.photo_emoji,
           color: form.color,
           complete_pct: completePct,
-        },
-      });
+      };
+      const data = applicationPartnerId
+        ? await revisePartnerProfile({
+          actorId: user.id,
+          partnerId: applicationPartnerId,
+          requestKey: applicationRequestKey,
+          profileSnapshot: application,
+        })
+        : await createOrResumePartnerApplication({
+          actorId: user.id,
+          requestKey: applicationRequestKey,
+          application,
+        });
 
       setListingEntrySource("application");
-      setSubmittedListing(data);
+      setApplicationPartnerId(data.id);
+      setSubmittedListing({
+        ...data,
+        name: application.name,
+        category: application.category,
+        categories: application.categories,
+        complete_pct: application.complete_pct,
+      });
     } catch (error) {
       setErrors({ submit: error.message || "Could not submit this listing yet." });
     } finally {
       setLoading(false);
     }
+  };
+
+  const editSubmittedApplication = () => {
+    setApplicationRequestKey(crypto.randomUUID());
+    setSubmittedListing(null);
+    setStep(0);
+    setErrors({});
   };
 
   const claimInvite = async () => {
@@ -335,6 +355,7 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
         loading={statusLoading}
         error={statusError}
         onRefresh={refreshSubmittedListing}
+        onEdit={listingEntrySource === "application" ? editSubmittedApplication : null}
         onContinue={() => onComplete(submittedListing)}
       />
     );
@@ -360,8 +381,8 @@ export default function PartnerWizard({ user, onComplete, onCancel }) {
             </Field>
 
             <div className="wizard-field-block">
-              <Label required>Categories</Label>
-              <p className="wizard-helper-copy">Choose every category that applies. The first one selected is your primary card category.</p>
+              <Label required>Partner relationship</Label>
+              <p className="wizard-helper-copy">Choose one relationship for this profile. Each relationship uses its own agreement and review requirements.</p>
               <div className="wizard-chip-grid">
                 {CATEGORIES.map((category) => (
                   <button
@@ -642,7 +663,7 @@ function PartnerAccessGate({ title, copy, enabled, loading, error, onContinue, o
   );
 }
 
-function PartnerSubmissionStatus({ listing, entrySource, loading, error, onRefresh, onContinue }) {
+function PartnerSubmissionStatus({ listing, entrySource, loading, error, onRefresh, onEdit, onContinue }) {
   const status = String(listing?.status || "pending").toLowerCase();
   const visible = PUBLIC_STATUSES.includes(status);
   const certified = listing?.heha_partner === true;
@@ -722,6 +743,11 @@ function PartnerSubmissionStatus({ listing, entrySource, loading, error, onRefre
           <button className="wizard-text-back" type="button" onClick={onRefresh} disabled={loading}>
             {loading ? "Refreshing…" : "Refresh status"}
           </button>
+          {onEdit && (
+            <button className="wizard-text-back" type="button" onClick={onEdit} disabled={loading}>
+              Correct saved application
+            </button>
+          )}
 
           <p className="wizard-helper-copy">
             Your Partner Hub keeps the complete sequence in one place: business verification, profile/menu, the correct agreement,

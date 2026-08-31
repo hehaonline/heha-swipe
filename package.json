@@ -7,7 +7,7 @@
         "dev": "vite",
         "build": "vite build",
         "preview": "vite preview",
-        "test": "node --test src/contracts/partnerAgreements.test.js src/lib/hehaLocalRouting.test.js src/lib/partnerAgreementVerification.test.js src/lib/partnerInvite.test.js",
+        "test": "node --test src/contracts/partnerAgreements.test.js src/components/PartnerProfileEditor.source.test.js src/lib/clientOrderRoutingSource.test.js src/lib/hehaLocalRouting.test.js src/lib/partnerAgreementAssertions.test.js src/lib/partnerAgreementVerification.test.js src/lib/partnerApplicationReceipt.test.js src/lib/partnerInvite.test.js src/lib/partnerOnboardingAssignments.test.js src/lib/partnerOnboardingCapabilities.test.js src/lib/partnerProfileCorrection.test.js",
         "verify:partner-onboarding": "node scripts/verify-partner-onboarding-review.mjs"
     },
     "dependencies": {

@@ -1,4 +1,5 @@
 import { hehaLocalProfileUrl, isHehaLocalPartner } from "../lib/hehaLocalRouting";
+import { derivePartnerOnboardingState } from "../lib/partnerOnboardingCapabilities";
 
 const DEVICE_INSTALL_KEY = "heha_partner_install_device_v1";
 
@@ -42,6 +43,8 @@ export default function PartnerOnboardingChecklist({
     && Boolean(capabilities.agreement.acceptance_id)
     && Boolean(capabilities.agreement.agreement_version_id);
   const mediaReady = capabilities?.media?.status === "approved" && Boolean(capabilities.media.evidence_id);
+  const complianceReady = capabilities?.compliance?.status === "verified"
+    && Boolean(capabilities.compliance.evidence_id);
   const deviceSetup = Boolean(installProgress.swipeConfirmed && installProgress.localConfirmed);
   const localProfile = capabilities?.local_profile || null;
   const localPartner = localProfile ? {
@@ -51,23 +54,41 @@ export default function PartnerOnboardingChecklist({
     primary_cta_path: localProfile.primary_cta_path,
   } : null;
   const localProfileReady = Boolean(localPartner && isHehaLocalPartner(localPartner));
-  const testOrderPassed = capabilities?.smoke_test?.status === "passed"
-    && Boolean(capabilities.smoke_test.evidence_id)
-    && capabilities?.publication?.local_orderable === true;
-  const publicationApproved = capabilities?.publication?.partner_consent_status === "approved"
-    && Boolean(capabilities.publication.partner_consent_evidence_id)
-    && capabilities.publication.heha_review_status === "approved"
+  const releaseVerified = Boolean(capabilities?.publication?.release_receipt_id);
+  const partnerConsentApproved = capabilities?.publication?.partner_consent_status === "approved"
+    && Boolean(capabilities.publication.partner_consent_evidence_id);
+  const hehaReviewApproved = capabilities?.publication?.heha_review_status === "approved"
     && Boolean(capabilities.publication.heha_review_evidence_id);
-  const publiclyVisible = publicationApproved
-    && capabilities.publication.public_swipe_visible === true
-    && capabilities.publication.local_orderable === true;
+  const publicationApproved = partnerConsentApproved && hehaReviewApproved;
+  const {
+    smokePassed,
+    swipePublished,
+    localOrderable,
+    combinedLaunchReady,
+  } = derivePartnerOnboardingState(capabilities);
+
+  const publicationCopy = combinedLaunchReady
+    ? "Swipe is publicly visible and Local reports this exact partner orderable; both target activation receipts are current."
+    : swipePublished
+    ? "Swipe is publicly visible, but Local ordering remains blocked until Local returns its separate activation receipt."
+    : localOrderable
+    ? "Local orderability is activated, but the partner remains private in Swipe until Swipe returns its publication receipt."
+    : releaseVerified
+    ? "HEHA authorized this exact evidence set; Swipe publication and Local ordering still need separate target activation receipts."
+    : publicationApproved
+    ? "Partner consent and HEHA review are recorded; the exact release receipt is still pending."
+    : partnerConsentApproved
+    ? "Partner publication consent is recorded; HEHA review is still pending."
+    : hehaReviewApproved
+    ? "HEHA review is recorded; the partner's final publication consent is still pending."
+    : "Nothing goes public until the partner sees the final preview, approves it, and HEHA verifies every launch gate.";
 
   const steps = [
     {
       id: "claim",
-      title: "Verify the business owner",
+      title: "Verify the business relationship",
       copy: relationshipClaimed
-        ? "The account is bound to this business profile."
+        ? "A current recipient-bound claim connects the verified operator account to this business profile."
         : "Not connected: use a recipient-bound, expiring, single-use HEHA invitation. A generic signup, self-attestation, or self-created profile is not proof.",
       status: relationshipClaimed ? "done" : "blocked",
       action: null,
@@ -100,6 +121,15 @@ export default function PartnerOnboardingChecklist({
       action: { label: "Add photos", handler: onAddMedia },
     },
     {
+      id: "compliance",
+      title: "Complete category compliance review",
+      copy: complianceReady
+        ? "A current server receipt verifies the required category-specific compliance evidence."
+        : "HEHA must verify the licenses, insurance, permits, and other requirements that apply to this partner category.",
+      status: complianceReady ? "done" : relationshipClaimed ? "next" : "blocked",
+      action: null,
+    },
+    {
       id: "install",
       title: "Add HEHA Swipe and Local to the home screen",
       copy: deviceSetup
@@ -111,25 +141,27 @@ export default function PartnerOnboardingChecklist({
     {
       id: "test",
       title: "Run an authenticated test order",
-      copy: testOrderPassed
-        ? "The exact partner order path passed its recorded smoke test and is reported orderable by Local."
+      copy: smokePassed
+        ? localOrderable
+          ? "The exact customer → partner → driver → delivery path passed, and Local currently reports this partner orderable."
+          : "The authenticated end-to-end smoke test passed; Local activation is still a separate pending gate."
         : localProfileReady
         ? "A specific Local profile exists; the full customer → partner → driver → delivery flow still needs a recorded test."
         : "No verified partner-specific HEHA Local order path is connected yet.",
-      status: testOrderPassed ? "done" : localProfileReady ? "next" : "blocked",
+      status: smokePassed ? "done" : localProfileReady ? "next" : "blocked",
       action: localProfileReady
         ? { label: "Open Local profile", handler: () => window.open(hehaLocalProfileUrl(localPartner), "_blank", "noopener,noreferrer") }
         : null,
     },
     {
       id: "publish",
-      title: "Partner approves publication; HEHA publishes",
-      copy: publiclyVisible
-        ? "The owner-safe server projection confirms both public Swipe visibility and Local orderability."
-        : publicationApproved
-        ? "Partner approval is recorded; HEHA staff publication review remains."
-        : "Nothing goes public until the partner sees the final preview, approves it, and HEHA verifies every launch gate.",
-      status: publiclyVisible ? "done" : publicationApproved ? "next" : "blocked",
+      title: "Activate Swipe publication and Local ordering",
+      copy: publicationCopy,
+      status: combinedLaunchReady
+        ? "done"
+        : (releaseVerified || swipePublished || localOrderable || publicationApproved || partnerConsentApproved || hehaReviewApproved)
+        ? "next"
+        : "blocked",
       action: { label: "Preview listing", handler: onPreview },
     },
   ];
@@ -152,7 +184,7 @@ export default function PartnerOnboardingChecklist({
       {(!capabilities || listing.release_gate_error) && (
         <div className="agreement-gate warning" role="alert">
           The owner-safe server capability projection is not connected, so claim, agreement, profile, media,
-          test-order, publication, and orderability gates remain blocked.
+          compliance, test-order, publication, and orderability gates remain blocked.
         </div>
       )}
 
@@ -175,8 +207,8 @@ export default function PartnerOnboardingChecklist({
       </ol>
 
       <p className="partner-checklist-fineprint">
-        Home-screen confirmation is device guidance, not publication proof. Agreement, orderability, test-order,
-        partner-consent, and HEHA-review receipts remain separate fail-closed gates.
+        Home-screen confirmation is device guidance, not publication proof. Agreement, compliance, orderability,
+        test-order, partner-consent, and HEHA-review receipts remain separate fail-closed gates.
       </p>
     </section>
   );

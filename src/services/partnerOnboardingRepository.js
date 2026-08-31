@@ -1,28 +1,33 @@
 import { supabase } from "../lib/supabase";
+import { normalizePartnerOnboardingAssignments } from "../lib/partnerOnboardingAssignments";
+import { normalizePartnerOnboardingCapabilities } from "../lib/partnerOnboardingCapabilities";
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const GENERIC_CAPABILITY_ERROR = "Partner release receipts are not available for this account.";
+const GENERIC_ASSIGNMENT_ERROR = "Partner setup assignments are not available for this account.";
 
 function rpcObject(value) {
-  if (Array.isArray(value)) return value[0] || null;
-  return value && typeof value === "object" ? value : null;
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
 export async function loadPartnerOnboardingCapabilities(partnerId, actorId) {
-  const { data, error } = await supabase.rpc("get_partner_onboarding_capabilities_v1", {
-    p_partner_id: partnerId,
-  });
-  if (error) throw error;
+  try {
+    const { data, error } = await supabase.rpc("get_partner_onboarding_capabilities_v1", {
+      p_partner_id: partnerId,
+    });
+    if (error) throw new Error(GENERIC_CAPABILITY_ERROR);
 
-  const capabilities = rpcObject(data);
-  if (!capabilities) throw new Error("Partner release receipts are not connected.");
-  if (capabilities.projection_version !== "heha-partner-onboarding-v1") {
-    throw new Error("Partner release receipts use an unsupported projection version.");
+    return normalizePartnerOnboardingCapabilities(rpcObject(data), { partnerId, actorId });
+  } catch {
+    throw new Error(GENERIC_CAPABILITY_ERROR);
   }
-  if (!UUID_PATTERN.test(String(capabilities.partner_id || ""))
-      || !UUID_PATTERN.test(String(capabilities.authorized_actor_id || ""))
-      || capabilities.partner_id !== partnerId
-      || capabilities.authorized_actor_id !== actorId) {
-    throw new Error("Partner release receipts do not match this partner account.");
+}
+
+export async function loadMyPartnerOnboardingAssignments(actorId) {
+  try {
+    const { data, error } = await supabase.rpc("list_my_partner_onboarding_assignments_v1");
+    if (error) throw new Error(GENERIC_ASSIGNMENT_ERROR);
+    return normalizePartnerOnboardingAssignments(rpcObject(data), actorId).assignments;
+  } catch {
+    throw new Error(GENERIC_ASSIGNMENT_ERROR);
   }
-  return capabilities;
 }

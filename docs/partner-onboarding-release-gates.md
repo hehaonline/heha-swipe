@@ -25,6 +25,13 @@ A partner is complete only when all of these are true:
 7. The partner approves the final preview and HEHA separately approves
    publication. Only then may the profile become visible/orderable.
 
+The profile operator and legal signer may be different people. An operator can
+finish business details, media, menus, and device setup but cannot sign unless
+HEHA separately verifies current signer authority. A saved application can be
+corrected in-app before invitation; name/location corrections retain an
+append-only identity history so an old or mistyped identity cannot be reused to
+create a duplicate business.
+
 ## Work lanes and owners
 
 | Task ID | Owner | Outcome | Current state / exit proof |
@@ -69,6 +76,11 @@ The link sent to Sachiko should open one resumable Partner Hub and present:
 If any validation fails, the flow preserves completed work, identifies one next
 action, and stays private. Sachiko should receive one concise message only after
 that exact protected link and the resume path are verified.
+
+Restaurant, vendor, market, catering, and solo-chef applicants may use the
+commercial self-application after its server gate is approved. Driver and SOM
+remain invite-only because their legal and product paths are materially
+different; they are never routed through the public partner-category picker.
 
 ## Partner portfolio target and qualification funnel
 
@@ -118,9 +130,18 @@ status-only check-in or availability question is not a work assignment.
 
 - Do not contact Sachiko with a generic `?becomePartner=1` URL; it can create a
   duplicate instead of claiming the intended profile.
+- Do not ask Sachiko or Kyoko to choose between operational and legal roles in
+  separate registrations. Maintain one Pure Kitchen profile, one operator
+  assignment, and a separately verified signer assignment when needed.
 - Do not enable the agreement runtime flag or register a legal version before
   counsel approval and the canonical database path are proven.
 - Do not treat adding an icon, completing a Swipe profile, signing an agreement,
   or reaching a generic Local page as proof of orderability.
 - Do not publish, advertise a named partner, take payments/orders, recruit
   drivers, or apply any database/Production change through this review lane.
+- Do not treat this PR's own Actions result as independent approval: the PR
+  controls both workflow and verifier. A protected trusted workflow/branch rule
+  and independent review are still required.
+- Do not treat Swipe's Local-attestor receipt as proof that Local can accept an
+  order. The matching Local implementation and end-to-end driver flow must pass
+  separately before the smoke-test gate can open.

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { agreementDraftForListing, renderAgreementText } from "../contracts/partnerAgreements";
 import { useModalDialog } from "../lib/useModalDialog";
+import { buildPartnerAgreementAssertions } from "../lib/partnerAgreementAssertions";
 import {
   loadPartnerAgreementForAcceptance,
   recordPartnerAgreementAcceptance,
@@ -60,8 +61,6 @@ export default function PartnerAgreementFlow({ user, listing, onClose, onAccepte
   const [authority, setAuthority] = useState(false);
   const [electronicConsent, setElectronicConsent] = useState(false);
   const [reviewed, setReviewed] = useState(false);
-  const [termsOpenedAt] = useState(() => new Date().toISOString());
-  const [downloadedAt, setDownloadedAt] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [receipt, setReceipt] = useState(null);
@@ -117,7 +116,6 @@ export default function PartnerAgreementFlow({ user, listing, onClose, onAccepte
       `${safeFileName(listing?.name)}-${safeFileName(agreementVersion)}${serverAgreement ? "" : "-review-draft"}.txt`,
       serverAgreement ? agreementText : reviewDraftForDownload(template, listing),
     );
-    setDownloadedAt(new Date().toISOString());
   };
 
   const acceptAgreement = async () => {
@@ -133,20 +131,15 @@ export default function PartnerAgreementFlow({ user, listing, onClose, onAccepte
     setBusy(true);
     setError(null);
     try {
-      const assertions = {
-        assertions_version: "heha-partner-acceptance-v1",
-        signer_legal_name: signer.legalName.trim().replace(/\s+/g, " "),
-        signer_title: signer.title.trim().replace(/\s+/g, " "),
-        typed_signature: signer.signature.trim().replace(/\s+/g, " "),
-        signer_authority_confirmed: authority,
-        electronic_records_consent: electronicConsent,
-        reviewed_complete_agreement: reviewed,
-        assent_text: assentText,
-        terms_opened_at_client: termsOpenedAt,
-        terms_downloaded_at_client: downloadedAt,
-        timezone_client: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
-        locale_client: navigator.language || null,
-      };
+      const assertions = buildPartnerAgreementAssertions({
+        signerLegalName: signer.legalName,
+        signerTitle: signer.title,
+        typedSignature: signer.signature,
+        signerAuthorityConfirmed: authority,
+        electronicRecordsConsent: electronicConsent,
+        reviewedCompleteAgreement: reviewed,
+        assentText,
+      });
       const serverReceipt = await recordPartnerAgreementAcceptance({
         partnerId: listing.id,
         actorId: user.id,
@@ -281,7 +274,7 @@ export default function PartnerAgreementFlow({ user, listing, onClose, onAccepte
                 </label>
                 <label className="agreement-check-row">
                   <input type="checkbox" checked={authority} onChange={(event) => setAuthority(event.target.checked)} disabled={!canAccept || busy} />
-                  <span>I am the claimed owner or a separately verified authorized signer for {listing?.name || "the named partner"}.</span>
+                  <span>I am the separately verified authorized signer for {listing?.name || "the named partner"}.</span>
                 </label>
                 <label className="agreement-check-row">
                   <input type="checkbox" checked={electronicConsent} onChange={(event) => setElectronicConsent(event.target.checked)} disabled={!canAccept || busy} />

@@ -1,33 +1,56 @@
 import { supabase } from "../lib/supabase";
+import {
+  preparePartnerApplication,
+  validatePartnerApplicationReceipt,
+  validatePartnerProfileCorrectionReceipt,
+} from "../lib/partnerApplicationReceipt";
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const PRIVATE_STATUSES = new Set(["draft", "submitted", "pending", "missing_info"]);
 const GENERIC_APPLICATION_ERROR = "This private partner application could not be saved. Ask HEHA for a protected link or support.";
 
 function rpcObject(value) {
-  if (Array.isArray(value)) return value[0] || null;
-  return value && typeof value === "object" ? value : null;
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+export async function revisePartnerProfile({
+  actorId,
+  partnerId,
+  requestKey,
+  profileSnapshot,
+}) {
+  try {
+    const prepared = await preparePartnerApplication(profileSnapshot);
+    const { data, error } = await supabase.rpc("revise_partner_profile_v1", {
+      p_partner_id: partnerId,
+      p_request_key: requestKey,
+      p_profile_snapshot: prepared.application,
+    });
+    if (error) throw new Error(GENERIC_APPLICATION_ERROR);
+
+    return validatePartnerProfileCorrectionReceipt(rpcObject(data), {
+      actorId,
+      partnerId,
+      requestKey,
+      expectedSubmittedSha256: prepared.applicationSha256,
+    });
+  } catch {
+    throw new Error(GENERIC_APPLICATION_ERROR);
+  }
 }
 
 export async function createOrResumePartnerApplication({ actorId, requestKey, application }) {
   try {
+    const prepared = await preparePartnerApplication(application);
     const { data, error } = await supabase.rpc("create_or_resume_partner_application_v1", {
       p_request_key: requestKey,
-      p_application: application,
+      p_application: prepared.application,
     });
     if (error) throw new Error(GENERIC_APPLICATION_ERROR);
 
-    const result = rpcObject(data);
-    if (!result
-        || !UUID_PATTERN.test(String(result.id || ""))
-        || !UUID_PATTERN.test(String(result.owner_id || ""))
-        || !UUID_PATTERN.test(String(result.request_key || ""))
-        || result.owner_id !== actorId
-        || result.request_key !== requestKey
-        || !PRIVATE_STATUSES.has(String(result.status || "").toLowerCase())) {
-      throw new Error(GENERIC_APPLICATION_ERROR);
-    }
-    return result;
+    return validatePartnerApplicationReceipt(rpcObject(data), {
+      actorId,
+      requestKey,
+      expectedApplicationSha256: prepared.applicationSha256,
+    });
   } catch {
     throw new Error(GENERIC_APPLICATION_ERROR);
   }

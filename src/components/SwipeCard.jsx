@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import ShareSheet from "./ShareSheet";
 import { filterPublicTags } from "../lib/partnerTags";
 import { publicDescription, TWO_LINE_CLAMP } from "../lib/cardCopy";
-import { isHehaLocalPartner, partnerOrderLabel, partnerOrderUrl } from "../lib/hehaLocalRouting";
+import { partnerOrderLabel, partnerOrderUrl } from "../lib/hehaLocalRouting";
 
 const dragThreshold = 72;
 
@@ -89,10 +89,6 @@ function statusBadge(partner) {
 function displayName(name = "") {
   // Names wrap to 2 lines in the UI (TWO_LINE_CLAMP) instead of hard-truncating.
   return name;
-}
-
-function itemUrl(item) {
-  return item?.url || item?.product_url || item?.link || null;
 }
 
 export default function SwipeCard({ partner, onSwipe }) {
@@ -268,11 +264,8 @@ function PartnerPreviewSheet({ partner, categoryGroup, images, tags, items, onCl
   const hasMultipleImages = images.length > 1;
   const ig = instagramUrl(partner.instagram);
   const website = hasRealWebsite(partner.website) ? partner.website : null;
-  const localDestination = isHehaLocalPartner(partner);
-  const firstOrderUrl = localDestination
-    ? partnerOrderUrl(partner)
-    : items.map(itemUrl).find(Boolean);
-  const orderLabel = localDestination ? partnerOrderLabel(partner) : "Order / view on HEHA";
+  const firstOrderUrl = partnerOrderUrl(partner);
+  const orderLabel = partnerOrderLabel(partner);
   const showingStockImage = isStockPlaceholder(partner, currentImage);
 
   const showPreviousImage = () => {

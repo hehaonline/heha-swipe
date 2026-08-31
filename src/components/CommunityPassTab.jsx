@@ -2,12 +2,16 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { startSupporterCheckout } from "../lib/supporterCheckout";
 import { fetchActiveSupporterSubscription } from "../lib/supporterStatus";
+import { groupPartnerOnboardingAssignments } from "../lib/partnerOnboardingAssignments";
 import PartnerListingPreview from "./PartnerListingPreview";
 import PartnerProfileEditor from "./PartnerProfileEditor";
 import PartnerMediaManager from "./PartnerMediaManager";
 import PartnerCommunityOfferBuilder from "./PartnerCommunityOfferBuilder";
 import PartnerOnboardingChecklist from "./PartnerOnboardingChecklist";
-import { loadPartnerOnboardingCapabilities } from "../services/partnerOnboardingRepository";
+import {
+  loadMyPartnerOnboardingAssignments,
+  loadPartnerOnboardingCapabilities,
+} from "../services/partnerOnboardingRepository";
 
 const PartnerAgreementFlow = lazy(() => import("./PartnerAgreementFlow"));
 const AppInstallGuide = lazy(() => import("./AppInstallGuide"));
@@ -37,8 +41,6 @@ const PARTNER_TYPES = [
   "partner",
   "listed",
 ];
-const VISIBLE_STATUSES = ["approved", "live"];
-
 function isPartnerProfile(profile) {
   return PARTNER_TYPES.includes(profile?.subscription_type || "");
 }
@@ -240,7 +242,19 @@ function CustomerCommunityPass({ user, profile }) {
   );
 }
 
-function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefresh, onListBusiness }) {
+function PartnerHubTab({
+  user,
+  listing,
+  loading,
+  error,
+  isPartnerAccount,
+  canEditProfile,
+  partnerChoices,
+  selectedPartnerId,
+  onSelectPartner,
+  onRefresh,
+  onListBusiness,
+}) {
   const [actionNote, setActionNote] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
@@ -249,8 +263,14 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
   const [showAgreement, setShowAgreement] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const status = normalizeStatus(listing?.status);
-  const visible = Boolean(listing && VISIBLE_STATUSES.includes(status));
+  const visible = listing?.onboarding_capabilities?.publication?.public_swipe_visible === true;
   const certified = listing?.heha_partner === true;
+  const canManageProfile = canEditProfile || (!listing && isPartnerAccount);
+  const signerOnly = Boolean(
+    listing
+    && listing.onboarding_assignment_roles?.includes("authorized_signer")
+    && !listing.onboarding_assignment_roles?.includes("operator"),
+  );
 
   const comingSoon = (label) => {
     setActionNote(`${label} will open after the next dashboard update.`);
@@ -266,6 +286,10 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
   };
 
   const openEditor = () => {
+    if (!canManageProfile) {
+      setActionNote("Profile editing stays with the verified business operator.");
+      return;
+    }
     if (!listing) {
       onListBusiness?.();
       return;
@@ -275,6 +299,10 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
   };
 
   const openMedia = () => {
+    if (!canManageProfile) {
+      setActionNote("Photo and media updates stay with the verified business operator.");
+      return;
+    }
     if (!listing) {
       setActionNote("Submit a business profile before adding logo or photos.");
       return;
@@ -284,6 +312,10 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
   };
 
   const openOffer = () => {
+    if (!canManageProfile) {
+      setActionNote("Offer editing stays with the verified business operator.");
+      return;
+    }
     if (!listing) {
       setActionNote("Submit a business profile before creating a Community Offer.");
       return;
@@ -318,6 +350,8 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
 
   const copy = !listing
     ? "Your business account is active, but no listing was found yet. Start or continue your business registration."
+    : signerOnly
+    ? "You have verified signer access to this partner. You can review and sign the exact agreement; profile, media, and offer editing stay with the business operator."
     : status === "pending"
     ? "Your listing has been submitted. HEHA reviews listings before they become publicly visible."
     : visible
@@ -328,9 +362,26 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
     <>
       <header className="cp-hero partner-hub-hero">
         <p className="eyebrow">Business Partner Hub</p>
-        <h1>Your HEHA Swipe listing</h1>
-        <p className="cp-sub">Track your listing status, update missing info, and prepare your profile for HEHA review.</p>
+        <h1>{signerOnly ? "Assigned HEHA partner" : "Your HEHA Swipe listing"}</h1>
+        <p className="cp-sub">
+          {signerOnly
+            ? "Review the exact agreement and track the receipt-backed launch gates assigned to you."
+            : "Track your listing status, update missing info, and prepare your profile for HEHA review."}
+        </p>
       </header>
+
+      {partnerChoices.length > 1 && (
+        <label className="field-block card-like">
+          <span>Partner assignment</span>
+          <select value={selectedPartnerId || ""} onChange={(event) => onSelectPartner(event.target.value)}>
+            {partnerChoices.map((choice) => (
+              <option key={choice.partner_id} value={choice.partner_id}>
+                {choice.display_name} · {choice.roles.includes("operator") ? "Operator" : "Authorized signer"}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <section className="partner-hub-card card-like" aria-busy={loading}>
         {loading ? (
@@ -379,9 +430,9 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
       {listing && (
         <PartnerOnboardingChecklist
           listing={listing}
-          onEditProfile={openEditor}
+          onEditProfile={canManageProfile ? openEditor : null}
           onReviewAgreement={openAgreement}
-          onAddMedia={openMedia}
+          onAddMedia={canManageProfile ? openMedia : null}
           onInstallApps={openInstallGuide}
           onPreview={openPreview}
         />
@@ -391,20 +442,20 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
         <h2>Partner actions</h2>
         <div className="partner-action-grid">
           <button className="secondary-button" type="button" onClick={onRefresh}>Refresh status</button>
-          <button className="secondary-button" type="button" onClick={openEditor}>{listing ? "Edit business profile" : "Start business profile"}</button>
-          <button className="secondary-button" type="button" onClick={openMedia}>Add logo / photos</button>
+          {canManageProfile && <button className="secondary-button" type="button" onClick={openEditor}>{listing ? "Edit business profile" : "Start business profile"}</button>}
+          {canManageProfile && <button className="secondary-button" type="button" onClick={openMedia}>Add logo / photos</button>}
           <button className="secondary-button" type="button" onClick={openAgreement}>Review agreement</button>
           <button className="secondary-button" type="button" onClick={openInstallGuide}>Install Swipe + Local</button>
           <button className="secondary-button" type="button" onClick={openPreview}>Preview listing</button>
-          <button className="secondary-button" type="button" onClick={openOffer}>Community Offer</button>
-          <button className="secondary-button" type="button" onClick={() => comingSoon("Request certification review")}>Request certification review</button>
+          {canManageProfile && <button className="secondary-button" type="button" onClick={openOffer}>Community Offer</button>}
+          {canManageProfile && <button className="secondary-button" type="button" onClick={() => comingSoon("Request certification review")}>Request certification review</button>}
         </div>
         {actionNote && <div className="cp-billing-note">{actionNote}</div>}
         <p className="partner-hub-fineprint">HEHA review controls visibility and certification. This hub never auto-publishes, auto-certifies, or changes paid SuperSwoop settings.</p>
       </section>
 
       {showPreview && listing && <PartnerListingPreview listing={listing} onClose={() => setShowPreview(false)} />}
-      {showEditor && listing && (
+      {showEditor && listing && canManageProfile && (
         <PartnerProfileEditor
           user={user}
           listing={listing}
@@ -412,7 +463,7 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
           onSaved={handleEditorSaved}
         />
       )}
-      {showMedia && listing && (
+      {showMedia && listing && canManageProfile && (
         <PartnerMediaManager
           user={user}
           listing={listing}
@@ -420,7 +471,7 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
           onChanged={onRefresh}
         />
       )}
-      {showOffer && listing && (
+      {showOffer && listing && canManageProfile && (
         <PartnerCommunityOfferBuilder
           user={user}
           listing={listing}
@@ -452,6 +503,8 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
 
 export default function CommunityPassTab({ user, profile, onListBusiness }) {
   const [ownerListing, setOwnerListing] = useState(null);
+  const [partnerChoices, setPartnerChoices] = useState([]);
+  const [selectedPartnerId, setSelectedPartnerId] = useState(null);
   const [listingLoading, setListingLoading] = useState(false);
   const [listingError, setListingError] = useState(null);
 
@@ -460,6 +513,8 @@ export default function CommunityPassTab({ user, profile, onListBusiness }) {
   const fetchOwnerListing = useCallback(async () => {
     if (!user?.id) {
       setOwnerListing(null);
+      setPartnerChoices([]);
+      setSelectedPartnerId(null);
       return;
     }
 
@@ -475,19 +530,66 @@ export default function CommunityPassTab({ user, profile, onListBusiness }) {
         .maybeSingle();
 
       if (error) throw error;
-      if (!baseListing) {
+
+      const capabilitiesEnabled = import.meta.env.VITE_ENABLE_PARTNER_ONBOARDING_CAPABILITIES === "true";
+      let assignments = [];
+      let assignmentError = null;
+      if (capabilitiesEnabled) {
+        try {
+          assignments = await loadMyPartnerOnboardingAssignments(user.id);
+        } catch (loadError) {
+          assignmentError = loadError;
+        }
+      }
+
+      const assignmentChoices = groupPartnerOnboardingAssignments(assignments);
+      const nextChoices = [...assignmentChoices];
+      if (baseListing && !nextChoices.some((choice) => choice.partner_id === baseListing.id)) {
+        nextChoices.unshift({
+          partner_id: baseListing.id,
+          display_name: baseListing.name,
+          private_profile_status: normalizeStatus(baseListing.status),
+          roles: ["operator"],
+        });
+      }
+      setPartnerChoices(nextChoices);
+
+      const resolvedPartnerId = (
+        selectedPartnerId && nextChoices.some((choice) => choice.partner_id === selectedPartnerId)
+      )
+        ? selectedPartnerId
+        : baseListing?.id || nextChoices[0]?.partner_id || null;
+      if (resolvedPartnerId !== selectedPartnerId) setSelectedPartnerId(resolvedPartnerId);
+
+      const selectedChoice = nextChoices.find((choice) => choice.partner_id === resolvedPartnerId) || null;
+      const selectedOwnedListing = baseListing?.id === resolvedPartnerId ? baseListing : null;
+      let nextListing = selectedOwnedListing || (selectedChoice ? {
+        id: selectedChoice.partner_id,
+        name: selectedChoice.display_name,
+        status: selectedChoice.private_profile_status,
+        complete_pct: null,
+        heha_partner: false,
+      } : null);
+
+      if (!nextListing) {
+        if (assignmentError) throw assignmentError;
         setOwnerListing(null);
         return;
       }
 
-      let nextListing = baseListing;
-      if (import.meta.env.VITE_ENABLE_PARTNER_ONBOARDING_CAPABILITIES === "true") {
+      nextListing = {
+        ...nextListing,
+        onboarding_assignment_roles: selectedChoice?.roles || ["operator"],
+        onboarding_can_edit_profile: Boolean(selectedOwnedListing),
+      };
+
+      if (capabilitiesEnabled) {
         try {
-          const capabilities = await loadPartnerOnboardingCapabilities(baseListing.id, user.id);
-          nextListing = { ...baseListing, onboarding_capabilities: capabilities };
+          const capabilities = await loadPartnerOnboardingCapabilities(nextListing.id, user.id);
+          nextListing = { ...nextListing, onboarding_capabilities: capabilities };
         } catch (releaseGateError) {
           nextListing = {
-            ...baseListing,
+            ...nextListing,
             onboarding_capabilities: null,
             release_gate_error: releaseGateError.message || "Partner release receipts could not be loaded.",
           };
@@ -501,14 +603,14 @@ export default function CommunityPassTab({ user, profile, onListBusiness }) {
     } finally {
       setListingLoading(false);
     }
-  }, [user?.id]);
+  }, [selectedPartnerId, user?.id]);
 
   useEffect(() => {
     fetchOwnerListing();
   }, [fetchOwnerListing]);
 
-  const ownsListing = !!ownerListing;
-  const showPartnerHub = partnerByProfile || ownsListing;
+  const hasListing = !!ownerListing;
+  const showPartnerHub = partnerByProfile || hasListing || partnerChoices.length > 0;
 
   return (
     <section className="community-pass-screen">
@@ -519,6 +621,10 @@ export default function CommunityPassTab({ user, profile, onListBusiness }) {
           loading={listingLoading}
           error={listingError}
           isPartnerAccount={partnerByProfile}
+          canEditProfile={ownerListing?.onboarding_can_edit_profile === true}
+          partnerChoices={partnerChoices}
+          selectedPartnerId={selectedPartnerId}
+          onSelectPartner={setSelectedPartnerId}
           onRefresh={fetchOwnerListing}
           onListBusiness={onListBusiness}
         />

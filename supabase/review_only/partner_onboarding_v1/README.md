@@ -7,6 +7,34 @@ This directory deliberately contains no executable migration. The repository's
 `supabase/migrations`. The UI in this branch therefore keeps
 `VITE_ENABLE_PARTNER_AGREEMENT_ACCEPTANCE` off by default.
 
+It now contains an executable **disposable PostgreSQL proof packet** outside the
+migration chain. GitHub Actions may apply it only to a synthetic PostgreSQL 15
+or 17 service, reapply it, run negative-role/lifecycle/two-client checks, roll it
+back, and rebuild it. These files are not a deployable migration and do not
+authorize a Supabase branch, preview database, staging database, or Production
+change.
+
+## Review-only proof packet
+
+- `000_minimal_baseline.sql` recreates only the representative Auth/partner
+  boundary and the legacy status-only public views needed to prove the bypass.
+- `001_partner_onboarding_foundation.sql` defines private, RLS-forced,
+  append-only claim, application, signer-authority, agreement, evidence,
+  release, revocation, and target-surface receipt records.
+- `002_partner_onboarding_transitions.sql` implements the protected client and
+  service transitions with default-off server switches, recipient binding,
+  BOLA checks, deterministic locks, idempotency, and generic denials.
+- `003_partner_release_gate.sql` replaces synthetic legacy visibility with an
+  allowlisted public-card projection. A release receipt authorizes activation
+  but does not itself claim that Swipe is visible or Local is orderable.
+- `proof/` and `rollback/` hold exact lifecycle, negative-role, concurrency,
+  revocation, teardown, and clean-rebuild evidence.
+
+All seven category documents in the application remain legal-review drafts.
+The proof may register only clearly synthetic test documents and approval
+references; it cannot make any agreement legally approved or signable in a live
+environment.
+
 ## Existing donor contract
 
 Draft PR #127 (`codex/partner-publication-integration-rc`, reviewed at
@@ -44,6 +72,11 @@ category agreement requested here. A reviewed successor must add or prove:
    agreement receipt, business claim, licenses/insurance/tax checks, approved
    media, partner-specific Local profile, exact test-order receipt, final partner
    publication consent, and HEHA admin approval.
+8. Separate target-system activation receipts. Swipe public visibility requires
+   a Swipe activation acknowledgement bound to the current release receipt.
+   Local orderability remains false until HEHA Local returns its own exact
+   partner-identity/order-guard acknowledgement. A Local URL, eligibility flag,
+   smoke-test receipt, or Swipe release cannot substitute for that response.
 
 ## Required versioned RPC boundary
 
@@ -80,6 +113,17 @@ implements them:
   replays return the same private result, conflicting replays fail uniformly,
   and direct-RPC BOLA, duplicate, known-invite, concurrency, revocation, and
   replay proofs are required independently of the browser flag.
+- `revise_partner_profile_v1(partner_id, request_key, profile_snapshot)` is the
+  sole browser edit RPC. The server selects exactly one current provenance:
+  unclaimed applicant or invitation-bound operator. A router-wide append-only
+  request ledger prevents the same actor/request key from crossing those modes.
+  Applicant corrections may repair a typo through collision-checked,
+  append-only business-key history; every prior identity key remains reserved.
+  Claimed corrections keep the invitation-bound name, location, category,
+  category array, and classification exact while allowing receipt-bound
+  operational fields and preserving structured hours. The source-specific
+  child mutators are not executable by browser roles, and raw profile updates
+  cannot bypass either receipt path or drift registered identity.
 - `claim_partner_invitation_v1(invite_token, request_key)` consumes an opaque,
   recipient-bound, expiring, single-use invitation and returns a private claim
   receipt for the authenticated intended operator. It must reject wrong-account,
@@ -115,7 +159,44 @@ sends it only to the versioned claim RPC. The server stores only the minimum
 one-way token verifier and audit evidence required by the approved design.
 The model must allow a verified operator such as Sachiko to complete onboarding
 while preserving a separately verified authorized signer when Kyoko or another
-legal representative must execute the agreement.
+legal representative must execute the agreement. Operational profile control
+never implies legal ownership or signing authority; V1 invitation claims grant
+only the `operator_only` role.
+
+Human staff transitions are authenticated staff actions. The signed-in
+`auth.uid()` must equal the recorded actor, have a verified email, and retain
+the required unrevoked authority at the linearization point. A service key may
+not nominate an arbitrary staff UUID. Machine-only target acknowledgements stay
+separate and least-privileged.
+
+Commercial self-application currently exposes restaurant, vendor, grocery or
+farmers market, catering, and solo-chef relationships. Driver and SOM are
+separate invite-only flows until their product, classification, compensation,
+and legal controls are approved; they must not appear as public self-onboarding
+choices merely because contract review drafts exist.
+
+Authenticated reviewer and dedicated target-principal functions separately
+authorize a release and record target acknowledgements. Their recorded actor
+must be the verified signed-in principal with the current least-privilege role;
+a broad service key cannot attribute a mutation to a supplied human UUID.
+`get_partner_orderability_receipt_v1` is the read-only service contract for
+Local's atomic order guard; it returns nothing unless
+the current release and the current Local activation receipt both survive every
+claim, agreement, evidence, profile-hash, and revocation check. This Swipe
+packet can prove that contract, but only a matching Local-repository change and
+disposable Local order proof can certify real order admission.
+
+The target acknowledgement in this packet is still an attestor assertion; this
+repository cannot independently inspect Local's storage or execute Local's
+order transaction. Therefore neither a green Swipe proof nor an orderability
+receipt is launch evidence by itself. Local must verify/import the receipt and
+prove customer order, partner acceptance, driver handoff, delivery, cancellation,
+and receipt behavior against its own disposable database before any smoke test.
+
+The GitHub workflow and its verifier are changed by this same draft PR. Their
+green result is useful exact-head evidence, not an independent trusted control,
+until the repository enforces a protected base-branch workflow or SHA-pinned
+reusable workflow with required review/branch protection.
 
 ## Release sequence
 

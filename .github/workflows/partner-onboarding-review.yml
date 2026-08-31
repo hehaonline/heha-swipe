@@ -1,45 +1,1302 @@
 name: Partner onboarding review proof
 
+# This pull_request workflow and its verifier are reviewed-candidate evidence,
+# not a trusted enforcement boundary: the PR controls both files. Promotion
+# still requires trusted-base branch protection, CODEOWNERS review, and a
+# required check whose implementation cannot be weakened by the candidate.
+
 on:
   pull_request:
-    paths:
-      - ".github/workflows/partner-onboarding-review.yml"
-      - "docs/partner-onboarding-release-gates.md"
-      - "public/**"
-      - "scripts/verify-partner-onboarding-review.mjs"
-      - "src/**"
-      - "supabase/review_only/partner_onboarding_v1/**"
-      - "package.json"
-      - "package-lock.json"
 
 permissions:
   contents: read
 
-jobs:
-  review-only-proof:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+concurrency:
+  group: partner-onboarding-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
-      - name: Verify no executable migration entered this review lane
+jobs:
+  source-review:
+    name: Node 22 source and build proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out literal pull-request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact head and review-only scope
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          git cat-file -e "$PR_BASE_SHA^{commit}"
+          git diff --check "$PR_BASE_SHA...$PR_HEAD_SHA"
+
+          changed_files_path="$RUNNER_TEMP/partner-onboarding-changed-files.bin"
+          git diff --no-renames --name-only -z "$PR_BASE_SHA...$PR_HEAD_SHA" > "$changed_files_path"
+          mapfile -d '' -t changed_files < "$changed_files_path"
+          printf 'Changed file: %q\n' "${changed_files[@]}"
+
+          provider_pattern='(^|/)(\.mcp\.json|\.npmrc|\.netrc|netlify\.toml|vercel\.json|wrangler\.toml|firebase\.json|\.firebaserc|serverless\.ya?ml)$|(^|/)(\.vercel|\.supabase|infra|terraform)/|^supabase/(config\.toml|seed\.sql)$|\.(tf|tfvars|pem|p8|p12|pfx|ppk|key|jks)$|(^|/)[^/]*(credentials|service-account)[^/]*\.json$'
+          for file in "${changed_files[@]}"; do
+            if [[ "$file" == ".env.example" || "$file" == ".github/workflows/partner-onboarding-review.yml" ]]; then
+              continue
+            fi
+
+            file_lower="${file,,}"
+            case "$file_lower" in
+              supabase/migrations/*|supabase/functions/*)
+                echo "Executable Supabase migrations and functions are prohibited while SWP-016 is blocked: $file" >&2
+                exit 1
+                ;;
+              .env*|*/.env*)
+                echo "Environment file entered the review-only lane: $file" >&2
+                exit 1
+                ;;
+              .github/workflows/*)
+                echo "Another GitHub workflow entered the partner review lane: $file" >&2
+                exit 1
+                ;;
+            esac
+
+            if [[ "$file_lower" =~ $provider_pattern ]]; then
+              echo "Provider or infrastructure configuration entered the review-only lane: $file" >&2
+              exit 1
+            fi
+          done
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Verify deterministic review contract before package lifecycle code
+        run: node scripts/verify-partner-onboarding-review.mjs
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run focused client tests
+        run: >-
+          node --test
+          src/contracts/partnerAgreements.test.js
+          src/components/PartnerProfileEditor.source.test.js
+          src/lib/clientOrderRoutingSource.test.js
+          src/lib/hehaLocalRouting.test.js
+          src/lib/partnerAgreementAssertions.test.js
+          src/lib/partnerAgreementVerification.test.js
+          src/lib/partnerApplicationReceipt.test.js
+          src/lib/partnerInvite.test.js
+          src/lib/partnerOnboardingAssignments.test.js
+          src/lib/partnerOnboardingCapabilities.test.js
+          src/lib/partnerProfileCorrection.test.js
+
+      - name: Check service-worker syntax
+        run: node --check public/sw.js
+
+      - name: Build review candidate
+        run: ./node_modules/.bin/vite build
+
+      - name: Reverify immutable tracked source after tests and build
         shell: bash
         run: |
           set -euo pipefail
-          git diff --name-only "origin/${{ github.base_ref }}...HEAD" > changed-files.txt
-          if grep -q '^supabase/migrations/' changed-files.txt; then
-            echo "Executable Supabase migrations are prohibited while SWP-016 is blocked."
+          git diff --exit-code
+          node scripts/verify-partner-onboarding-review.mjs
+
+  database-review:
+    name: PostgreSQL ${{ matrix.postgres }} disposable server proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["15", "17"]
+
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: partner_onboarding_review
+        options: >-
+          --health-cmd="pg_isready -U postgres -d partner_onboarding_review"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/partner_onboarding_review
+      PGOPTIONS: -c heha.review_only=on
+
+    steps:
+      - name: Check out literal pull-request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind exact disposable database service container
+        shell: bash
+        env:
+          SERVICE_CONTAINER_ID: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          [[ "$SERVICE_CONTAINER_ID" =~ ^[0-9a-f]{12,64}$ ]]
+          printf 'POSTGRES_CONTAINER=%s\n' "$SERVICE_CONTAINER_ID" >> "$GITHUB_ENV"
+
+      - name: Verify literal database proof head
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          git cat-file -e "$PR_BASE_SHA^{commit}"
+          git diff --check "$PR_BASE_SHA...$PR_HEAD_SHA"
+
+          changed_files_path="$RUNNER_TEMP/partner-onboarding-database-files.bin"
+          git diff --no-renames --name-only -z "$PR_BASE_SHA...$PR_HEAD_SHA" > "$changed_files_path"
+          mapfile -d '' -t changed_files < "$changed_files_path"
+          for file in "${changed_files[@]}"; do
+            file_lower="${file,,}"
+            case "$file_lower" in
+              supabase/migrations/*|supabase/functions/*)
+                echo "Executable Supabase scope entered the disposable database proof: $file" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+      - name: Copy exact-head review packet into the disposable database container
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$POSTGRES_CONTAINER"
+          docker exec "$POSTGRES_CONTAINER" mkdir -p /review
+          docker cp "$GITHUB_WORKSPACE/." "$POSTGRES_CONTAINER:/review"
+
+      - name: Apply synthetic baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+            "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+            -f supabase/review_only/partner_onboarding_v1/000_minimal_baseline.sql
+          docker exec -i --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+            "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          insert into public.partners (
+            id,
+            owner_id,
+            name,
+            status,
+            website_eligible,
+            swipe_eligible,
+            local_eligible,
+            local_lane,
+            is_test_record
+          ) values (
+            '92000000-0000-4000-8000-000000000095',
+            null,
+            'HEHA Eligible Public Sentinel',
+            'approved',
+            true,
+            true,
+            true,
+            'meals',
+            false
+          ), (
+            '92000000-0000-4000-8000-000000000096',
+            '00000000-0000-4000-8000-0000000000a1',
+            'HEHA Owner-Only Sentinel',
+            'draft',
+            false,
+            false,
+            false,
+            null,
+            false
+          ), (
+            '92000000-0000-4000-8000-000000000097',
+            null,
+            'HEHA Null-Lane Sentinel',
+            'approved',
+            false,
+            false,
+            true,
+            null,
+            false
+          ), (
+            '92000000-0000-4000-8000-000000000098',
+            '00000000-0000-4000-8000-0000000000a1',
+            'HEHA Test-Record Sentinel',
+            'approved',
+            true,
+            true,
+            true,
+            'meals',
+            true
+          ), (
+            '92000000-0000-4000-8000-000000000099',
+            null,
+            'HEHA Rollback Sentinel',
+            'approved',
+            false,
+            false,
+            false,
+            null,
+            false
+          );
+          SQL
+
+          cat > "$RUNNER_TEMP/verify-partner-public-routines.sh" <<'BASH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          baseline_snapshot="$RUNNER_TEMP/partner-public-routines-baseline.tsv"
+          current_snapshot="$RUNNER_TEMP/partner-public-routines-current.tsv"
+          reviewed_snapshot="$RUNNER_TEMP/partner-public-routines-reviewed.tsv"
+          reviewed_delta="$RUNNER_TEMP/partner-public-routines-delta.tsv"
+          expected_keys="$RUNNER_TEMP/partner-public-routines-expected.txt"
+          actual_keys="$RUNNER_TEMP/partner-public-routines-actual.txt"
+
+          snapshot_public_routines() {
+            docker exec --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+              "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -qAt -F $'\t' -c "
+                select
+                  pg_catalog.format(
+                    'public.%I(%s)',
+                    procedure.proname,
+                    pg_catalog.replace(
+                      pg_catalog.oidvectortypes(procedure.proargtypes),
+                      ', ', ','
+                    )
+                  ),
+                  procedure.prokind,
+                  pg_catalog.pg_get_userbyid(procedure.proowner),
+                  pg_catalog.format_type(procedure.prorettype, null),
+                  language.lanname,
+                  procedure.prosecdef,
+                  procedure.proleakproof,
+                  procedure.proisstrict,
+                  procedure.provolatile,
+                  procedure.proparallel,
+                  procedure.proretset,
+                  procedure.procost,
+                  procedure.prorows,
+                  procedure.prosupport,
+                  coalesce(
+                    pg_catalog.array_to_string(procedure.proconfig, E'\\x1f'),
+                    ''
+                  ),
+                  coalesce(procedure.proacl::text, ''),
+                  pg_catalog.md5(pg_catalog.pg_get_functiondef(procedure.oid))
+                from pg_catalog.pg_proc procedure
+                join pg_catalog.pg_namespace namespace
+                  on namespace.oid = procedure.pronamespace
+                join pg_catalog.pg_language language
+                  on language.oid = procedure.prolang
+                where namespace.nspname = 'public'
+                order by 1;
+              "
+          }
+
+          if [[ "${1:-}" == "--snapshot-baseline" ]]; then
+            snapshot_public_routines | LC_ALL=C sort > "$baseline_snapshot"
+            test -s "$baseline_snapshot"
+            exit 0
+          fi
+
+          test -s "$baseline_snapshot"
+          snapshot_public_routines | LC_ALL=C sort > "$current_snapshot"
+          if ! comm -23 "$baseline_snapshot" "$current_snapshot" \
+            > "$RUNNER_TEMP/partner-public-routines-missing.tsv"; then
+            exit 1
+          fi
+          if [[ -s "$RUNNER_TEMP/partner-public-routines-missing.tsv" ]]; then
+            echo "Baseline public routine metadata changed or disappeared:" >&2
+            sed -n '1,80p' "$RUNNER_TEMP/partner-public-routines-missing.tsv" >&2
             exit 1
           fi
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+          comm -13 "$baseline_snapshot" "$current_snapshot" > "$reviewed_delta"
+          cut -f1 "$reviewed_delta" > "$actual_keys"
+          cat <<'KEYS' | LC_ALL=C sort > "$expected_keys"
+          public.claim_partner_invitation_v1(text,uuid)
+          public.create_or_resume_partner_application_v1(uuid,jsonb)
+          public.get_partner_agreement_for_acceptance_v1(uuid)
+          public.get_partner_onboarding_capabilities_v1(uuid)
+          public.get_partner_orderability_receipt_v1(uuid)
+          public.list_my_partner_onboarding_assignments_v1()
+          public.partner_card_is_current_v1(uuid,text,uuid,uuid)
+          public.partner_has_current_release_v1(uuid,text)
+          public.record_category_partner_agreement_acceptance_v1(uuid,uuid,text,uuid,jsonb)
+          public.revise_partner_application_v1(uuid,uuid,jsonb)
+          public.revise_partner_profile_v1(uuid,uuid,jsonb)
+          KEYS
+          diff -u "$expected_keys" "$actual_keys"
 
-      - run: npm ci
-      - run: npm test
-      - run: node scripts/verify-partner-onboarding-review.mjs
-      - run: node --check public/sw.js
-      - run: npm run build
+          docker exec -i --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+            "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          do $public_function_catalog_exact$
+          declare
+            v_count integer := 0;
+            v_expected_anon boolean;
+            v_expected_authenticated boolean;
+            v_expected_service boolean;
+            v_expected_language text;
+            v_expected_result text;
+            v_expected_volatility "char";
+            v_key text;
+            v_procedure record;
+          begin
+            for v_procedure in
+              select procedure.*
+              from pg_catalog.pg_proc procedure
+              join pg_catalog.pg_namespace namespace
+                on namespace.oid = procedure.pronamespace
+              where namespace.nspname = 'public'
+                and pg_catalog.format(
+                  'public.%I(%s)',
+                  procedure.proname,
+                  pg_catalog.replace(
+                    pg_catalog.oidvectortypes(procedure.proargtypes),
+                    ', ', ','
+                  )
+                ) = any (array[
+                  'public.claim_partner_invitation_v1(text,uuid)',
+                  'public.create_or_resume_partner_application_v1(uuid,jsonb)',
+                  'public.get_partner_agreement_for_acceptance_v1(uuid)',
+                  'public.get_partner_onboarding_capabilities_v1(uuid)',
+                  'public.get_partner_orderability_receipt_v1(uuid)',
+                  'public.list_my_partner_onboarding_assignments_v1()',
+                  'public.partner_card_is_current_v1(uuid,text,uuid,uuid)',
+                  'public.partner_has_current_release_v1(uuid,text)',
+                  'public.record_category_partner_agreement_acceptance_v1(uuid,uuid,text,uuid,jsonb)',
+                  'public.revise_partner_application_v1(uuid,uuid,jsonb)',
+                  'public.revise_partner_profile_v1(uuid,uuid,jsonb)'
+                ]::text[])
+            loop
+              v_count := v_count + 1;
+              v_key := pg_catalog.format(
+                'public.%I(%s)',
+                v_procedure.proname,
+                pg_catalog.replace(
+                  pg_catalog.oidvectortypes(v_procedure.proargtypes),
+                  ', ', ','
+                )
+              );
+              v_expected_anon := v_procedure.proname in (
+                'partner_has_current_release_v1',
+                'partner_card_is_current_v1'
+              );
+              v_expected_authenticated := v_procedure.proname not in (
+                'get_partner_orderability_receipt_v1',
+                'revise_partner_application_v1'
+              );
+              v_expected_service := v_procedure.proname =
+                'get_partner_orderability_receipt_v1';
+              v_expected_language := case
+                when v_procedure.proname in (
+                  'partner_has_current_release_v1',
+                  'partner_card_is_current_v1'
+                ) then 'sql'
+                else 'plpgsql'
+              end;
+              v_expected_result := case
+                when v_procedure.proname in (
+                  'partner_has_current_release_v1',
+                  'partner_card_is_current_v1'
+                ) then 'boolean'
+                else 'jsonb'
+              end;
+              v_expected_volatility := case
+                when v_procedure.proname in (
+                  'get_partner_agreement_for_acceptance_v1',
+                  'get_partner_onboarding_capabilities_v1',
+                  'get_partner_orderability_receipt_v1',
+                  'list_my_partner_onboarding_assignments_v1',
+                  'partner_has_current_release_v1',
+                  'partner_card_is_current_v1'
+                ) then 's'::"char"
+                else 'v'::"char"
+              end;
+
+              if v_procedure.prokind <> 'f'
+                 or pg_catalog.pg_get_userbyid(v_procedure.proowner) <> current_user
+                 or pg_catalog.pg_get_function_result(v_procedure.oid) <>
+                   v_expected_result
+                 or (
+                   select language.lanname
+                   from pg_catalog.pg_language language
+                   where language.oid = v_procedure.prolang
+                 ) <> v_expected_language
+                 or v_procedure.prosecdef is not true
+                 or v_procedure.proleakproof
+                 or v_procedure.proisstrict
+                 or v_procedure.provolatile <> v_expected_volatility
+                 or v_procedure.proparallel <> 'u'
+                 or v_procedure.proretset
+                 or v_procedure.procost <> 100
+                 or v_procedure.prorows <> 0
+                 or v_procedure.prosupport <> 0
+                 or pg_catalog.array_length(v_procedure.proconfig, 1) is distinct from 1
+                 or v_procedure.proconfig[1] <> all (
+                   array['search_path=', 'search_path=""']::text[]
+                 )
+                 or pg_catalog.has_function_privilege(
+                   'anon', v_procedure.oid, 'EXECUTE'
+                 ) is distinct from v_expected_anon
+                 or pg_catalog.has_function_privilege(
+                   'authenticated', v_procedure.oid, 'EXECUTE'
+                 ) is distinct from v_expected_authenticated
+                 or pg_catalog.has_function_privilege(
+                   'service_role', v_procedure.oid, 'EXECUTE'
+                 ) is distinct from v_expected_service
+                 or pg_catalog.has_function_privilege(
+                   'supabase_auth_admin', v_procedure.oid, 'EXECUTE'
+                 )
+                 or exists (
+                   select 1
+                   from pg_catalog.aclexplode(
+                     coalesce(
+                       v_procedure.proacl,
+                       pg_catalog.acldefault('f', v_procedure.proowner)
+                     )
+                   ) acl
+                   where acl.privilege_type = 'EXECUTE'
+                     and (
+                       acl.grantor <> v_procedure.proowner
+                       or acl.is_grantable
+                       or (
+                         acl.grantee <> v_procedure.proowner
+                         and not (
+                           (
+                             v_expected_anon
+                             and acl.grantee = (
+                               select role.oid
+                               from pg_catalog.pg_roles role
+                               where role.rolname = 'anon'
+                             )
+                           )
+                           or (
+                             v_expected_authenticated
+                             and acl.grantee = (
+                               select role.oid
+                               from pg_catalog.pg_roles role
+                               where role.rolname = 'authenticated'
+                             )
+                           )
+                           or (
+                             v_expected_service
+                             and acl.grantee = (
+                               select role.oid
+                               from pg_catalog.pg_roles role
+                               where role.rolname = 'service_role'
+                             )
+                           )
+                         )
+                       )
+                     )
+                 ) then
+                raise exception 'Public function catalog mismatch for %', v_key;
+              end if;
+            end loop;
+
+            if v_count <> 11 then
+              raise exception 'Expected 11 HEHA public functions, found %', v_count;
+            end if;
+          end;
+          $public_function_catalog_exact$;
+          SQL
+
+          if [[ "${1:-}" == "--snapshot-reviewed" ]]; then
+            cp "$reviewed_delta" "$reviewed_snapshot"
+            test -s "$reviewed_snapshot"
+          else
+            test -s "$reviewed_snapshot"
+            cmp "$reviewed_snapshot" "$reviewed_delta"
+          fi
+          BASH
+          chmod 700 "$RUNNER_TEMP/verify-partner-public-routines.sh"
+          "$RUNNER_TEMP/verify-partner-public-routines.sh" --snapshot-baseline
+
+      - name: Prove synthetic legacy authenticated-owner write bypass
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec -i --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+            "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          begin;
+          select pg_catalog.set_config(
+            'request.jwt.claim.sub',
+            '00000000-0000-4000-8000-0000000000a1',
+            true
+          );
+          set local role authenticated;
+          insert into public.partners (
+            id, owner_id, name, status, is_test_record
+          ) values (
+            '92000000-0000-4000-8000-000000000094',
+            '00000000-0000-4000-8000-0000000000a1',
+            'HEHA Legacy Write Probe',
+            'pending',
+            false
+          );
+          update public.partners
+          set name = 'HEHA Legacy Write Probe Updated'
+          where id = '92000000-0000-4000-8000-000000000094';
+          do $legacy_write_succeeded$
+          begin
+            if not exists (
+              select 1
+              from public.partners
+              where id = '92000000-0000-4000-8000-000000000094'
+                and owner_id = '00000000-0000-4000-8000-0000000000a1'
+                and name = 'HEHA Legacy Write Probe Updated'
+                and status = 'pending'
+                and is_test_record is false
+            ) then
+              raise exception 'Synthetic legacy owner write was not modeled';
+            end if;
+          end;
+          $legacy_write_succeeded$;
+          rollback;
+          SQL
+
+      - name: Apply partner onboarding review SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+            "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+            -f supabase/review_only/partner_onboarding_v1/001_partner_onboarding_foundation.sql
+
+          for file in \
+            supabase/review_only/partner_onboarding_v1/002_partner_onboarding_transitions.sql \
+            supabase/review_only/partner_onboarding_v1/003_partner_release_gate.sql; do
+            docker exec --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+              "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "$file"
+          done
+          docker exec -i --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+            "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          do $rebuild_write_boundary$
+          begin
+            if pg_catalog.has_table_privilege('authenticated', 'public.partners', 'INSERT')
+               or pg_catalog.has_table_privilege('authenticated', 'public.partners', 'UPDATE')
+               or exists (
+                 select 1
+                 from pg_catalog.unnest(array['service_role', 'supabase_auth_admin']) role_name
+                 cross join pg_catalog.unnest(array[
+                   'SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                   'TRUNCATE', 'REFERENCES', 'TRIGGER'
+                 ]) privilege_name
+                 where pg_catalog.has_table_privilege(
+                   role_name, 'public.partners', privilege_name
+                 )
+               )
+               or exists (
+                 select 1
+                 from pg_catalog.pg_policies policy
+                 where policy.schemaname = 'public'
+                   and policy.tablename = 'partners'
+                   and policy.policyname in (
+                     'Legacy partner owner inserts pending profile',
+                     'Legacy partner owner updates pending profile'
+                   )
+               ) then
+              raise exception 'Exact-file rebuild left the legacy write bypass open';
+            end if;
+          end;
+          $rebuild_write_boundary$;
+          SQL
+
+      - name: Snapshot exact public routine metadata after initial apply
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/verify-partner-public-routines.sh" --snapshot-reviewed
+
+      - name: Verify foundation closed the legacy partner write bypass
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec -i --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+            "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          begin;
+          select pg_catalog.set_config(
+            'request.jwt.claim.sub',
+            '00000000-0000-4000-8000-0000000000a1',
+            true
+          );
+          set local role authenticated;
+          do $legacy_write_closed$
+          declare
+            v_name text;
+          begin
+            begin
+              insert into public.partners (
+                id, owner_id, name, status, is_test_record
+              ) values (
+                '92000000-0000-4000-8000-000000000094',
+                '00000000-0000-4000-8000-0000000000a1',
+                'HEHA Forbidden Legacy Insert',
+                'pending',
+                false
+              );
+              raise exception 'Legacy INSERT unexpectedly succeeded';
+            exception when others then
+              if sqlstate <> '42501' then
+                raise;
+              end if;
+            end;
+
+            begin
+              update public.partners
+              set name = 'HEHA Forbidden Legacy Update'
+              where id = '92000000-0000-4000-8000-000000000096';
+              raise exception 'Legacy UPDATE unexpectedly succeeded';
+            exception when others then
+              if sqlstate <> '42501' then
+                raise;
+              end if;
+            end;
+
+            select name into v_name
+            from public.partners
+            where id = '92000000-0000-4000-8000-000000000096';
+            if v_name is distinct from 'HEHA Owner-Only Sentinel' then
+              raise exception 'Legacy write denial changed the protected row';
+            end if;
+          end;
+          $legacy_write_closed$;
+          rollback;
+          SQL
+
+      - name: Prove exact-file reapply
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            supabase/review_only/partner_onboarding_v1/001_partner_onboarding_foundation.sql \
+            supabase/review_only/partner_onboarding_v1/002_partner_onboarding_transitions.sql \
+            supabase/review_only/partner_onboarding_v1/003_partner_release_gate.sql; do
+            docker exec --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+              "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "$file"
+          done
+          docker exec -i --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+            "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          do $rebuild_write_boundary$
+          begin
+            if pg_catalog.has_table_privilege('authenticated', 'public.partners', 'INSERT')
+               or pg_catalog.has_table_privilege('authenticated', 'public.partners', 'UPDATE')
+               or exists (
+                 select 1
+                 from pg_catalog.unnest(array['service_role', 'supabase_auth_admin']) role_name
+                 cross join pg_catalog.unnest(array[
+                   'SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                   'TRUNCATE', 'REFERENCES', 'TRIGGER'
+                 ]) privilege_name
+                 where pg_catalog.has_table_privilege(
+                   role_name, 'public.partners', privilege_name
+                 )
+               )
+               or exists (
+                 select 1
+                 from pg_catalog.pg_policies policy
+                 where policy.schemaname = 'public'
+                   and policy.tablename = 'partners'
+                   and policy.policyname in (
+                     'Legacy partner owner inserts pending profile',
+                     'Legacy partner owner updates pending profile'
+                   )
+               ) then
+              raise exception 'Exact-file rebuild left the legacy write bypass open';
+            end if;
+          end;
+          $rebuild_write_boundary$;
+          SQL
+
+      - name: Verify public routine metadata after exact-file reapply
+        run: "$RUNNER_TEMP/verify-partner-public-routines.sh"
+
+      - name: Run structural, authorization, lifecycle and release proof
+        run: >-
+          docker exec --workdir /review --env "PGOPTIONS=$PGOPTIONS"
+          "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1
+          -f supabase/review_only/partner_onboarding_v1/proof/001_partner_onboarding.proof.sql
+
+      - name: Run genuine two-client replay and conflict proof
+        run: >-
+          docker exec --workdir /review
+          --env "DATABASE_URL=$DATABASE_URL" --env "PGOPTIONS=$PGOPTIONS"
+          "$POSTGRES_CONTAINER" bash
+          supabase/review_only/partner_onboarding_v1/proof/concurrency_two_client.sh
+
+      - name: Roll back disposable partner-onboarding objects
+        run: >-
+          docker exec --workdir /review --env "PGOPTIONS=$PGOPTIONS"
+          "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1
+          -f supabase/review_only/partner_onboarding_v1/rollback/001_partner_onboarding.rollback.sql
+
+      - name: Verify clean teardown and legacy-view restoration
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec -i --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+            "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          do $clean$
+          declare
+            v_view text;
+            v_definition text;
+          begin
+            if not exists (
+              select 1
+              from public.partners partner
+              where partner.id = '92000000-0000-4000-8000-000000000099'
+                and partner.name = 'HEHA Rollback Sentinel'
+                and partner.status = 'approved'
+                and partner.website_eligible is false
+                and partner.swipe_eligible is false
+                and partner.local_eligible is false
+                and partner.is_test_record is false
+            ) then
+              raise exception 'Partner-onboarding rollback changed or removed the baseline sentinel';
+            end if;
+
+            if exists (
+              select 1
+              from public.partners partner
+              where pg_catalog.lower(
+                pg_catalog.regexp_replace(
+                  pg_catalog.btrim(partner.name),
+                  '[[:space:]]+',
+                  ' ',
+                  'g'
+                )
+              ) = 'synthetic concurrency business race'
+            ) then
+              raise exception 'Partner-onboarding rollback left a normalized business-race profile behind';
+            end if;
+
+            if pg_catalog.to_regnamespace('partner_onboarding_private') is not null
+               or pg_catalog.to_regprocedure(
+                 'partner_onboarding_private.epoch_release_receipt_id_v1(uuid)'
+               ) is not null
+               or pg_catalog.to_regprocedure(
+                 'partner_onboarding_private.invalidate_release_after_partner_change_v1()'
+               ) is not null
+               or pg_catalog.to_regprocedure(
+                 'partner_onboarding_private.list_pending_partner_applications_v1(uuid,integer)'
+               ) is not null
+               or pg_catalog.to_regprocedure(
+                 'partner_onboarding_private.revoke_partner_agreement_acceptance_v1(uuid,uuid,text)'
+               ) is not null
+               or pg_catalog.to_regprocedure(
+                 'partner_onboarding_private.bootstrap_staff_authority_v1(uuid,text)'
+               ) is not null
+               or pg_catalog.to_regprocedure(
+                 'partner_onboarding_private.grant_staff_authority_v1(uuid,text,uuid)'
+               ) is not null
+               or pg_catalog.to_regprocedure(
+                 'partner_onboarding_private.revoke_staff_authority_v1(uuid,uuid,text)'
+               ) is not null
+               or pg_catalog.to_regprocedure(
+                 'partner_onboarding_private.require_active_staff_authority_v1(uuid,text)'
+               ) is not null then
+              raise exception 'Partner-onboarding rollback left a private schema helper behind';
+            end if;
+
+            if exists (
+              select 1
+              from pg_catalog.pg_trigger trigger
+              join pg_catalog.pg_class relation on relation.oid = trigger.tgrelid
+              join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+              where namespace.nspname = 'public'
+                and relation.relname = 'partners'
+                and trigger.tgname = 'invalidate_partner_release_after_reviewed_change'
+                and not trigger.tgisinternal
+            ) then
+              raise exception 'Partner-onboarding rollback left the profile invalidation trigger behind';
+            end if;
+
+            if pg_catalog.to_regclass('public.partner_public_cards_v1') is not null then
+              raise exception 'Partner-onboarding rollback left receipt-backed public snapshots behind';
+            end if;
+
+            if exists (
+              select 1
+              from pg_catalog.pg_proc p
+              join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public'
+                and p.proname = any (array[
+                  'claim_partner_invitation_v1',
+                  'create_or_resume_partner_application_v1',
+                  'revise_partner_application_v1',
+                  'revise_partner_profile_v1',
+                  'get_partner_agreement_for_acceptance_v1',
+                  'record_category_partner_agreement_acceptance_v1',
+                  'get_partner_onboarding_capabilities_v1',
+                  'list_my_partner_onboarding_assignments_v1',
+                  'finalize_partner_release_v1',
+                  'partner_has_current_release_v1',
+                  'partner_card_is_current_v1',
+                  'get_partner_orderability_receipt_v1'
+                ])
+            ) then
+              raise exception 'Partner-onboarding rollback left a public review RPC behind';
+            end if;
+
+            if not pg_catalog.has_table_privilege('anon', 'public.partners', 'SELECT')
+               or not pg_catalog.has_table_privilege('authenticated', 'public.partners', 'SELECT')
+               or pg_catalog.has_table_privilege('anon', 'public.partners', 'INSERT')
+               or pg_catalog.has_table_privilege('anon', 'public.partners', 'UPDATE')
+               or not pg_catalog.has_table_privilege('authenticated', 'public.partners', 'INSERT')
+               or not pg_catalog.has_table_privilege('authenticated', 'public.partners', 'UPDATE')
+               or pg_catalog.has_table_privilege('authenticated', 'public.partners', 'DELETE')
+               or exists (
+                 select 1
+                 from pg_catalog.unnest(array['service_role', 'supabase_auth_admin']) role_name
+                 cross join pg_catalog.unnest(array[
+                   'SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                   'TRUNCATE', 'REFERENCES', 'TRIGGER'
+                 ]) privilege_name
+                 where pg_catalog.has_table_privilege(
+                   role_name, 'public.partners', privilege_name
+                 )
+               )
+               or not exists (
+                 select 1
+                 from pg_catalog.pg_class relation
+                 join pg_catalog.pg_namespace namespace
+                   on namespace.oid = relation.relnamespace
+                 where namespace.nspname = 'public'
+                   and relation.relname = 'partners'
+                   and relation.relrowsecurity
+                   and relation.relforcerowsecurity
+               )
+               or not exists (
+                 select 1
+                 from pg_catalog.pg_policy policy
+                 join pg_catalog.pg_class relation on relation.oid = policy.polrelid
+                 join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+                 where namespace.nspname = 'public'
+                   and relation.relname = 'partners'
+                   and policy.polname = 'Synthetic legacy public status visibility'
+                   and pg_catalog.position(
+                     'status' in pg_catalog.lower(
+                       pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
+                     )
+                   ) > 0
+                   and pg_catalog.position(
+                     'approved' in pg_catalog.lower(
+                       pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
+                     )
+                   ) > 0
+                   and pg_catalog.position(
+                     'live' in pg_catalog.lower(
+                       pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
+                     )
+                   ) > 0
+                   and pg_catalog.position(
+                     'is_test_record' in pg_catalog.lower(
+                       pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
+                     )
+                   ) > 0
+                   and (
+                     pg_catalog.position(
+                       'false' in pg_catalog.lower(
+                         pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
+                       )
+                     ) > 0
+                     or pg_catalog.position(
+                       'not ' in pg_catalog.lower(
+                         pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
+                       )
+                     ) > 0
+                   )
+               ) then
+              raise exception 'Partner-onboarding rollback did not restore legacy partner access';
+            end if;
+
+            if (
+              select pg_catalog.count(*)
+              from pg_catalog.pg_policy policy
+              join pg_catalog.pg_class relation on relation.oid = policy.polrelid
+              join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+              where namespace.nspname = 'public'
+                and relation.relname = 'partners'
+            ) <> 4
+               or not exists (
+                 select 1
+                 from pg_catalog.pg_policy policy
+                 join pg_catalog.pg_class relation on relation.oid = policy.polrelid
+                 join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+                 where namespace.nspname = 'public'
+                   and relation.relname = 'partners'
+                   and policy.polname = 'Synthetic legacy public status visibility'
+                   and policy.polcmd = 'r'
+                   and policy.polwithcheck is null
+                   and (
+                     select pg_catalog.array_agg(
+                       pg_catalog.pg_get_userbyid(role_oid)::text
+                       order by pg_catalog.pg_get_userbyid(role_oid)::text
+                     )
+                     from pg_catalog.unnest(policy.polroles) role_oid
+                   ) = array['anon', 'authenticated']::text[]
+               )
+               or not exists (
+                 select 1
+                 from pg_catalog.pg_policy policy
+                 join pg_catalog.pg_class relation on relation.oid = policy.polrelid
+                 join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+                 where namespace.nspname = 'public'
+                   and relation.relname = 'partners'
+                   and policy.polname = 'Synthetic partner owner reads private profile'
+                   and policy.polcmd = 'r'
+                   and policy.polwithcheck is null
+                   and (
+                     select pg_catalog.array_agg(
+                       pg_catalog.pg_get_userbyid(role_oid)::text
+                       order by pg_catalog.pg_get_userbyid(role_oid)::text
+                     )
+                     from pg_catalog.unnest(policy.polroles) role_oid
+                   ) = array['authenticated']::text[]
+                   and pg_catalog.position(
+                     'auth.uid' in pg_catalog.lower(
+                       pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
+                     )
+                   ) > 0
+                   and pg_catalog.position(
+                     'owner_id' in pg_catalog.lower(
+                       pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
+                     )
+                   ) > 0
+               )
+               or not exists (
+                 select 1
+                 from pg_catalog.pg_policy policy
+                 join pg_catalog.pg_class relation on relation.oid = policy.polrelid
+                 join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+                 where namespace.nspname = 'public'
+                   and relation.relname = 'partners'
+                   and policy.polname = 'Legacy partner owner inserts pending profile'
+                   and policy.polcmd = 'a'
+                   and policy.polqual is null
+                   and policy.polwithcheck is not null
+                   and (
+                     select pg_catalog.array_agg(
+                       pg_catalog.pg_get_userbyid(role_oid)::text
+                       order by pg_catalog.pg_get_userbyid(role_oid)::text
+                     )
+                     from pg_catalog.unnest(policy.polroles) role_oid
+                   ) = array['authenticated']::text[]
+                   and pg_catalog.position(
+                     'owner_id' in pg_catalog.lower(
+                       pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid)
+                     )
+                   ) > 0
+                   and pg_catalog.position(
+                     'pending' in pg_catalog.lower(
+                       pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid)
+                     )
+                   ) > 0
+               )
+               or not exists (
+                 select 1
+                 from pg_catalog.pg_policy policy
+                 join pg_catalog.pg_class relation on relation.oid = policy.polrelid
+                 join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+                 where namespace.nspname = 'public'
+                   and relation.relname = 'partners'
+                   and policy.polname = 'Legacy partner owner updates pending profile'
+                   and policy.polcmd = 'w'
+                   and policy.polqual is not null
+                   and policy.polwithcheck is not null
+                   and (
+                     select pg_catalog.array_agg(
+                       pg_catalog.pg_get_userbyid(role_oid)::text
+                       order by pg_catalog.pg_get_userbyid(role_oid)::text
+                     )
+                     from pg_catalog.unnest(policy.polroles) role_oid
+                   ) = array['authenticated']::text[]
+                   and pg_catalog.position(
+                     'owner_id' in pg_catalog.lower(
+                       pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
+                     )
+                   ) > 0
+                   and pg_catalog.position(
+                     'pending' in pg_catalog.lower(
+                       pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid)
+                     )
+                   ) > 0
+               ) then
+              raise exception 'Partner-onboarding rollback restored an unexpected partner policy inventory';
+            end if;
+
+            foreach v_view in array array[
+              'public.public_partner_directory',
+              'public.public_swipe_partners',
+              'public.public_local_partners'
+            ] loop
+              if pg_catalog.to_regclass(v_view) is null then
+                raise exception 'Partner-onboarding rollback did not restore legacy view %', v_view;
+              end if;
+
+              select pg_catalog.lower(pg_catalog.pg_get_viewdef(v_view::pg_catalog.regclass, true))
+              into v_definition;
+
+              if pg_catalog.position('partners' in v_definition) = 0
+                 or pg_catalog.position('status' in v_definition) = 0
+                 or pg_catalog.position('approved' in v_definition) = 0
+                 or pg_catalog.position('live' in v_definition) = 0
+                 or pg_catalog.position('is_test_record' in v_definition) = 0
+                 or pg_catalog.position('partner_release_receipts' in v_definition) > 0
+                 or pg_catalog.position('partner_surface_activation_receipts' in v_definition) > 0 then
+                raise exception 'Partner-onboarding rollback restored unexpected semantics for %', v_view;
+              end if;
+
+              if (v_view = 'public.public_partner_directory'
+                    and pg_catalog.position('website_eligible' in v_definition) = 0)
+                 or (v_view = 'public.public_swipe_partners'
+                    and pg_catalog.position('swipe_eligible' in v_definition) = 0)
+                 or (v_view = 'public.public_local_partners'
+                    and (
+                      pg_catalog.position('local_eligible' in v_definition) = 0
+                      or pg_catalog.position('local_lane' in v_definition) = 0
+                    )) then
+                raise exception 'Partner-onboarding rollback restored the wrong eligibility boundary for %', v_view;
+              end if;
+
+              if not exists (
+                select 1
+                from pg_catalog.pg_class relation
+                where relation.oid = v_view::pg_catalog.regclass
+                  and coalesce(relation.reloptions, '{}'::text[])
+                    @> array['security_invoker=true']::text[]
+              )
+                 or not pg_catalog.has_table_privilege('anon', v_view, 'SELECT')
+                 or not pg_catalog.has_table_privilege('authenticated', v_view, 'SELECT')
+                 or exists (
+                   select 1
+                   from pg_catalog.unnest(array['service_role', 'supabase_auth_admin']) role_name
+                   cross join pg_catalog.unnest(array[
+                     'SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                     'TRUNCATE', 'REFERENCES', 'TRIGGER'
+                   ]) privilege_name
+                   where pg_catalog.has_table_privilege(
+                     role_name, v_view, privilege_name
+                   )
+                 ) then
+                raise exception 'Partner-onboarding rollback restored unsafe ACL/options for %', v_view;
+              end if;
+            end loop;
+          end;
+          $clean$;
+          SQL
+
+          docker exec -i --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+            "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          begin;
+          set local role anon;
+          do $anon_legacy_behavior$
+          declare
+            v_ids uuid[];
+            v_directory_ids uuid[];
+            v_swipe_ids uuid[];
+            v_local_ids uuid[];
+          begin
+            select pg_catalog.array_agg(partner.id order by partner.id)
+            into v_ids
+            from public.partners partner
+            where partner.id in (
+              '92000000-0000-4000-8000-000000000095',
+              '92000000-0000-4000-8000-000000000096',
+              '92000000-0000-4000-8000-000000000097',
+              '92000000-0000-4000-8000-000000000098',
+              '92000000-0000-4000-8000-000000000099'
+            );
+
+            select pg_catalog.array_agg(id order by id) into v_directory_ids
+            from public.public_partner_directory
+            where id between '92000000-0000-4000-8000-000000000095'
+              and '92000000-0000-4000-8000-000000000099';
+            select pg_catalog.array_agg(id order by id) into v_swipe_ids
+            from public.public_swipe_partners
+            where id between '92000000-0000-4000-8000-000000000095'
+              and '92000000-0000-4000-8000-000000000099';
+            select pg_catalog.array_agg(id order by id) into v_local_ids
+            from public.public_local_partners
+            where id between '92000000-0000-4000-8000-000000000095'
+              and '92000000-0000-4000-8000-000000000099';
+
+            if v_ids is distinct from array[
+              '92000000-0000-4000-8000-000000000095'::uuid,
+              '92000000-0000-4000-8000-000000000097'::uuid,
+              '92000000-0000-4000-8000-000000000099'::uuid
+            ]
+               or v_directory_ids is distinct from array[
+                 '92000000-0000-4000-8000-000000000095'::uuid
+               ]
+               or v_swipe_ids is distinct from array[
+                 '92000000-0000-4000-8000-000000000095'::uuid
+               ]
+               or v_local_ids is distinct from array[
+                 '92000000-0000-4000-8000-000000000095'::uuid
+               ] then
+              raise exception 'Anonymous legacy RLS or eligibility behavior is permissive';
+            end if;
+          end;
+          $anon_legacy_behavior$;
+          rollback;
+
+          begin;
+          select pg_catalog.set_config(
+            'request.jwt.claim.sub',
+            '00000000-0000-4000-8000-0000000000a1',
+            true
+          );
+          set local role authenticated;
+          do $owner_legacy_behavior$
+          declare
+            v_ids uuid[];
+            v_directory_ids uuid[];
+            v_swipe_ids uuid[];
+            v_local_ids uuid[];
+          begin
+            select pg_catalog.array_agg(partner.id order by partner.id)
+            into v_ids
+            from public.partners partner
+            where partner.id in (
+              '92000000-0000-4000-8000-000000000095',
+              '92000000-0000-4000-8000-000000000096',
+              '92000000-0000-4000-8000-000000000097',
+              '92000000-0000-4000-8000-000000000098',
+              '92000000-0000-4000-8000-000000000099'
+            );
+
+            select pg_catalog.array_agg(id order by id) into v_directory_ids
+            from public.public_partner_directory
+            where id between '92000000-0000-4000-8000-000000000095'
+              and '92000000-0000-4000-8000-000000000099';
+            select pg_catalog.array_agg(id order by id) into v_swipe_ids
+            from public.public_swipe_partners
+            where id between '92000000-0000-4000-8000-000000000095'
+              and '92000000-0000-4000-8000-000000000099';
+            select pg_catalog.array_agg(id order by id) into v_local_ids
+            from public.public_local_partners
+            where id between '92000000-0000-4000-8000-000000000095'
+              and '92000000-0000-4000-8000-000000000099';
+
+            if v_ids is distinct from array[
+              '92000000-0000-4000-8000-000000000095'::uuid,
+              '92000000-0000-4000-8000-000000000096'::uuid,
+              '92000000-0000-4000-8000-000000000097'::uuid,
+              '92000000-0000-4000-8000-000000000098'::uuid,
+              '92000000-0000-4000-8000-000000000099'::uuid
+            ]
+               or v_directory_ids is distinct from array[
+                 '92000000-0000-4000-8000-000000000095'::uuid
+               ]
+               or v_swipe_ids is distinct from array[
+                 '92000000-0000-4000-8000-000000000095'::uuid
+               ]
+               or v_local_ids is distinct from array[
+                 '92000000-0000-4000-8000-000000000095'::uuid
+               ] then
+              raise exception 'Owner legacy RLS behavior is not exact';
+            end if;
+          end;
+          $owner_legacy_behavior$;
+          rollback;
+
+          begin;
+          select pg_catalog.set_config(
+            'request.jwt.claim.sub',
+            '00000000-0000-4000-8000-0000000000d4',
+            true
+          );
+          set local role authenticated;
+          do $other_legacy_behavior$
+          declare
+            v_ids uuid[];
+          begin
+            select pg_catalog.array_agg(partner.id order by partner.id)
+            into v_ids
+            from public.partners partner
+            where partner.id in (
+              '92000000-0000-4000-8000-000000000095',
+              '92000000-0000-4000-8000-000000000096',
+              '92000000-0000-4000-8000-000000000097',
+              '92000000-0000-4000-8000-000000000098',
+              '92000000-0000-4000-8000-000000000099'
+            );
+
+            if v_ids is distinct from array[
+              '92000000-0000-4000-8000-000000000095'::uuid,
+              '92000000-0000-4000-8000-000000000097'::uuid,
+              '92000000-0000-4000-8000-000000000099'::uuid
+            ] then
+              raise exception 'Cross-owner legacy RLS behavior is permissive';
+            end if;
+          end;
+          $other_legacy_behavior$;
+          rollback;
+          SQL
+
+      - name: Reapply after rollback and rerun proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            supabase/review_only/partner_onboarding_v1/001_partner_onboarding_foundation.sql \
+            supabase/review_only/partner_onboarding_v1/002_partner_onboarding_transitions.sql \
+            supabase/review_only/partner_onboarding_v1/003_partner_release_gate.sql \
+            supabase/review_only/partner_onboarding_v1/proof/001_partner_onboarding.proof.sql; do
+            docker exec --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+              "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "$file"
+          done
+          docker exec -i --workdir /review --env "PGOPTIONS=$PGOPTIONS" \
+            "$POSTGRES_CONTAINER" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          do $final_rebuild_write_boundary$
+          begin
+            if pg_catalog.has_table_privilege('authenticated', 'public.partners', 'INSERT')
+               or pg_catalog.has_table_privilege('authenticated', 'public.partners', 'UPDATE')
+               or exists (
+                 select 1
+                 from pg_catalog.unnest(array['service_role', 'supabase_auth_admin']) role_name
+                 cross join pg_catalog.unnest(array[
+                   'SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                   'TRUNCATE', 'REFERENCES', 'TRIGGER'
+                 ]) privilege_name
+                 where pg_catalog.has_table_privilege(
+                   role_name, 'public.partners', privilege_name
+                 )
+               )
+               or exists (
+                 select 1
+                 from pg_catalog.pg_policies policy
+                 where policy.schemaname = 'public'
+                   and policy.tablename = 'partners'
+                   and policy.policyname in (
+                     'Legacy partner owner inserts pending profile',
+                     'Legacy partner owner updates pending profile'
+                   )
+               ) then
+              raise exception 'Final exact-file rebuild left the legacy write bypass open';
+            end if;
+          end;
+          $final_rebuild_write_boundary$;
+          SQL
+          "$RUNNER_TEMP/verify-partner-public-routines.sh"
