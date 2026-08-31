@@ -472,25 +472,29 @@ declare
   v_allow_service boolean;
 begin
   select pg_catalog.array_agg(
-           pg_catalog.to_regprocedure(signature)::text order by 1
+           pg_catalog.to_regprocedure(signature)::text
+           order by pg_catalog.to_regprocedure(signature)::text
          )
   into v_expected
   from pg_catalog.unnest(v_expected_input) signature;
 
   select pg_catalog.array_agg(
-           pg_catalog.to_regprocedure(signature)::oid order by 1
+           pg_catalog.to_regprocedure(signature)::oid
+           order by pg_catalog.to_regprocedure(signature)::oid
          )
   into v_client_oids
   from pg_catalog.unnest(v_client_input) signature;
 
   select pg_catalog.array_agg(
-           pg_catalog.to_regprocedure(signature)::oid order by 1
+           pg_catalog.to_regprocedure(signature)::oid
+           order by pg_catalog.to_regprocedure(signature)::oid
          )
   into v_public_read_oids
   from pg_catalog.unnest(v_public_read_input) signature;
 
   select pg_catalog.array_agg(
-           pg_catalog.to_regprocedure(signature)::oid order by 1
+           pg_catalog.to_regprocedure(signature)::oid
+           order by pg_catalog.to_regprocedure(signature)::oid
          )
   into v_stable_oids
   from pg_catalog.unnest(array[
@@ -790,11 +794,15 @@ declare
   v_oid oid;
   v_config text[];
 begin
-  select pg_catalog.array_agg(pg_catalog.to_regprocedure(signature)::text order by 1)
+  select pg_catalog.array_agg(
+           pg_catalog.to_regprocedure(signature)::text
+           order by pg_catalog.to_regprocedure(signature)::text
+         )
   into v_expected
   from pg_catalog.unnest(v_expected_input) signature;
   select pg_catalog.array_agg(
-           pg_catalog.to_regprocedure(signature)::oid order by 1
+           pg_catalog.to_regprocedure(signature)::oid
+           order by pg_catalog.to_regprocedure(signature)::oid
          )
   into v_authenticated_oids
   from pg_catalog.unnest(v_authenticated_input) signature;
