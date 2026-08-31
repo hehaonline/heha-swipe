@@ -3564,6 +3564,9 @@ begin
      or v_legal_name is null
      or v_location_key is null
      or v_relationship_type is null
+     or v_relationship_type not in (
+       'restaurant', 'vendor', 'market', 'catering', 'solo_chef'
+     )
      or coalesce(pg_catalog.cardinality(v_categories), 0) = 0 then
     perform partner_onboarding_private.raise_partner_request_denied_v1();
   end if;
@@ -3884,6 +3887,9 @@ begin
      or v_legal_name is null
      or v_location_key is null
      or v_relationship_type is null
+     or v_relationship_type not in (
+       'restaurant', 'vendor', 'market', 'catering', 'solo_chef'
+     )
      or coalesce(pg_catalog.cardinality(v_categories), 0) = 0 then
     perform partner_onboarding_private.raise_partner_request_denied_v1();
   end if;

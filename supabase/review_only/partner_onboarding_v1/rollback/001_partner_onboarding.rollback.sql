@@ -150,7 +150,8 @@ drop schema if exists partner_onboarding_private cascade;
 delete from public.partners
   where (
     id = '91000000-0000-4000-8000-000000000001'
-    and name = 'Synthetic Concurrency One Reviewed'
+    and name = 'Synthetic Concurrency One'
+    and bio = 'Synthetic concurrency one reviewed profile'
   )
   or (
     id = '91000000-0000-4000-8000-000000000002'

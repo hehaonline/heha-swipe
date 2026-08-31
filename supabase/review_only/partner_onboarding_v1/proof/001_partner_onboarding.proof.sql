@@ -1866,6 +1866,68 @@ set local role authenticated;
 select pg_catalog.set_config(
   'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000c3', true
 );
+select pg_temp.expect_partner_denied(
+  'driver self-application is invite-only',
+  $sql$select public.create_or_resume_partner_application_v1(
+    '30000000-0000-4000-8000-00000000f201',
+    '{"name":"Synthetic Driver Self Applicant","legal_name":"Synthetic Driver Self Applicant LLC","postal_code":"33607","location":"Tampa, FL","category":"Driver","categories":["Driver"]}'::jsonb
+  )$sql$
+);
+select pg_temp.expect_partner_denied(
+  'SOM self-application is invite-only',
+  $sql$select public.create_or_resume_partner_application_v1(
+    '30000000-0000-4000-8000-00000000f202',
+    '{"name":"Synthetic SOM Self Applicant","legal_name":"Synthetic SOM Self Applicant LLC","postal_code":"33607","location":"Tampa, FL","category":"SOM","categories":["SOM"]}'::jsonb
+  )$sql$
+);
+reset role;
+
+do $invite_only_self_application_denied$
+begin
+  if exists (
+       select 1
+       from partner_onboarding_private.partner_application_requests request
+       where request.actor_id = '00000000-0000-4000-8000-0000000000c3'
+         and request.request_key in (
+           '30000000-0000-4000-8000-00000000f201',
+           '30000000-0000-4000-8000-00000000f202'
+         )
+     )
+     or exists (
+       select 1
+       from partner_onboarding_private.partner_applications application
+       where application.owner_id = '00000000-0000-4000-8000-0000000000c3'
+         and application.candidate_relationship_type in ('driver', 'som')
+     )
+     or exists (
+       select 1
+       from public.partners partner
+       where partner.name in (
+         'Synthetic Driver Self Applicant',
+         'Synthetic SOM Self Applicant'
+       )
+     )
+     or exists (
+       select 1
+       from partner_onboarding_private.partner_business_registry registry
+       where registry.business_key_sha256 in (
+         partner_onboarding_private.normalized_business_key(
+           'Synthetic Driver Self Applicant', 'Tampa, FL'
+         ),
+         partner_onboarding_private.normalized_business_key(
+           'Synthetic SOM Self Applicant', 'Tampa, FL'
+         )
+       )
+     ) then
+    raise exception 'Invite-only self-application mutated protected state';
+  end if;
+end;
+$invite_only_self_application_denied$;
+
+set local role authenticated;
+select pg_catalog.set_config(
+  'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000c3', true
+);
 select pg_temp.expect_sqlstate(
   'legacy authenticated direct partner INSERT is closed after foundation',
   '42501',
@@ -1967,6 +2029,108 @@ $application_first_single_raw_profile$;
 -- private and unclaimed. The receipt is immutable/idempotent, the normalized
 -- business identity cannot move, and no other authenticated actor can revise
 -- the application (APPLICATION_REVISION_BOLA_REPLAY).
+insert into pg_temp.partner_onboarding_proof_state(key, value)
+select 'invite_only_revision_profile_sha256_before',
+       partner_onboarding_private.partner_profile_sha256(
+         (select (value::jsonb ->> 'id')::uuid
+          from pg_temp.partner_onboarding_proof_state
+          where key = 'application_first')
+       );
+
+set local role authenticated;
+select pg_catalog.set_config(
+  'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000c3', true
+);
+select pg_temp.expect_partner_denied(
+  'application cannot revise into invite-only driver relationship',
+  $sql$select public.revise_partner_profile_v1(
+    (
+      select (value::jsonb ->> 'id')::uuid
+      from pg_temp.partner_onboarding_proof_state where key = 'application_first'
+    ),
+    '30000000-0000-4000-8000-00000000f203',
+    '{"name":"Synthetic Applicant","legal_name":"Synthetic Applicant LLC","postal_code":"33606","location":"Tampa, FL","category":"Driver","categories":["Driver"],"bio":"invite-only driver attempt"}'::jsonb
+  )$sql$
+);
+select pg_temp.expect_partner_denied(
+  'application cannot revise into invite-only SOM relationship',
+  $sql$select public.revise_partner_profile_v1(
+    (
+      select (value::jsonb ->> 'id')::uuid
+      from pg_temp.partner_onboarding_proof_state where key = 'application_first'
+    ),
+    '30000000-0000-4000-8000-00000000f204',
+    '{"name":"Synthetic Applicant","legal_name":"Synthetic Applicant LLC","postal_code":"33606","location":"Tampa, FL","category":"SOM","categories":["SOM"],"bio":"invite-only SOM attempt"}'::jsonb
+  )$sql$
+);
+reset role;
+
+do $invite_only_application_revision_denied$
+declare
+  v_partner_id uuid := (
+    select (value::jsonb ->> 'id')::uuid
+    from pg_temp.partner_onboarding_proof_state where key = 'application_first'
+  );
+  v_application_id uuid := (
+    select (value::jsonb ->> 'application_receipt_id')::uuid
+    from pg_temp.partner_onboarding_proof_state where key = 'application_first'
+  );
+begin
+  if exists (
+       select 1
+       from partner_onboarding_private.partner_profile_correction_requests request
+       where request.actor_id = '00000000-0000-4000-8000-0000000000c3'
+         and request.request_key in (
+           '30000000-0000-4000-8000-00000000f203',
+           '30000000-0000-4000-8000-00000000f204'
+         )
+     )
+     or exists (
+       select 1
+       from partner_onboarding_private.partner_application_corrections correction
+       where correction.actor_id = '00000000-0000-4000-8000-0000000000c3'
+         and correction.request_key in (
+           '30000000-0000-4000-8000-00000000f203',
+           '30000000-0000-4000-8000-00000000f204'
+         )
+     )
+     or exists (
+       select 1
+       from partner_onboarding_private.partner_business_key_corrections correction
+       where correction.partner_id = v_partner_id
+     )
+     or not exists (
+       select 1
+       from public.partners partner
+       where partner.id = v_partner_id
+         and partner.category = 'Vendor'
+         and partner.categories = array['Vendor']::text[]
+     )
+     or not exists (
+       select 1
+       from partner_onboarding_private.partner_applications application
+       where application.id = v_application_id
+         and application.candidate_relationship_type = 'vendor'
+         and application.application_sha256 = (
+           select value::jsonb ->> 'application_sha256'
+           from pg_temp.partner_onboarding_proof_state
+           where key = 'application_first'
+         )
+         and application.application_snapshot ->> 'category' = 'Vendor'
+         and application.application_snapshot -> 'categories' =
+           '["Vendor"]'::jsonb
+     )
+     or partner_onboarding_private.partner_profile_sha256(v_partner_id)
+          is distinct from (
+            select value
+            from pg_temp.partner_onboarding_proof_state
+            where key = 'invite_only_revision_profile_sha256_before'
+          ) then
+    raise exception 'Invite-only application revision mutated protected state';
+  end if;
+end;
+$invite_only_application_revision_denied$;
+
 set local role authenticated;
 select pg_catalog.set_config(
   'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000c3', true
@@ -3687,11 +3851,26 @@ select 'heha_review_evidence', partner_onboarding_private.issue_partner_evidence
 
 reset role;
 
-do $application_invite_owner_binding$
+do $application_invite_terminal_binding$
 declare
   v_partner_id uuid := (
     select (value::jsonb ->> 'id')::uuid
     from pg_temp.partner_onboarding_proof_state where key = 'application_first'
+  );
+  v_revoked_invite_id uuid := (
+    select value::uuid
+    from pg_temp.partner_onboarding_proof_state
+    where key = 'application_onboarding_invite'
+  );
+  v_fresh_invite_id uuid := (
+    select value::uuid
+    from pg_temp.partner_onboarding_proof_state
+    where key = 'application_reclassified_fresh_invite'
+  );
+  v_claim_id uuid := (
+    select (value::jsonb ->> 'claim_evidence_id')::uuid
+    from pg_temp.partner_onboarding_proof_state
+    where key = 'application_reclassified_claim'
   );
 begin
   if not exists (
@@ -3703,17 +3882,41 @@ begin
        select count(*)
        from partner_onboarding_private.partner_invites invitation
        where invitation.partner_id = v_partner_id
-     ) <> 1
+     ) <> 2
+     or not exists (
+       select 1
+       from partner_onboarding_private.partner_invite_revocations revocation
+       where revocation.invite_id = v_revoked_invite_id
+     )
+     or exists (
+       select 1
+       from partner_onboarding_private.partner_invite_revocations revocation
+       where revocation.invite_id = v_fresh_invite_id
+     )
+     or not exists (
+       select 1
+       from partner_onboarding_private.partner_claims claim
+       where claim.id = v_claim_id
+         and claim.partner_id = v_partner_id
+         and claim.invite_id = v_fresh_invite_id
+         and claim.accepted_by = '00000000-0000-4000-8000-0000000000c3'
+         and claim.accepted_owner_id = '00000000-0000-4000-8000-0000000000c3'
+         and claim.legal_relationship_type = 'market'
+     )
+     or partner_onboarding_private.current_claim_receipt_id_v1(v_partner_id)
+          is distinct from v_claim_id
      or not exists (
        select 1
        from partner_onboarding_private.partner_state state
        where state.partner_id = v_partner_id
-         and state.operator_user_id is null
+         and state.legal_relationship_type = 'market'
+         and state.reclassification_pending is false
+         and state.operator_user_id = '00000000-0000-4000-8000-0000000000c3'
      ) then
-    raise exception 'Application invite owner binding or rollback safety mismatch';
+    raise exception 'Application invite reclassification/claim terminal binding mismatch';
   end if;
 end;
-$application_invite_owner_binding$;
+$application_invite_terminal_binding$;
 
 set local role authenticated;
 select pg_catalog.set_config(
@@ -4560,21 +4763,25 @@ begin
 end;
 $kill_switch_fresh_generation_recovery$;
 
--- Replaying the already revoked first release is harmless and cannot delete
--- the successor cards.
+-- A release made stale only by the kill-switch epoch boundary is not an
+-- already-revoked receipt. It must be denied and cannot delete successor
+-- cards.
 set local role authenticated;
 select pg_catalog.set_config(
   'request.jwt.claim.sub', '00000000-0000-4000-8000-000000000106', true
 );
-select partner_onboarding_private.revoke_partner_release_v1(
-  (select (value::jsonb ->> 'release_receipt_id')::uuid
-   from pg_temp.partner_onboarding_proof_state where key = 'release_first'),
-  '00000000-0000-4000-8000-000000000106',
-  'synthetic_stale_release_replay'
+select pg_temp.expect_partner_denied(
+  'kill-switch-stale release cannot revoke current successor cards',
+  $sql$select partner_onboarding_private.revoke_partner_release_v1(
+    (select (value::jsonb ->> 'release_receipt_id')::uuid
+     from pg_temp.partner_onboarding_proof_state where key = 'release_first'),
+    '00000000-0000-4000-8000-000000000106',
+    'synthetic_stale_release_replay'
+  )$sql$
 );
 reset role;
 
-do $successor_cards_survive_stale_revoke$
+do $successor_cards_survive_stale_revoke_denial$
 declare
   v_release uuid := (
     select (value::jsonb ->> 'release_receipt_id')::uuid
@@ -4594,10 +4801,10 @@ begin
            activation.partner_id, activation.surface
          )
      ) <> 2 then
-    raise exception 'Stale release replay deleted or duplicated successor cards';
+    raise exception 'Stale release denial deleted or duplicated successor cards';
   end if;
 end;
-$successor_cards_survive_stale_revoke$;
+$successor_cards_survive_stale_revoke_denial$;
 
 insert into pg_temp.partner_onboarding_proof_state(key, value)
 select 'epoch_before_surface_revocation', release_epoch::text
@@ -4840,7 +5047,7 @@ from partner_onboarding_private.partner_state
 where partner_id = '10000000-0000-4000-8000-0000000000a1';
 
 update public.partners
-set name = 'Synthetic Main Kitchen Reviewed Successor'
+set bio = 'Synthetic reviewed successor profile'
 where id = '10000000-0000-4000-8000-0000000000a1';
 
 do $profile_change_invalidation$
@@ -4875,7 +5082,8 @@ begin
      or not exists (
        select 1 from public.partners
        where id = '10000000-0000-4000-8000-0000000000a1'
-         and name = 'Synthetic Main Kitchen Reviewed Successor'
+         and name = 'Synthetic Main Kitchen'
+         and bio = 'Synthetic reviewed successor profile'
          and status = 'paused'
          and heha_partner is false
          and website_eligible is false

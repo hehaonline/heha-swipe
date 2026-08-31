@@ -780,6 +780,11 @@ const applicationSection = functionSection(
   database.transitions,
   "public.create_or_resume_partner_application_v1",
 );
+const selfApplicationRelationshipAllowlistPattern = /v_relationship_type\s+not\s+in\s*\(\s*'restaurant'\s*,\s*'vendor'\s*,\s*'market'\s*,\s*'catering'\s*,\s*'solo_chef'\s*\)/i;
+assert(
+  selfApplicationRelationshipAllowlistPattern.test(applicationSection),
+  "self-application server boundary excludes invite-only driver and SOM relationships",
+);
 for (const receiptField of ["application_receipt_id", "application_sha256", "receipt_status"]) {
   assert(applicationSection.includes(`'${receiptField}'`), `application RPC returns ${receiptField} on every verified replay`);
 }
@@ -788,6 +793,10 @@ assert(applicationSection.includes("'verified'"), "application RPC marks its imm
 const applicationCorrectionSection = functionSection(
   database.transitions,
   "public.revise_partner_application_v1",
+);
+assert(
+  selfApplicationRelationshipAllowlistPattern.test(applicationCorrectionSection),
+  "self-application correction server boundary excludes invite-only driver and SOM relationships",
 );
 for (const receiptField of [
   "application_receipt_id",
@@ -933,6 +942,17 @@ for (const correctionProofMarker of [
   "APPLICATION_REVISION_STALE_AFTER_INVITE",
 ]) {
   assert(database.proof.includes(correctionProofMarker), `application-correction proof covers ${correctionProofMarker}`);
+}
+for (const inviteOnlyProofMarker of [
+  "driver self-application is invite-only",
+  "SOM self-application is invite-only",
+  "invite_only_self_application_denied",
+  "application cannot revise into invite-only driver relationship",
+  "application cannot revise into invite-only SOM relationship",
+  "invite_only_revision_profile_sha256_before",
+  "invite_only_application_revision_denied",
+]) {
+  assert(database.proof.includes(inviteOnlyProofMarker), `invite-only server proof covers ${inviteOnlyProofMarker}`);
 }
 assert(database.proof.includes("BUSINESS_KEY_A_B_A_RECOVERY"), "application correction proves A-to-B-to-A root recovery");
 assert(
@@ -1624,7 +1644,7 @@ assert(
   "rollback cleanup uses only the exact fixed partners and two synthetic applicant owners",
 );
 for (const [partnerId, partnerName] of [
-  ["91000000-0000-4000-8000-000000000001", "Synthetic Concurrency One Reviewed"],
+  ["91000000-0000-4000-8000-000000000001", "Synthetic Concurrency One"],
   ["91000000-0000-4000-8000-000000000002", "Synthetic Concurrency Two"],
   ["91000000-0000-4000-8000-000000000003", "Synthetic Concurrency Existing Invite"],
 ]) {
@@ -1633,6 +1653,10 @@ for (const [partnerId, partnerName] of [
     `rollback bounds fixed synthetic partner ${partnerId} by its exact name`,
   );
 }
+assert(
+  /id\s*=\s*'91000000-0000-4000-8000-000000000001'[\s\S]{0,240}?bio\s*=\s*'Synthetic concurrency one reviewed profile'/i.test(cleanupStatement),
+  "rollback bounds the watched-profile concurrency fixture by its exact successor bio",
+);
 assert(
   /owner_id\s+in\s*\([\s\S]*?00000000-0000-4000-8000-0000000000c3[\s\S]*?00000000-0000-4000-8000-0000000000d4[\s\S]*?regexp_replace[\s\S]*?synthetic concurrency business race[\s\S]*?regexp_replace[\s\S]*?tampa, fl/i.test(cleanupStatement),
   "rollback bounds its dynamic cleanup by both synthetic owners and normalized business identity",

@@ -880,7 +880,7 @@ profile_race_release_sql="select (
   ) ->> 'release_receipt_id'
 )::uuid;"
 profile_race_edit_sql="update public.partners
-  set name = 'Synthetic Concurrency One Reviewed'
+  set bio = 'Synthetic concurrency one reviewed profile'
   where id = '$PARTNER_ONE'
   returning id;"
 
@@ -911,7 +911,10 @@ PROFILE_RACE_STATE="$("${PSQL[@]}" -c "
       select 1 from public.partner_public_cards_v1 where partner_id = '$PARTNER_ONE'
     ))::text
     || ':' ||
-    (select (name = 'Synthetic Concurrency One Reviewed')::text
+    (select (
+       name = 'Synthetic Concurrency One'
+       and bio = 'Synthetic concurrency one reviewed profile'
+     )::text
      from public.partners where id = '$PARTNER_ONE');
 ")"
 if [[ "$PROFILE_RACE_STATE" != 'true:true:true' ]]; then
