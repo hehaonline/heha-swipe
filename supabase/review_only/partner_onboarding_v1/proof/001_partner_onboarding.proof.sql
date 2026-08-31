@@ -2233,9 +2233,12 @@ begin
      or partner_onboarding_private.partner_business_identity_is_current_v1(
        v_partner_id, v_root
      ) is not true
+     -- The helper binds the immutable registry root, not historical aliases.
+     -- Alias reservation is proven by the receipt below and the later
+     -- cross-partner collision denial.
      or partner_onboarding_private.partner_business_identity_is_current_v1(
        v_partner_id, v_alias
-     ) is not true
+     ) is distinct from false
      or not exists (
        select 1
        from partner_onboarding_private.partner_business_registry registry

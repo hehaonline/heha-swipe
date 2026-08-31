@@ -883,6 +883,15 @@ for (const correctionProofMarker of [
 ]) {
   assert(database.proof.includes(correctionProofMarker), `application-correction proof covers ${correctionProofMarker}`);
 }
+assert(database.proof.includes("BUSINESS_KEY_A_B_A_RECOVERY"), "application correction proves A-to-B-to-A root recovery");
+assert(
+  /partner_business_identity_is_current_v1\(\s*v_partner_id\s*,\s*v_alias\s*\)\s+is\s+distinct\s+from\s+false/i.test(database.proof),
+  "A-to-B-to-A proof distinguishes the immutable root from a reserved historical alias",
+);
+assert(
+  database.proof.includes("corrected application business alias remains globally reserved"),
+  "historical application aliases remain reserved against a different partner",
+);
 for (const claimedCorrectionProofMarker of [
   "claimed_profile_revision_first",
   "claimed_profile_revision_replay",
