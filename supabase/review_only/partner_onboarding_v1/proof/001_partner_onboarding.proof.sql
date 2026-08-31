@@ -1257,6 +1257,14 @@ $staff_separation_of_duties$;
 
 set local role authenticated;
 select pg_catalog.set_config(
+  'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000d4', true
+);
+insert into pg_temp.partner_onboarding_proof_state(key, value)
+select 'other_tenant_assignments', public.list_my_partner_onboarding_assignments_v1()::text;
+reset role;
+
+set local role authenticated;
+select pg_catalog.set_config(
   'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000e5', true
 );
 select pg_temp.expect_partner_denied(
@@ -3199,10 +3207,10 @@ reset role;
 
 set local role authenticated;
 select pg_catalog.set_config(
-  'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000d4', true
+  'request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000e5', true
 );
 insert into pg_temp.partner_onboarding_proof_state(key, value)
-select 'outsider_assignments', public.list_my_partner_onboarding_assignments_v1()::text;
+select 'unassigned_actor_assignments', public.list_my_partner_onboarding_assignments_v1()::text;
 select pg_catalog.set_config('request.jwt.claim.sub', '', true);
 select pg_temp.expect_partner_denied(
   'assignment RPC missing actor denied generically',
@@ -3214,17 +3222,54 @@ do $assignment_projection$
 declare
   v_operator jsonb := (select value::jsonb from pg_temp.partner_onboarding_proof_state where key = 'operator_assignments');
   v_signer jsonb := (select value::jsonb from pg_temp.partner_onboarding_proof_state where key = 'signer_assignments');
-  v_outsider jsonb := (select value::jsonb from pg_temp.partner_onboarding_proof_state where key = 'outsider_assignments');
+  v_other_tenant jsonb := (
+    select value::jsonb from pg_temp.partner_onboarding_proof_state
+    where key = 'other_tenant_assignments'
+  );
+  v_unassigned jsonb := (
+    select value::jsonb from pg_temp.partner_onboarding_proof_state
+    where key = 'unassigned_actor_assignments'
+  );
 begin
-  if v_operator ->> 'authorized_actor_id' <> '00000000-0000-4000-8000-0000000000a1'
-     or pg_catalog.jsonb_array_length(v_operator -> 'assignments') <> 1
-     or v_operator #>> '{assignments,0,partner_id}' <> '10000000-0000-4000-8000-0000000000a1'
-     or v_operator #>> '{assignments,0,role}' <> 'operator'
-     or v_signer ->> 'authorized_actor_id' <> '00000000-0000-4000-8000-0000000000b2'
-     or pg_catalog.jsonb_array_length(v_signer -> 'assignments') <> 1
-     or v_signer #>> '{assignments,0,partner_id}' <> '10000000-0000-4000-8000-0000000000a1'
-     or v_signer #>> '{assignments,0,role}' <> 'authorized_signer'
-     or pg_catalog.jsonb_array_length(v_outsider -> 'assignments') <> 0 then
+  if v_operator ->> 'projection_version' is distinct from
+       'heha-partner-assignments-v1'
+     or v_operator ->> 'authorized_actor_id' is distinct from
+       '00000000-0000-4000-8000-0000000000a1'
+     or pg_catalog.jsonb_array_length(v_operator -> 'assignments') is distinct from 1
+     or v_operator #>> '{assignments,0,partner_id}' is distinct from
+       '10000000-0000-4000-8000-0000000000a1'
+     or v_operator #>> '{assignments,0,role}' is distinct from 'operator'
+     or v_signer ->> 'projection_version' is distinct from
+       'heha-partner-assignments-v1'
+     or v_signer ->> 'authorized_actor_id' is distinct from
+       '00000000-0000-4000-8000-0000000000b2'
+     or pg_catalog.jsonb_array_length(v_signer -> 'assignments') is distinct from 1
+     or v_signer #>> '{assignments,0,partner_id}' is distinct from
+       '10000000-0000-4000-8000-0000000000a1'
+     or v_signer #>> '{assignments,0,role}' is distinct from 'authorized_signer'
+     or v_other_tenant ->> 'projection_version' is distinct from
+       'heha-partner-assignments-v1'
+     or v_other_tenant ->> 'authorized_actor_id' is distinct from
+       '00000000-0000-4000-8000-0000000000d4'
+     or pg_catalog.jsonb_array_length(v_other_tenant -> 'assignments')
+       is distinct from 1
+     or v_other_tenant #>> '{assignments,0,partner_id}' is distinct from
+       '10000000-0000-4000-8000-0000000000d4'
+     or v_other_tenant #>> '{assignments,0,role}' is distinct from 'operator'
+     or exists (
+       select 1
+       from pg_catalog.jsonb_array_elements(
+         v_other_tenant -> 'assignments'
+       ) assignment
+       where assignment ->> 'partner_id' =
+         '10000000-0000-4000-8000-0000000000a1'
+     )
+     or v_unassigned ->> 'projection_version' is distinct from
+       'heha-partner-assignments-v1'
+     or v_unassigned ->> 'authorized_actor_id' is distinct from
+       '00000000-0000-4000-8000-0000000000e5'
+     or pg_catalog.jsonb_array_length(v_unassigned -> 'assignments')
+       is distinct from 0 then
     raise exception 'Assignment projection leaked or omitted a tenant assignment';
   end if;
 end;

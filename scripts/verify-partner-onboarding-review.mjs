@@ -1034,6 +1034,16 @@ const assignmentSection = functionSection(
 assert(assignmentSection.includes("heha-partner-assignments-v1"), "assignment projection is versioned");
 assert(assignmentSection.includes("authorized_actor_id"), "assignment projection binds the authenticated actor");
 assert(assignmentSection.includes("authorized_signer"), "assignment projection supports an independently authorized signer");
+assert(database.proof.includes("other_tenant_assignments"), "assignment proof includes a different partner tenant");
+assert(
+  /v_other_tenant\s*#>>\s*'\{assignments,0,partner_id\}'\s+is\s+distinct\s+from\s*'10000000-0000-4000-8000-0000000000d4'/i.test(database.proof),
+  "different-tenant projection is exact-bound to only its own partner",
+);
+assert(database.proof.includes("unassigned_actor_assignments"), "assignment proof includes a verified actor with no partner role");
+assert(
+  /v_unassigned\s*->>\s*'authorized_actor_id'\s+is\s+distinct\s+from\s*'00000000-0000-4000-8000-0000000000e5'/i.test(database.proof),
+  "empty assignment projection remains bound to the exact unassigned actor",
+);
 assert(assignmentSection.includes("verified_email"), "signer discovery rechecks the current confirmed email");
 
 const applicationQueueSection = functionSection(
