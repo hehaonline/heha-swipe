@@ -565,10 +565,10 @@ begin
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended('partner-onboarding:staff-authority-registry', 0)
   );
-  select authorization.* into v_authorization
-  from partner_onboarding_private.staff_bootstrap_authorizations authorization
-  where authorization.user_id = p_user_id
-    and authorization.authority_type = 'security_admin'
+  select bootstrap_auth.* into v_authorization
+  from partner_onboarding_private.staff_bootstrap_authorizations bootstrap_auth
+  where bootstrap_auth.user_id = p_user_id
+    and bootstrap_auth.authority_type = 'security_admin'
   for share;
   if not found
      or nullif(pg_catalog.btrim(v_authorization.authorization_reference), '') is null

@@ -1091,6 +1091,11 @@ const bootstrapSection = functionSection(
 assert(/security\s+definer/i.test(bootstrapSection), "staff bootstrap uses a protected definer boundary");
 assert(/set\s+search_path\s*=\s*''/i.test(bootstrapSection), "staff bootstrap pins an empty search path");
 assert(bootstrapSection.includes("staff_bootstrap_authorizations"), "staff bootstrap requires a DB-owner-seeded authorization");
+assert(
+  /from\s+partner_onboarding_private\.staff_bootstrap_authorizations\s+bootstrap_auth\b/i.test(bootstrapSection)
+    && !/staff_bootstrap_authorizations\s+authorization\b/i.test(bootstrapSection),
+  "staff bootstrap avoids the reserved AUTHORIZATION relation alias",
+);
 assert(bootstrapSection.includes("auth.uid()") && bootstrapSection.includes("verified_auth_email_v1"), "staff bootstrap exact-binds the preauthorized confirmed user");
 assert(
   /grant\s+execute\s+on\s+function\s+partner_onboarding_private\.bootstrap_staff_authority_v1\s*\(\s*uuid,\s*text\s*\)\s+to\s+authenticated/i.test(database.transitions),
