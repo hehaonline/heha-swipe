@@ -51,8 +51,10 @@ This is intentionally split:
   closed because the RPCs do not exist live.
 - Phase B — `003_close_legacy_partner_browser_paths.sql`: revoke the three wide
   views for every browser role, remove public/anonymous base-table access and
-  broad public/saver policies, then preserve authenticated owner/internal
-  SELECT/INSERT/UPDATE only through the reviewed RLS boundary.
+  broad public/saver policies, then regrant authenticated SELECT/INSERT/UPDATE
+  table privileges through RLS. The discovered owner UI uses direct row
+  operations; the internal routing UI reads directly and writes through its two
+  existing role-checked RPCs.
 
 Do not preview-deploy or production-deploy the current client head until Phase A
 has received separate database approval, been applied, and passed anon/auth smoke
@@ -73,8 +75,9 @@ Required Phase B proof:
 2. Each RPC returns only its exact typed fields and exactly the eligible ID set.
 3. Browser roles cannot DELETE, TRUNCATE, REFERENCES, or TRIGGER `partners`.
 4. Ordinary authenticated users cannot read another owner's private row.
-5. Authenticated owner and internal-role SELECT/INSERT/UPDATE flows still pass
-   only within their RLS boundaries.
+5. Owner direct SELECT/INSERT/UPDATE, internal direct SELECT, and the
+   `review_partner_routing` / `reset_partner_routing_suggestion` RPC writes pass
+   only within their respective RLS and role-check boundaries.
 6. HEHA Local, Wix, Make, and website smoke tests pass on their replacements.
 
 The SECURITY DEFINER RPCs are intentional and bounded by zero arguments, fixed

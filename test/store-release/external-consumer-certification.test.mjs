@@ -62,7 +62,10 @@ test("external consumer ledger is explicit and fail-closed", async () => {
     assert.doesNotMatch(line, /\\\|/);
     const cells = line.slice(2, -2).split(" | ");
     assert.equal(cells.length, expectedHeader.length);
-    for (const cell of cells) assert.ok(cell.length > 0);
+    for (const cell of cells) {
+      assert.ok(cell.length > 0);
+      assert.doesNotMatch(cell, /\|/);
+    }
     return cells;
   };
 

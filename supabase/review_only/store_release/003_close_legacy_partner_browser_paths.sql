@@ -18,9 +18,10 @@ revoke all on table
 revoke all on table public.partners
   from public, anon, authenticated;
 
--- Authenticated owner/internal flows retain only the operations they need. Live
--- RLS policies and the owner self-service guard must be proved in staging before
--- this regrant is approved for production.
+-- Regrant table capabilities for direct owner operations and internal reads.
+-- Live RLS and the owner self-service guard must be proved in staging. Internal
+-- routing mutations remain behind their role-checked SECURITY DEFINER RPCs and
+-- are not enabled by this table grant.
 grant select, insert, update on table public.partners
   to authenticated;
 
@@ -41,5 +42,6 @@ commit;
 --   * both Phase-A RPCs return only their exact typed contracts and eligible IDs;
 --   * anon/auth cannot DELETE, TRUNCATE, REFERENCES, or TRIGGER public.partners;
 --   * an ordinary authenticated user cannot read another owner's private row;
---   * owner and internal-role SELECT/INSERT/UPDATE flows still pass;
+--   * owner direct SELECT/INSERT/UPDATE and internal direct SELECT still pass;
+--   * internal routing writes pass only through their role-checked RPCs;
 --   * HEHA Local, Wix, Make, and website smoke tests use certified replacements.
