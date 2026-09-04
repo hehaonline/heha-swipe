@@ -931,9 +931,11 @@ grant select on table public.partners to authenticated;
 -- submit_partner_registration_with_consent remains the only owner-facing row
 -- creation path. Existing owners may replace this exact, typed, public-profile
 -- content set through one SECURITY DEFINER function. No JSON patch, lifecycle,
--- routing, staff-review, media or publication-state field crosses this boundary.
--- Every successful edit changes the exact snapshot hash, so prior consent and
--- HEHA review evidence becomes stale without rewriting either append-only ledger.
+-- staff-review, media or publication-state input crosses this boundary. The
+-- server resets routing, eligibility, lane, pillar and CTA decisions to safe
+-- undecided defaults. Every successful edit changes the exact snapshot hash, so
+-- prior consent and HEHA review evidence becomes stale without rewriting either
+-- append-only ledger.
 create or replace function public.update_my_partner_profile(
   p_partner_id uuid,
   p_expected_profile_snapshot_hash text,
@@ -1106,9 +1108,25 @@ begin
       message='Partner profile changed; refresh before editing.';
   end if;
 
+  insert into app_private.partner_lifecycle_mutation_capabilities(
+    backend_pid,
+    transaction_id,
+    partner_id,
+    operation
+  ) values (
+    pg_catalog.pg_backend_pid(),
+    pg_catalog.txid_current(),
+    p_partner_id,
+    'owner_profile_edit'
+  )
+  on conflict (backend_pid,transaction_id,partner_id)
+  do update set
+    operation=excluded.operation,
+    created_at=pg_catalog.now();
+
   perform pg_catalog.set_config(
     'app.hybrid_partner_context',
-    'owner_profile_rpc',
+    'owner_profile_edit',
     true
   );
 
@@ -1128,6 +1146,18 @@ begin
     instagram=nullif(pg_catalog.btrim(coalesce(p_instagram,'')),''),
     price_range=nullif(pg_catalog.btrim(coalesce(p_price_range,'')),''),
     delivery_days=normalized_delivery_days,
+    heha_pillar=null,
+    website_eligible=null,
+    swipe_eligible=null,
+    local_eligible=null,
+    local_lane=null,
+    primary_cta_destination=null,
+    primary_cta_label=null,
+    primary_cta_path=null,
+    routing_status='suggested',
+    routing_notes=null,
+    routing_updated_by=null,
+    routing_updated_at=null,
     updated_at=pg_catalog.now()
   where partner_row.id=p_partner_id
     and partner_row.owner_id=actor_id
@@ -1163,7 +1193,7 @@ grant execute on function public.update_my_partner_profile(
 comment on function public.update_my_partner_profile(
   uuid,text,text,text[],text,text,text,text[],text,text,text[],text,text,text,text[]
 ) is
-  'Verified current-owner, typed public-profile replacement boundary. Raw authenticated partner INSERT/UPDATE stays revoked; protected state is not accepted; successful edits invalidate prior exact-hash consent and review evidence.';
+  'Verified current-owner, typed public-profile replacement boundary. Raw authenticated partner INSERT/UPDATE stays revoked; protected state is not accepted; successful edits invalidate prior exact-hash consent/review evidence and prior routing decisions.';
 
 -- ---------------------------------------------------------------------------
 -- 4. Sole final private projection. The current-owner consent decision and the

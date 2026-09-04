@@ -347,7 +347,7 @@ begin
     return new;
   end if;
 
-  if tg_op = 'UPDATE' and ctx in ('claim', 'owner_release', 'partnership_request', 'partnership_review', 'listing_change', 'owner_profile_rpc') then
+  if tg_op = 'UPDATE' and ctx in ('claim', 'owner_release', 'partnership_request', 'partnership_review', 'listing_change') then
     return new;
   end if;
 

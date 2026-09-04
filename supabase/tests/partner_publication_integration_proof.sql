@@ -559,8 +559,17 @@ reset role;
 -- ---------------------------------------------------------------------------
 -- Supported new-registration path. No privileged raw partner UPDATE is used:
 -- owner submission/consent, exact-hash staff review, routing finalization and
--- listing activation remain separate RPC decisions.
+-- listing activation remain separate RPC decisions. Temporarily give this
+-- synthetic owner an internal role to prove registration defaults do not depend
+-- on the ordinary-owner trigger branch.
 -- ---------------------------------------------------------------------------
+insert into public.user_roles(user_id,role,active)
+values (
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  'super_admin',
+  true
+);
+
 select pg_temp.set_auth('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
 set local role authenticated;
 select
@@ -622,8 +631,23 @@ begin
       and claim_status='claimed'
       and owner_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'::uuid
       and claimed_by='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'::uuid
+      and claimed_at is not null
+      and partnership_status='not_requested'
+      and contract_status='not_required'
+      and contract_evidence_id is null
       and listing_status='hidden'
       and routing_status='suggested'
+      and routing_notes is null
+      and routing_updated_by is null
+      and routing_updated_at is null
+      and website_eligible is null
+      and swipe_eligible is null
+      and local_eligible is null
+      and local_lane is null
+      and heha_pillar is null
+      and primary_cta_destination is null
+      and primary_cta_label is null
+      and primary_cta_path is null
       and reviewed_at is null
       and reviewed_by is null
       and review_note is null
@@ -635,10 +659,14 @@ begin
   values (
     'new registration starts pending',
     true,
-    'supported owner RPC created a pending, hidden, unrouted profile with exact Swipe consent'
+    'supported owner RPC created the same claimed, pending, hidden, unrouted, no-staff-evidence defaults for an internal-role caller'
   );
 end;
 $proof$;
+
+delete from public.user_roles
+where user_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'::uuid
+  and role='super_admin';
 
 set local role anon;
 select pg_temp.assert_public_state(
@@ -843,7 +871,7 @@ $proof$;
 -- creation path and overwrites lifecycle/audit defaults server-side.
 select pg_temp.set_auth('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
 set local role authenticated;
-select pg_catalog.set_config('app.hybrid_partner_context','owner_profile_rpc',true);
+select pg_catalog.set_config('app.hybrid_partner_context','owner_profile_edit',true);
 select pg_temp.expect_state(
   'forged raw owner update denied',
   '42501',
@@ -958,8 +986,28 @@ begin
     select status='approved'
       and listing_status='listed'
       and reviewed_by is not null
+      and routing_status='suggested'
+      and routing_notes is null
+      and routing_updated_by is null
+      and routing_updated_at is null
+      and website_eligible is null
+      and swipe_eligible is null
+      and local_eligible is null
+      and local_lane is null
+      and heha_pillar is null
+      and primary_cta_destination is null
+      and primary_cta_label is null
+      and primary_cta_path is null
+      and complete_pct=app_private.partner_completion_pct(partners)
     from public.partners
     where id=:'submitted_partner_id'::uuid
+  );
+  assert not exists (
+    select 1
+    from app_private.partner_lifecycle_mutation_capabilities capability_row
+    where capability_row.backend_pid=pg_catalog.pg_backend_pid()
+      and capability_row.transaction_id=pg_catalog.txid_current()
+      and capability_row.partner_id=:'submitted_partner_id'::uuid
   );
   assert exists (
     select 1
@@ -975,9 +1023,9 @@ begin
   );
   insert into partner_publication_integration_results(label,ok,detail)
   values (
-    'owner profile RPC invalidates prior evidence',
+    'owner profile RPC invalidates prior evidence and routing',
     true,
-    'typed current-owner edit changed the exact snapshot hash; prior consent/review stayed append-only but no longer authorizes the profile'
+    'typed current-owner edit changed the exact snapshot hash, recomputed completion, consumed its private capability, preserved append-only evidence, and reset routing/eligibility for fresh review'
   );
 end;
 $proof$;

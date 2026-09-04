@@ -35,7 +35,8 @@ alter table app_private.partner_lifecycle_mutation_capabilities
   drop constraint if exists partner_lifecycle_mutation_capabilities_operation_check,
   add constraint partner_lifecycle_mutation_capabilities_operation_check
     check (operation in (
-      'claim','partnership_request','partnership_review','listing_change','owner_release'
+      'claim','partnership_request','partnership_review','listing_change',
+      'owner_release','owner_profile_edit'
     ));
 
 -- Callable entry point stays restricted to the four caller-initiated operations;
@@ -291,6 +292,14 @@ declare
     'business_type','offerings','neighborhood','tagline','phone','price_range','delivery_days',
     'pricing_notes','complete_pct','updated_at'
   ];
+  owner_profile_rpc_keys constant text[] := array[
+    'name','category','categories','instagram','website','bio','tags','hours',
+    'business_type','offerings','neighborhood','tagline','price_range','delivery_days',
+    'complete_pct','updated_at','heha_pillar','website_eligible','swipe_eligible',
+    'local_eligible','local_lane','primary_cta_destination','primary_cta_label',
+    'primary_cta_path','routing_status','routing_notes','routing_updated_by',
+    'routing_updated_at'
+  ];
 begin
   if actor_id is null then
     return new;
@@ -298,18 +307,66 @@ begin
 
   if tg_op = 'UPDATE' then
     capability_op := app_private.partner_lifecycle_capability(new.id);
-    -- P1 repair: the workflow exception requires a private capability that only
-    -- an approved SECURITY DEFINER workflow, or the gate's structural
+
+    -- Post-review owner edits are allowed only through the typed public RPC.
+    -- The private capability is single-use, cannot be minted by browser roles,
+    -- and always forces routing/eligibility back to safe undecided defaults.
+    if ctx = 'owner_profile_edit'
+       and capability_op is not distinct from ctx then
+      if old.owner_id is distinct from actor_id
+         or new.owner_id is distinct from actor_id then
+        raise exception using
+          errcode='42501',
+          message='Owner profile edit capability is bound to the current owner.';
+      end if;
+
+      new.categories := app_private.normalize_partner_categories(
+        new.categories,
+        new.category
+      );
+      if coalesce(cardinality(new.categories),0)=0 then
+        raise exception using
+          errcode='23514',
+          message='Choose at least one business category.';
+      end if;
+      new.category := new.categories[1];
+      new.complete_pct := app_private.partner_completion_pct(new);
+      new.updated_at := now();
+
+      if new.routing_status is distinct from 'suggested'
+         or new.routing_notes is not null
+         or new.routing_updated_by is not null
+         or new.routing_updated_at is not null
+         or new.heha_pillar is not null
+         or new.website_eligible is not null
+         or new.swipe_eligible is not null
+         or new.local_eligible is not null
+         or new.local_lane is not null
+         or new.primary_cta_destination is not null
+         or new.primary_cta_label is not null
+         or new.primary_cta_path is not null then
+        raise exception using
+          errcode='42501',
+          message='Owner profile edits must invalidate the prior routing decision.';
+      end if;
+
+      if (to_jsonb(new)-owner_profile_rpc_keys)
+           is distinct from (to_jsonb(old)-owner_profile_rpc_keys) then
+        raise exception using
+          errcode='42501',
+          message='Owner profile edit capability exceeded the typed field boundary.';
+      end if;
+      return new;
+    end if;
+
+    -- Other workflow exceptions require a private capability that only an
+    -- approved SECURITY DEFINER workflow, or the gate's structural
     -- Auth-deletion path, can have minted. A caller-set GUC alone is worthless.
     if ctx <> ''
        and capability_op is not distinct from ctx
        and ctx in ('claim','owner_release','partnership_request','partnership_review','listing_change') then
       return new;
     end if;
-  end if;
-
-  if app_private.has_internal_role(array['super_admin', 'developer_admin']) then
-    return new;
   end if;
 
   if tg_op = 'INSERT' then
@@ -363,6 +420,13 @@ begin
     new.listing_status := 'hidden';
     new.opted_out_at := null;
     new.opted_out_by := null;
+    return new;
+  end if;
+
+  -- Registration normalization runs before the internal-role bypass so an
+  -- internal user invoking the sole owner registration RPC receives the same
+  -- claimed, pending, hidden, unrouted, no-staff-evidence defaults.
+  if app_private.has_internal_role(array['super_admin', 'developer_admin']) then
     return new;
   end if;
 
