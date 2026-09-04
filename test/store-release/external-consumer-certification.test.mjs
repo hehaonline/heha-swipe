@@ -1,0 +1,48 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const ledgerUrl = new URL(
+  "../../docs/store-release/EXTERNAL_CONSUMER_CERTIFICATION.md",
+  import.meta.url,
+);
+
+test("external consumer ledger is explicit and fail-closed", async () => {
+  const ledger = await readFile(ledgerUrl, "utf8");
+
+  for (const heading of [
+    "Accountable owner",
+    "Current status",
+    "Evidence",
+    "Last-use evidence",
+    "Phase A certification",
+    "Phase B certification",
+  ]) {
+    assert.match(ledger, new RegExp(heading));
+  }
+
+  for (const consumer of [
+    "HEHA Swipe store-card reader",
+    "HEHA website partner-directory embed",
+    "HEHA Swipe authenticated owner/internal UI",
+    "HEHA HubSpot sync edge function",
+    "HEHA Local",
+    "Wix",
+    "Make",
+    "Other external or non-code consumers",
+  ]) {
+    assert.match(ledger, new RegExp(consumer));
+  }
+
+  assert.match(ledger, /no consumer is presumed certified/i);
+  assert.match(ledger, /repository-search absence (?:are|is) not evidence of non-use/i);
+
+  const inventoryRows = ledger
+    .split("\n")
+    .filter((line) => line.startsWith("| "))
+    .filter((line) => !line.includes("Consumer / surface"))
+    .filter((line) => !line.includes("---"));
+
+  assert.equal(inventoryRows.length, 8);
+  for (const row of inventoryRows) assert.match(row, /NOT CERTIFIED/);
+});

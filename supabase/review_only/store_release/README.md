@@ -57,6 +57,10 @@ Do not preview-deploy or production-deploy the current client head until Phase A
 has received separate database approval, been applied, and passed anon/auth smoke
 proof. Do not apply Phase B until HEHA Local, Wix, Make, website, and every other
 consumer has a certified bounded replacement or verified non-use.
+Track owners and evidence in
+`docs/store-release/EXTERNAL_CONSUMER_CERTIFICATION.md`. Every row starts and
+remains **NOT CERTIFIED** until its explicit evidence checklist is complete;
+absence from a repository search never proves non-use.
 
 Required Phase B proof:
 
