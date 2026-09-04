@@ -827,6 +827,43 @@ $retire_legacy_approval$;
 -- ---------------------------------------------------------------------------
 alter table public.partners enable row level security;
 
+-- Validate the exact legacy owner-DML names and commands before dropping
+-- anything. A familiar name with a different command is drift, not a safe
+-- match, and must stop this review candidate fail closed.
+do $partner_owner_dml_preflight$
+declare
+  unexpected_policy text;
+begin
+  select pg_catalog.string_agg(
+    pg_catalog.format('%I[%s]',policy_row.polname,policy_row.polcmd),
+    ',' order by policy_row.polname,policy_row.polcmd
+  )
+  into unexpected_policy
+  from pg_catalog.pg_policy policy_row
+  where policy_row.polrelid='public.partners'::regclass
+    and policy_row.polcmd in ('a','w','d','*')
+    and not (
+      (
+        policy_row.polname='partners_owner_insert'
+        and policy_row.polcmd='a'
+      )
+      or (
+        policy_row.polname='Owners can update own preapproval partner profile'
+        and policy_row.polcmd='w'
+      )
+    );
+
+  if unexpected_policy is not null then
+    raise exception using
+      errcode='55000',
+      message=pg_catalog.format(
+        'Unexpected public.partners DML/FOR ALL policy requires review before reset: %s',
+        unexpected_policy
+      );
+  end if;
+end;
+$partner_owner_dml_preflight$;
+
 drop policy if exists partners_owner_insert on public.partners;
 drop policy if exists "Owners can update own preapproval partner profile"
   on public.partners;

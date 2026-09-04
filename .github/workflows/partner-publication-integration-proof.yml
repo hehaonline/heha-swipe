@@ -236,6 +236,37 @@ jobs:
             -f supabase/tests/hybrid_partner_lifecycle_proof.sql \
             2>&1 | tee artifacts/partner-publication-integration-proof/hybrid-proof-before-final.txt
 
+      - name: Prove same-name wrong-command policy drift fails closed
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          negative_log=artifacts/partner-publication-integration-proof/policy-drift-negative-control.txt
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 <<'SQL'
+          drop policy partners_owner_insert on public.partners;
+          create policy partners_owner_insert
+          on public.partners
+          for delete
+          to authenticated
+          using (owner_id=auth.uid());
+          SQL
+          if psql -X -1 "${DATABASE_URL}" -v ON_ERROR_STOP=1             -f supabase/migrations/20260817171238_partner_publication_integration_rc.sql             > "${negative_log}" 2>&1; then
+            echo 'Same-name wrong-command policy drift unexpectedly passed.'
+            exit 1
+          fi
+          grep -q 'Unexpected public.partners DML/FOR ALL policy requires review before reset'             "${negative_log}"
+          grep -q 'partners_owner_insert\[d\]' "${negative_log}"
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 <<'SQL'
+          drop policy partners_owner_insert on public.partners;
+          create policy partners_owner_insert
+          on public.partners
+          for insert
+          to authenticated
+          with check (owner_id=auth.uid());
+          SQL
+          echo 'same_name_wrong_command_policy_drift=pass' >> "${negative_log}"
+
       - name: Apply the sole final integration migration
         shell: bash
         env:
