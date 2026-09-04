@@ -10,6 +10,10 @@ import {
 } from "../../src/lib/publicPartner.js";
 
 const source = await readFile(new URL("../../src/lib/publicPartner.js", import.meta.url), "utf8");
+const directorySource = await readFile(
+  new URL("../../src/components/embed/PartnerDirectoryEmbed.jsx", import.meta.url),
+  "utf8"
+);
 const reviewSql = await readFile(
   new URL("../../supabase/review_only/store_release/002_public_partner_card_projection.sql", import.meta.url),
   "utf8"
@@ -31,7 +35,7 @@ const expectedFields = [
   "created_at",
 ];
 
-const expectedReturnColumns = [
+const expectedCardReturnColumns = [
   "id uuid",
   "name text",
   "category text",
@@ -46,6 +50,40 @@ const expectedReturnColumns = [
   "heha_partner boolean",
   "created_at timestamptz",
 ];
+
+const expectedDirectoryReturnColumns = [
+  "id uuid",
+  "name text",
+  "category text",
+  "business_type text",
+  "tagline text",
+  "bio text",
+  "neighborhood text",
+  "location text",
+  "tags text[]",
+  "offerings text[]",
+  "image_url text",
+  "photo_emoji text",
+  "heha_pillar text",
+  "primary_cta_destination text",
+  "primary_cta_label text",
+  "primary_cta_path text",
+  "created_at timestamptz",
+];
+
+function returnColumnsFor(functionName) {
+  const block = reviewSql.match(
+    new RegExp(
+      `function\\s+public\\.${functionName}\\(\\)[\\s\\S]*?returns\\s+table\\s*\\(([\\s\\S]*?)\\)\\s*language\\s+sql`,
+      "i"
+    )
+  );
+  assert.ok(block, `typed RETURNS TABLE block is required for ${functionName}`);
+  return block[1]
+    .split(",")
+    .map((column) => column.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
 
 test("public partner contract is exactly the reviewed 13 fields", () => {
   assert.deepEqual(PUBLIC_PARTNER_FIELDS, expectedFields);
@@ -70,7 +108,7 @@ test("public partner sanitizer cannot leak private or internal columns", () => {
   assert.equal("routing_notes" in result, false);
 });
 
-test("client uses only the bounded zero-argument partner RPC", async () => {
+test("Swipe client uses only the bounded zero-argument partner RPC", async () => {
   const calls = [];
   const client = {
     rpc: async (...args) => {
@@ -89,62 +127,72 @@ test("client uses only the bounded zero-argument partner RPC", async () => {
   assert.doesNotMatch(source, /\.from\s*\(/);
 });
 
-test("review-only RPC has a fixed schema, search path, and eligibility gate", () => {
+test("directory embed uses the bounded zero-argument directory RPC", () => {
   assert.match(
-    reviewSql,
-    /create\s+or\s+replace\s+function\s+public\.list_public_swipe_partner_cards\(\)/i
+    directorySource,
+    /supabase\.rpc\(\s*"list_public_partner_directory"\s*\)/
   );
-  const returnBlock = reviewSql.match(/returns\s+table\s*\(([\s\S]*?)\)\s*language\s+sql/i);
-  assert.ok(returnBlock, "typed RETURNS TABLE block is required");
-  const actualReturnColumns = returnBlock[1]
-    .split(",")
-    .map((column) => column.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-  assert.deepEqual(actualReturnColumns, expectedReturnColumns);
-  assert.match(reviewSql, /stable\s+security\s+definer/i);
-  assert.match(reviewSql, /set\s+search_path\s*=\s*''/i);
-  assert.match(reviewSql, /status\s*=\s*any\s*\(array\['approved'::text,\s*'live'::text\]\)/i);
-  assert.match(reviewSql, /coalesce\(partner\.swipe_eligible,\s*false\)\s*=\s*true/i);
-  assert.match(reviewSql, /coalesce\(partner\.is_test_record,\s*false\)\s*=\s*false/i);
-  assert.doesNotMatch(reviewSql, /select\s+\*/i);
-  assert.doesNotMatch(reviewSql, /\bformat\s*\(/i);
+  assert.doesNotMatch(directorySource, /\.from\(\s*"public_partner_directory"/);
 });
 
-test("review-only packet closes every wide browser read path", () => {
-  for (const relation of [
-    "public_swipe_partners",
-    "public_partner_directory",
-    "public_local_partners",
+test("review-only RPCs have fixed schemas, paths, and eligibility gates", () => {
+  assert.deepEqual(
+    returnColumnsFor("list_public_swipe_partner_cards"),
+    expectedCardReturnColumns
+  );
+  assert.deepEqual(
+    returnColumnsFor("list_public_partner_directory"),
+    expectedDirectoryReturnColumns
+  );
+
+  for (const functionName of [
+    "list_public_swipe_partner_cards",
+    "list_public_partner_directory",
   ]) {
     assert.match(
       reviewSql,
-      new RegExp(`revoke\\s+all[\\s\\S]*public\\.${relation}[\\s\\S]*from\\s+public,\\s*anon,\\s*authenticated`, "i")
+      new RegExp(
+        `create\\s+or\\s+replace\\s+function\\s+public\\.${functionName}\\(\\)`,
+        "i"
+      )
+    );
+    assert.match(
+      reviewSql,
+      new RegExp(
+        `revoke\\s+all\\s+on\\s+function\\s+public\\.${functionName}\\(\\)\\s+from\\s+public,\\s*anon,\\s*authenticated`,
+        "i"
+      )
+    );
+    assert.match(
+      reviewSql,
+      new RegExp(
+        `grant\\s+execute\\s+on\\s+function\\s+public\\.${functionName}\\(\\)\\s+to\\s+anon,\\s*authenticated`,
+        "i"
+      )
     );
   }
-  assert.match(
-    reviewSql,
-    /revoke\s+all\s+on\s+table\s+public\.partners\s+from\s+public,\s*anon,\s*authenticated/i
+
+  assert.match(reviewSql, /stable\s+security\s+definer/i);
+  assert.equal((reviewSql.match(/set\s+search_path\s*=\s*''/gi) || []).length, 2);
+  assert.equal(
+    (reviewSql.match(/status\s*=\s*any\s*\(array\['approved'::text,\s*'live'::text\]\)/gi) || []).length,
+    2
   );
-  assert.match(
-    reviewSql,
-    /grant\s+select,\s*insert,\s*update\s+on\s+table\s+public\.partners\s+to\s+authenticated/i
+  assert.match(reviewSql, /coalesce\(partner\.swipe_eligible,\s*false\)\s*=\s*true/i);
+  assert.match(reviewSql, /coalesce\(partner\.website_eligible,\s*false\)\s*=\s*true/i);
+  assert.equal(
+    (reviewSql.match(/coalesce\(partner\.is_test_record,\s*false\)\s*=\s*false/gi) || []).length,
+    2
   );
+  assert.doesNotMatch(reviewSql, /select\s+\*/i);
+  assert.doesNotMatch(reviewSql, /\bformat\s*\(/i);
   assert.doesNotMatch(
     reviewSql,
-    /grant\s+(?:all|delete|truncate|references|trigger)[^;]*on\s+table\s+public\.partners/i
+    /\b(owner_id|contact|phone|routing_notes|service_fee|pricing_notes|contribution|total_)\b/i
   );
-  assert.match(reviewSql, /drop\s+policy\s+if\s+exists\s+"Anyone can view approved partners"/i);
-  assert.match(reviewSql, /drop\s+policy\s+if\s+exists\s+"Saved partners visible to saver"/i);
-  assert.match(
-    reviewSql,
-    /alter\s+policy\s+"Owners can view own partner"[\s\S]*?to\s+authenticated[\s\S]*?using\s*\(\(select\s+auth\.uid\(\)\)\s*=\s*owner_id\)/i
-  );
-  assert.match(
-    reviewSql,
-    /revoke\s+all\s+on\s+function\s+public\.list_public_swipe_partner_cards\(\)\s+from\s+public,\s*anon,\s*authenticated/i
-  );
-  assert.match(
-    reviewSql,
-    /grant\s+execute\s+on\s+function\s+public\.list_public_swipe_partner_cards\(\)\s+to\s+anon,\s*authenticated/i
-  );
+});
+
+test("Phase A does not prematurely revoke legacy or base-table access", () => {
+  assert.doesNotMatch(reviewSql, /revoke\s+all\s+on\s+table\s+public\.partners/i);
+  assert.doesNotMatch(reviewSql, /drop\s+policy/i);
 });
