@@ -4,35 +4,74 @@ These files are deliberately outside `supabase/migrations`. They are evidence an
 review material only; repository CI, Capacitor sync, and store builds must never
 apply them.
 
-Live metadata reconciliation on 2026-09-04 confirmed that
-`public.account_deletion_requests` has the required columns, RLS is enabled,
-the SELECT/INSERT policies bind rows to `auth.uid() = user_id`, and no duplicate
-`user_id` group exists. It also found browser-role table grants broader than
-the request flow needs. The review-only packet now revokes those broad grants
-from `public`, `anon`, and `authenticated`, then restores only SELECT and
-INSERT for `authenticated`. This finding is evidence for review, not approval
-to apply the SQL.
+## Live reconciliation — 2026-09-04
 
-Before any authorized database change:
+The HEHA Swipe project was inspected read-only.
 
-1. Reconfirm the live `account_deletion_requests` columns, defaults, grants,
-   RLS policies, constraints, and duplicate count still match the SQL
-   preconditions. Do not discard historical requests automatically.
-2. Review `001_request_my_account_deletion.sql` with the Supabase owner,
-   including its least-privilege table grants.
-3. Apply it manually only after explicit production approval, then test as a
-   non-admin authenticated account. Call it twice and preserve evidence that
-   both calls return the same receipt without adding a duplicate row.
-4. Review the dedicated public projection in
-   `002_public_partner_card_projection.sql`; compare its 13 fields with
-   `src/lib/publicPartner.js` before considering a client view-name switch.
-5. Verify grants, RLS behavior, and that internal fields cannot be selected.
+- `account_deletion_requests` has the required columns, RLS is enabled, its
+  existing own-row policies use `auth.uid() = user_id`, and there is no duplicate
+  `user_id` group. Browser roles currently have table privileges broader than
+  the request flow needs.
+- Anonymous access can read 101 rows from the 56-column `public.partners` table.
+  Some rows expose owner/contact/phone/routing/economic fields, and two rows fall
+  outside the intended store eligibility gate.
+- The three legacy public partner views are also broad. The in-repo directory
+  embed used `public_partner_directory`; it is cut over in this PR. Use of
+  `public_local_partners` by HEHA Local, Wix, Make, or another external consumer
+  is not yet disproved.
+
+These findings are evidence for review, not approval to apply SQL.
+
+## Deletion request packet
+
+`001_request_my_account_deletion.sql` narrows direct access to:
+
+- SELECT only on `id, user_id, status, created_at` for `authenticated`;
+- INSERT only on `user_id, email, reason` for `authenticated`;
+- no table privilege for `public` or `anon`;
+- the two existing own-row policies restricted to `authenticated`.
+
+It also adds the idempotent no-argument receipt RPC and one-request-per-user
+index. Before any authorized database change:
+
+1. Reconfirm columns, defaults, policy names, grants, constraints, and duplicate
+   count still match the documented preconditions.
+2. Review the SQL with the Supabase owner. Do not discard historical requests.
+3. Apply manually only after explicit production approval, then call the RPC
+   twice as a non-admin authenticated test user. Preserve evidence that both
+   calls return the same receipt without adding a duplicate row.
+
+## Partner data packet
+
+This is intentionally split:
+
+- Phase A — `002_public_partner_card_projection.sql`: add two zero-argument,
+  fixed-schema RPCs. Swipe gets exactly 13 store-card fields; the public directory
+  gets exactly 17 website fields. The PR clients now call these RPCs and fail
+  closed because the RPCs do not exist live.
+- Phase B — `003_close_legacy_partner_browser_paths.sql`: revoke the three wide
+  views and the base-table browser path, remove broad public/saver policies, and
+  preserve only authenticated owner/internal SELECT/INSERT/UPDATE.
+
+Do not preview-deploy or production-deploy the current client head until Phase A
+has received separate database approval, been applied, and passed anon/auth smoke
+proof. Do not apply Phase B until HEHA Local, Wix, Make, website, and every other
+consumer has a certified bounded replacement or verified non-use.
+
+Required Phase B proof:
+
+1. Anonymous/authenticated direct reads of `partners` and all three legacy views
+   are denied.
+2. Each RPC returns only its exact typed fields and exactly the eligible ID set.
+3. Browser roles cannot DELETE, TRUNCATE, REFERENCES, or TRIGGER `partners`.
+4. Ordinary authenticated users cannot read another owner's private row.
+5. Owner and internal-role SELECT/INSERT/UPDATE flows still pass.
+6. HEHA Local, Wix, Make, and website smoke tests pass on their replacements.
+
+The SECURITY DEFINER RPCs are intentional and bounded by zero arguments, fixed
+typed outputs and predicates, an empty search path, fully-qualified sources, and
+no dynamic SQL.
 
 Account deletion remains a request workflow until an authorized administrator
 removes the Supabase Auth identity and associated personal records. The client
 must not clear roles, delete partial rows, or state that deletion is complete.
-
-Release activation remains blocked until both the dedicated 13-field public
-projection and deletion RPC have been reviewed, applied with separate approval,
-and verified against the live project. The client-side field allowlist is not a
-substitute for the backend projection.
