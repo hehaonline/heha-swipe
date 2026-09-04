@@ -17,6 +17,8 @@ test("external consumer ledger is explicit and fail-closed", async () => {
     "Last-use evidence",
     "Phase A certification",
     "Phase B certification",
+    "Pricing certification",
+    "Pricing smoke evidence",
   ]) {
     assert.match(ledger, new RegExp(heading));
   }
@@ -44,5 +46,25 @@ test("external consumer ledger is explicit and fail-closed", async () => {
     .filter((line) => !line.includes("---"));
 
   assert.equal(inventoryRows.length, 8);
-  for (const row of inventoryRows) assert.match(row, /NOT CERTIFIED/);
+  const header = ledger
+    .split("\n")
+    .find((line) => line.startsWith("| Consumer / surface"))
+    .split("|")
+    .slice(1, -1)
+    .map((cell) => cell.trim());
+  const phaseBIndex = header.indexOf("Phase B certification");
+  const pricingIndex = header.indexOf("Pricing certification");
+
+  assert.ok(phaseBIndex >= 0);
+  assert.ok(pricingIndex >= 0);
+
+  for (const row of inventoryRows) {
+    const cells = row
+      .split("|")
+      .slice(1, -1)
+      .map((cell) => cell.trim());
+    assert.equal(cells.length, header.length);
+    assert.match(cells[phaseBIndex], /^NOT CERTIFIED\b/);
+    assert.match(cells[pricingIndex], /^NOT CERTIFIED\b/);
+  }
 });

@@ -19,23 +19,25 @@ credential, or publish data.
   13-field Swipe or 17-field directory RPC contract, when applicable.
 - Phase B means closing `partners`, `public_swipe_partners`,
   `public_partner_directory`, and `public_local_partners` to browser roles has a
-  passing consumer smoke test or verified non-use. Pricing access is tracked
-  alongside this gate because the separate `heha_pricing` hardening packet has
-  the same external-consumer dependency.
-- Every row remains **NOT CERTIFIED** until its evidence fields are completed.
+  passing consumer smoke test or verified non-use.
+- Pricing is independent: Phase-B partner certification is never evidence for
+  the separate `heha_pricing` hardening packet, or vice versa. Pricing needs its
+  own dated smoke or verified non-use evidence.
+- Every row's Phase-B and pricing fields remain **NOT CERTIFIED** until their
+  separate evidence is complete.
 
 ## Inventory
 
-| Consumer / surface | Accountable owner | Current status | Evidence | Last-use evidence | Phase A certification | Phase B certification |
-| --- | --- | --- | --- | --- | --- | --- |
-| HEHA Swipe store-card reader | Unassigned | Code cut over; live RPC unavailable/unverified | `src/lib/publicPartner.js` calls `list_public_swipe_partner_cards`; contract tests cover 13 fields | Unknown; no dated hosted smoke receipt | NOT CERTIFIED — code-ready only | NOT CERTIFIED — requires Phase-A hosted anon/auth smoke before any client deployment |
-| HEHA website partner-directory embed | Unassigned | Code cut over; hosted embed unverified | `src/components/embed/PartnerDirectoryEmbed.jsx` calls `list_public_partner_directory`; contract tests cover 17 fields | Unknown; no dated hosted/Wix page smoke receipt | NOT CERTIFIED — code-ready only | NOT CERTIFIED — replacement and Wix-hosted embed must pass after Phase A |
-| HEHA Swipe authenticated owner/internal UI | Unassigned | Discovered direct `partners` SELECT/INSERT/UPDATE consumer; hidden from the store channel where policy requires | `src/App.jsx`, `ProfileTab.jsx`, `CommunityPassTab.jsx`, `PartnerWizard.jsx`, `PartnerProfileEditor.jsx`, and `admin/routing/RoutingDashboard.jsx` | Unknown; no current owner/internal role smoke receipt | N/A — not a public-reader replacement | NOT CERTIFIED — owner and internal-role RLS flows must pass after the proposed regrant |
-| HEHA HubSpot sync edge function | Unassigned | Discovered service-role `partners` reader; Phase B intends to leave service-role access untouched | `supabase/functions/hubspot-sync/index.ts` | Unknown; no current function invocation receipt | N/A — service integration | NOT CERTIFIED — prove the service path is unchanged without exposing browser access |
-| HEHA Local | Unassigned | External/non-code use not disproved; possible `public_local_partners` and/or `heha_pricing` dependency | No connected repository code hit found on 2026-09-04; this is not non-use proof | Unknown | NOT CERTIFIED — replacement interface and credential class unknown | NOT CERTIFIED — hard blocker |
-| Wix | Unassigned | External configuration not inspected; website embed is documented, but direct data/pricing use is unknown | In-repo embed replacement exists; no Wix configuration/export or owner attestation | Unknown | NOT CERTIFIED — hosted embed/replacement not proven | NOT CERTIFIED — hard blocker |
-| Make | Unassigned | External scenarios/connections not inspected; partner/pricing use is unknown | No scenario export, connection inventory, run receipt, or owner attestation | Unknown | NOT CERTIFIED — replacement interface and credential class unknown | NOT CERTIFIED — hard blocker |
-| Other external or non-code consumers | Unassigned | Discovery open | No complete Supabase API-log, credential, webhook, automation, or integration inventory | Unknown | NOT CERTIFIED | NOT CERTIFIED — hard blocker until discovery closes |
+| Consumer / surface | Accountable owner | Current status | Evidence | Last-use evidence | Phase A certification | Phase B certification | Pricing certification | Pricing smoke evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| HEHA Swipe store-card reader | Unassigned | Code cut over; live RPC unavailable/unverified | `src/lib/publicPartner.js` calls `list_public_swipe_partner_cards`; contract tests cover 13 fields | Unknown; no dated hosted smoke receipt | NOT CERTIFIED — code-ready only | NOT CERTIFIED — requires Phase-A hosted anon/auth smoke before any client deployment | NOT CERTIFIED — no pricing disposition approved | No `heha_pricing` call found in this source path; no dated hosted/non-use proof |
+| HEHA website partner-directory embed | Unassigned | Code cut over; hosted embed unverified | `src/components/embed/PartnerDirectoryEmbed.jsx` calls `list_public_partner_directory`; contract tests cover 17 fields | Unknown; no dated hosted/Wix page smoke receipt | NOT CERTIFIED — code-ready only | NOT CERTIFIED — replacement and Wix-hosted embed must pass after Phase A | NOT CERTIFIED — no pricing disposition approved | No `heha_pricing` call found in this source path; Wix configuration remains unknown |
+| HEHA Swipe authenticated owner/internal UI | Unassigned | Discovered direct `partners` SELECT/INSERT/UPDATE consumer; hidden from the store channel where policy requires | `src/App.jsx`, `ProfileTab.jsx`, `CommunityPassTab.jsx`, `PartnerWizard.jsx`, `PartnerProfileEditor.jsx`, and `admin/routing/RoutingDashboard.jsx` | Unknown; no current owner/internal role smoke receipt | N/A — not a public-reader replacement | NOT CERTIFIED — owner and internal-role RLS flows must pass after the proposed regrant | NOT CERTIFIED — no pricing disposition approved | No dated role-by-role partner or pricing smoke receipt |
+| HEHA HubSpot sync edge function | Unassigned | Discovered service-role `partners` reader; Phase B intends to leave service-role access untouched | `supabase/functions/hubspot-sync/index.ts` | Unknown; no current function invocation receipt | N/A — service integration | NOT CERTIFIED — prove the service path is unchanged without exposing browser access | NOT CERTIFIED — no pricing disposition approved | No `heha_pricing` call found in the function; no dated invocation/non-use proof |
+| HEHA Local | Unassigned | External/non-code use not disproved; possible `public_local_partners` and/or `heha_pricing` dependency | No connected repository code hit found on 2026-09-04; this is not non-use proof | Unknown | NOT CERTIFIED — replacement interface and credential class unknown | NOT CERTIFIED — hard blocker | NOT CERTIFIED — dependency unknown | No configuration, query inventory, run receipt, or owner attestation |
+| Wix | Unassigned | External configuration not inspected; website embed is documented, but direct data/pricing use is unknown | In-repo embed replacement exists; no Wix configuration/export or owner attestation | Unknown | NOT CERTIFIED — hosted embed/replacement not proven | NOT CERTIFIED — hard blocker | NOT CERTIFIED — dependency unknown | No Wix configuration/export, dated smoke, or owner-attested non-use |
+| Make | Unassigned | External scenarios/connections not inspected; partner/pricing use is unknown | No scenario export, connection inventory, run receipt, or owner attestation | Unknown | NOT CERTIFIED — replacement interface and credential class unknown | NOT CERTIFIED — hard blocker | NOT CERTIFIED — dependency unknown | No scenario export, dated run receipt, or owner-attested non-use |
+| Other external or non-code consumers | Unassigned | Discovery open | No complete Supabase API-log, credential, webhook, automation, or integration inventory | Unknown | NOT CERTIFIED | NOT CERTIFIED — hard blocker until discovery closes | NOT CERTIFIED — hard blocker until discovery closes | No complete pricing caller inventory or dated proof |
 
 ## Evidence checklist per consumer
 
@@ -49,8 +51,11 @@ credential, or publish data.
 - [ ] Run a provider-safe replacement smoke test and preserve the result.
 - [ ] Run the Phase-B denial/preservation smoke in a separately authorized
       staging context.
-- [ ] Obtain explicit database approval only after every Phase-B row is
-      certified; production remains a separate decision.
+- [ ] Independently identify each `heha_pricing` caller and preserve a dated
+      hardening smoke or reviewed non-use proof; never reuse Phase-B evidence.
+- [ ] Obtain explicit database approval only after every relevant Phase-B and
+      pricing row is independently certified; production remains a separate
+      decision.
 
 ## Current discovery boundary
 
