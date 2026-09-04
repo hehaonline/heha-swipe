@@ -175,7 +175,9 @@ export default function App() {
     try {
       const [profileResult, nextPartners, saveResult] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
-        fetchPublicPartners(supabase),
+        fetchPublicPartners(supabase, {
+          channel: releasePolicy.storeBuild ? "store" : "web",
+        }),
         supabase.from("saves").select("*").eq("user_id", uid),
       ]);
 

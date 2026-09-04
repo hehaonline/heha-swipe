@@ -45,10 +45,12 @@ index. Before any authorized database change:
 
 This is intentionally split:
 
-- Phase A — `002_public_partner_card_projection.sql`: add two zero-argument,
-  fixed-schema RPCs. Swipe gets exactly 13 store-card fields; the public directory
-  gets exactly 17 website fields. The PR clients now call these RPCs and fail
-  closed because the RPCs do not exist live.
+- Phase A — `002_public_partner_card_projection.sql`: add three zero-argument,
+  fixed-schema RPCs. Native/store Swipe gets exactly 13 store-card fields,
+  ordinary web Swipe gets exactly 24 display/detail fields with item keys,
+  HTTP(S) item links, and string gallery values independently whitelisted, and
+  the public directory gets exactly 17 website fields. The PR clients now call
+  these RPCs and fail closed because the RPCs do not exist live.
 - Phase B — `003_close_legacy_partner_browser_paths.sql`: revoke the three wide
   views for every browser role, remove public/anonymous base-table access and
   broad public/saver policies, then regrant authenticated SELECT/INSERT/UPDATE
@@ -57,14 +59,15 @@ This is intentionally split:
   existing role-checked RPCs.
 
 Do not preview-deploy or production-deploy the current client head until Phase A
-has received separate database approval, been applied, and passed anon/auth smoke
-proof. Do not apply Phase B until HEHA Local, Wix, Make, website, and every other
-consumer has a certified bounded replacement or verified non-use.
+has received separate database approval, been applied, and all three RPCs have
+passed anon/auth smoke proof. Do not apply Phase B until HEHA Local, Wix, Make,
+website, and every other consumer has a certified bounded replacement or
+verified non-use.
 Track owners and evidence in
 `docs/store-release/EXTERNAL_CONSUMER_CERTIFICATION.md`. Every Phase-B and
 pricing cell remains **NOT CERTIFIED** until its own evidence is complete;
 absence from a repository search never proves non-use. Phase A is limited to
-the two additive RPC callers and is `N/A` for unrelated consumers.
+the three additive RPC callers and is `N/A` for unrelated consumers.
 Any staging apply requires explicit approval for that exact packet first.
 Staging proof never authorizes production or another packet.
 
@@ -72,7 +75,9 @@ Required Phase B proof:
 
 1. Anonymous reads of `partners` and every legacy view are denied;
    authenticated reads of every legacy view are denied.
-2. Each RPC returns only its exact typed fields and exactly the eligible ID set.
+2. Each of the three RPCs returns only its exact typed fields and exactly the
+   eligible ID set; the web-detail RPC additionally strips unknown item keys,
+   unsafe item-link schemes, and non-string gallery values.
 3. Browser roles cannot DELETE, TRUNCATE, REFERENCES, or TRIGGER `partners`.
 4. Ordinary authenticated users cannot read another owner's private row.
 5. Owner direct SELECT/INSERT/UPDATE, internal direct SELECT, and the

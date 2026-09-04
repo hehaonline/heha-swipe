@@ -26,6 +26,7 @@ test("external consumer ledger is explicit and fail-closed", async () => {
 
   const expectedConsumers = [
     "HEHA Swipe store-card reader",
+    "HEHA Swipe web-detail reader",
     "HEHA website directory data caller",
     "HEHA Swipe owner self-service",
     "HEHA Swipe internal routing UI",
@@ -37,6 +38,7 @@ test("external consumer ledger is explicit and fail-closed", async () => {
   ];
   const expectedPhaseAStarts = new Map([
     ["HEHA Swipe store-card reader", "NOT CERTIFIED"],
+    ["HEHA Swipe web-detail reader", "NOT CERTIFIED"],
     ["HEHA website directory data caller", "NOT CERTIFIED"],
     ["HEHA Swipe owner self-service", "N/A"],
     ["HEHA Swipe internal routing UI", "N/A"],

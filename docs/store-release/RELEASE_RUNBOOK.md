@@ -39,13 +39,15 @@ Before any live change, obtain explicit database approval, inspect the live
 schema, review grants/RLS, apply manually in an authorized context, and preserve
 the proof.
 
-**Deployment ordering is strict.** This candidate already calls
-`list_public_swipe_partner_cards()` and `list_public_partner_directory()`
-unconditionally; it has no fallback to the legacy wide views. First review,
-approve, and apply Phase A (`002_public_partner_card_projection.sql`), then
-prove both RPCs as `anon` and `authenticated` against the exact typed fields
-and eligible ID sets. Only after that proof may this client head be deployed or
-tested in a hosted environment. Deploying the client first would fail closed.
+**Deployment ordering is strict.** This candidate already selects one of
+`list_public_swipe_partner_cards()` (store/native) and
+`list_public_swipe_partner_details()` (ordinary web), while the website
+directory calls `list_public_partner_directory()`. None has a fallback to the
+legacy wide views. First review, approve, and apply Phase A
+(`002_public_partner_card_projection.sql`), then prove all three RPCs as `anon`
+and `authenticated` against their exact typed fields and eligible ID sets. Only
+after that proof may this client head be deployed or tested in a hosted
+environment. Deploying the client first would fail closed.
 
 Phase B (`003_close_legacy_partner_browser_paths.sql`) is separate and remains
 blocked until HEHA Local, Wix, Make, website, and every external consumer is
@@ -99,8 +101,12 @@ On an authorized Mac with Xcode 26 or newer and the iOS 26 SDK:
 - Confirm social/passwordless buttons, Instagram gate, precise geolocation,
   payment controls, partner self-service, and admin shortcuts are absent.
 - Swipe public cards, save/unsave a card, and reopen the saved list.
-- Confirm public cards come only from the 13-field RPC and the directory only
-  from the 17-field RPC; direct legacy/base reads must not be used.
+- Confirm native/store cards come only from the 13-field RPC, ordinary web
+  cards come only from the 24-field web-detail RPC, and the directory comes
+  only from the 17-field RPC; direct legacy/base reads must not be used.
+- In ordinary web, verify approved gallery, item, website, Instagram, and
+  partner-specific HEHA Local actions. Generic Local lane roots must not be
+  presented as a partner's menu, and item links must be absolute HTTP(S).
 - Open Privacy, Support, and Account deletion from signed-out and signed-in UI.
 - Submit a deletion request and preserve the receipt; verify the UI does not say
   deletion is complete.
@@ -112,9 +118,9 @@ On an authorized Mac with Xcode 26 or newer and the iOS 26 SDK:
 
 - Publish and verify `https://hehaswipe.app`, its legal/support routes, SPA
   recovery behavior, TLS, and Supabase confirmation/reset redirect allowlist.
-- Before deploying this client head, separately approve/apply and prove both
-  Phase-A bounded RPCs; the clients are already switched and fail closed without
-  them.
+- Before deploying this client head, separately approve/apply and prove all
+  three Phase-A bounded RPCs; the clients are already switched and fail closed
+  without them.
 - Inventory/cut over every HEHA Local, Wix, Make, website, and external consumer
   before any separately approved Phase-B legacy-path closure.
 - Apply and verify the deletion RPC only after database approval.

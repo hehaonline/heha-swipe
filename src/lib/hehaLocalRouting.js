@@ -1,4 +1,5 @@
 const DEFAULT_HEHA_LOCAL_ORIGIN = "https://hehalocal.app";
+const LOCAL_ROUTE_PARSE_ORIGIN = "https://local-route.invalid";
 
 // Temporary bridge for the three currently approved/orderable Swipe partners.
 // Remove this map after the canonical public partner relationship is exposed
@@ -14,12 +15,12 @@ const LOCAL_PROFILE_PATH_BY_SWIPE_PARTNER_ID = {
 // to one of these - it either has a real profile destination or it doesn't
 // qualify as a HEHA Local routable partner at all.
 const GENERIC_HEHA_LOCAL_LISTING_PATHS = new Set([
-  "",
   "/",
   "/restaurants",
-  "/restaurants/",
+  "/market",
   "/vendors",
-  "/vendors/",
+  "/chef",
+  "/group-orders",
 ]);
 
 function localOrigin() {
@@ -31,27 +32,46 @@ function legacyItemUrl(item) {
   return item?.url || item?.product_url || item?.link || null;
 }
 
-function normalizedConfiguredPath(partner) {
+function configuredLocalRoute(partner) {
   const configuredPath = String(partner?.primary_cta_path || "").trim();
-  if (!configuredPath) return "";
-  return configuredPath.startsWith("/") ? configuredPath : `/${configuredPath}`;
+  if (!configuredPath) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(configuredPath)) return null;
+  if (configuredPath.startsWith("//") || configuredPath.includes("\\")) return null;
+  if (/[\u0000-\u001f\u007f]/.test(configuredPath)) return null;
+
+  try {
+    const parsed = new URL(
+      configuredPath.startsWith("/") ? configuredPath : `/${configuredPath}`,
+      LOCAL_ROUTE_PARSE_ORIGIN,
+    );
+    if (parsed.origin !== LOCAL_ROUTE_PARSE_ORIGIN) return null;
+    // Canonical profile routes use literal lane names and UUIDs. Reject encoded
+    // path bytes so decoded generic roots cannot bypass the fail-closed set.
+    if (parsed.pathname.includes("%")) return null;
+
+    const canonicalPathname = parsed.pathname === "/"
+      ? "/"
+      : parsed.pathname.replace(/\/{2,}/g, "/").replace(/\/+$/, "");
+    return {
+      canonicalPathname,
+      path: `${parsed.pathname}${parsed.search}${parsed.hash}`,
+    };
+  } catch {
+    return null;
+  }
 }
 
-function isGenericHehaLocalListingPath(path) {
-  const normalized = String(path || "").trim();
-  if (GENERIC_HEHA_LOCAL_LISTING_PATHS.has(normalized)) return true;
-  return GENERIC_HEHA_LOCAL_LISTING_PATHS.has(normalized.replace(/\/$/, ""));
+function isGenericHehaLocalListingPath(route) {
+  return !route || GENERIC_HEHA_LOCAL_LISTING_PATHS.has(route.canonicalPathname);
 }
 
 // A partner only has a "specific" HEHA Local destination when it resolves to
 // an individual partner profile (e.g. /restaurants/<id> or /vendors/<id>)
-// rather than a generic listing route like "/restaurants" or "/vendors".
+// rather than a generic lane root emitted by partner_cta_path_for_lane().
 export function hasSpecificHehaLocalDestination(partner) {
   if (LOCAL_PROFILE_PATH_BY_SWIPE_PARTNER_ID[partner?.id]) return true;
 
-  const configuredPath = normalizedConfiguredPath(partner);
-  if (!configuredPath) return false;
-  return !isGenericHehaLocalListingPath(configuredPath);
+  return !isGenericHehaLocalListingPath(configuredLocalRoute(partner));
 }
 
 export function isHehaLocalPartner(partner) {
@@ -66,8 +86,8 @@ export function hehaLocalProfilePath(partner) {
   const mappedPath = LOCAL_PROFILE_PATH_BY_SWIPE_PARTNER_ID[partner?.id];
   if (mappedPath) return mappedPath;
 
-  const configuredPath = normalizedConfiguredPath(partner);
-  return configuredPath || "/restaurants";
+  const configuredRoute = configuredLocalRoute(partner);
+  return configuredRoute?.path || "/restaurants";
 }
 
 export function hehaLocalProfileUrl(partner) {

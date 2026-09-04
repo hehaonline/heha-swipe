@@ -39,7 +39,7 @@ commit;
 -- Required proof after a separately approved staging apply:
 --   * anon cannot select public.partners or any legacy view;
 --   * authenticated cannot select any legacy view;
---   * both Phase-A RPCs return only their exact typed contracts and eligible IDs;
+--   * all three Phase-A RPCs return only their exact typed contracts and eligible IDs;
 --   * anon/auth cannot DELETE, TRUNCATE, REFERENCES, or TRIGGER public.partners;
 --   * an ordinary authenticated user cannot read another owner's private row;
 --   * owner direct SELECT/INSERT/UPDATE and internal direct SELECT still pass;
