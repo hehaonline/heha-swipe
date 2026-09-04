@@ -609,7 +609,7 @@ select pg_catalog.set_config(
   'heha.submitted_partner_id',
   :'submitted_partner_id',
   true
-);
+) as _submitted_partner_id_context \gset
 
 select (
   public.authorize_partner_profile_publication(
@@ -975,17 +975,17 @@ select pg_catalog.set_config(
   'heha.edited_profile_hash',
   :'edited_profile_hash',
   true
-);
+) as _edited_profile_hash_context \gset
 select pg_catalog.set_config(
   'heha.prior_evidence_invalidated',
   :'prior_evidence_invalidated',
   true
-);
+) as _prior_evidence_invalidated_context \gset
 select pg_catalog.set_config(
   'heha.submitted_profile_hash',
   :'submitted_profile_hash',
   true
-);
+) as _submitted_profile_hash_context \gset
 
 do $proof$
 declare
