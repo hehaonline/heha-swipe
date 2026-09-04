@@ -4,18 +4,34 @@
 --   * public.account_deletion_requests has id uuid, user_id uuid, email text,
 --     reason text, status text not null default, and created_at timestamptz
 --     not null default now().
---   * RLS is enabled and SELECT/INSERT policies restrict rows to
+--   * RLS is enabled. The live policies named below restrict rows to
 --     auth.uid() = user_id.
 --   * Existing duplicate user_id rows have been reviewed and reconciled.
---   * Direct table access can be reduced to SELECT and INSERT for authenticated;
---     public and anon require no privileges on this private request queue.
+--   * Direct browser-role access can be reduced to the exact read/write columns
+--     below; public and anon require no privileges on this private queue.
 
--- Narrow existing broad browser-role grants before exposing the RPC. This is
--- intentionally limited to this table and leaves the owner/service role intact.
+-- Narrow existing broad browser-role grants before exposing the RPC. Column-level
+-- INSERT prevents a direct caller from forging id, status, or created_at.
 revoke all on table public.account_deletion_requests
   from public, anon, authenticated;
-grant select, insert on table public.account_deletion_requests
+grant select (id, user_id, status, created_at)
+  on table public.account_deletion_requests
   to authenticated;
+grant insert (user_id, email, reason)
+  on table public.account_deletion_requests
+  to authenticated;
+
+-- Restrict the two existing own-row policies to authenticated callers. The
+-- selected auth.uid() form is stable for the statement and keeps the identity
+-- boundary explicit.
+alter policy "Users can create own deletion request"
+  on public.account_deletion_requests
+  to authenticated
+  with check ((select auth.uid()) = user_id);
+alter policy "Users can view own deletion request"
+  on public.account_deletion_requests
+  to authenticated
+  using ((select auth.uid()) = user_id);
 
 -- The unique index is required for global idempotency. The function's advisory
 -- lock serializes calls through this RPC; the index also protects against a
