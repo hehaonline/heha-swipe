@@ -68,3 +68,34 @@ test("signed Android bundle remains a manual environment-gated job", async () =>
   assert.match(workflow, /bundleRelease/);
   assert.doesNotMatch(workflow, /pull_request:/);
 });
+
+test("Android signing secrets are scoped only to the signed bundle step", async () => {
+  const workflow = await readFile(
+    workflowPath("store-release-candidate.yml"),
+    "utf8"
+  );
+  const signingStepStart = workflow.indexOf(
+    "      - name: Build signed Google Play bundle"
+  );
+  const uploadStepStart = workflow.indexOf(
+    "      - uses: actions/upload-artifact@v4"
+  );
+
+  assert.ok(signingStepStart > 0, "signed bundle step is missing");
+  assert.ok(uploadStepStart > signingStepStart, "artifact step is misplaced");
+  assert.doesNotMatch(workflow.slice(0, signingStepStart), /HEHA_ANDROID_/);
+
+  const signingStep = workflow.slice(signingStepStart, uploadStepStart);
+  for (const name of [
+    "HEHA_ANDROID_KEYSTORE_PATH",
+    "HEHA_ANDROID_KEYSTORE_BASE64",
+    "HEHA_ANDROID_KEYSTORE_PASSWORD",
+    "HEHA_ANDROID_KEY_ALIAS",
+    "HEHA_ANDROID_KEY_PASSWORD",
+  ]) {
+    assert.match(signingStep, new RegExp(`\\b${name}:`), name);
+  }
+  assert.match(signingStep, /working-directory: android/);
+  assert.match(signingStep, /node \.\.\/scripts\/require-android-signing-env\.mjs/);
+  assert.match(signingStep, /\.\/gradlew bundleRelease/);
+});
