@@ -72,6 +72,18 @@ The SECURITY DEFINER RPCs are intentional and bounded by zero arguments, fixed
 typed outputs and predicates, an empty search path, fully-qualified sources, and
 no dynamic SQL.
 
+
+## Legacy pricing view
+
+`004_harden_heha_pricing_access.sql` changes only the existing view's security
+mode and privilege matrix; it never recreates the view or repeats pricing
+constants. It remains blocked on Wix, Make, HEHA Local, and other external
+consumer inventory. Before any separately approved staging apply, snapshot the
+view definition hash, owner, relation type/options, and exact ACL. Prove those
+structural values remain unchanged apart from `security_invoker=true`, browser
+roles have no privilege, `service_role` has SELECT only, external consumers
+pass, and the database advisor error clears.
+
 Account deletion remains a request workflow until an authorized administrator
 removes the Supabase Auth identity and associated personal records. The client
 must not clear roles, delete partial rows, or state that deletion is complete.
