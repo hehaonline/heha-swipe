@@ -63,10 +63,9 @@ export default function PartnerDirectoryEmbed() {
     async function loadPartners() {
       setLoading(true);
       setError("");
-      const { data, error: loadError } = await supabase
-        .from("public_partner_directory")
-        .select("id,name,category,business_type,tagline,bio,neighborhood,location,tags,offerings,image_url,photo_emoji,heha_pillar,primary_cta_destination,primary_cta_label,primary_cta_path,created_at")
-        .order("created_at", { ascending: false });
+      const { data, error: loadError } = await supabase.rpc(
+        "list_public_partner_directory"
+      );
 
       if (cancelled) return;
       if (loadError) {
