@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { buildAssetOutputs } from "../../scripts/generate-store-assets.mjs";
+import { deflateSync, inflateSync } from "node:zlib";
+import {
+  buildAssetOutputs,
+  equivalentAssetBytes,
+} from "../../scripts/generate-store-assets.mjs";
 
 function pngMetadata(bytes) {
   assert.equal(bytes.subarray(1, 4).toString("ascii"), "PNG");
@@ -14,6 +18,46 @@ function pngMetadata(bytes) {
   };
 }
 
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const value of buffer) {
+    crc ^= value;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type, data) {
+  const typeBytes = Buffer.from(type, "ascii");
+  const result = Buffer.alloc(12 + data.length);
+  result.writeUInt32BE(data.length, 0);
+  typeBytes.copy(result, 4);
+  data.copy(result, 8);
+  result.writeUInt32BE(crc32(Buffer.concat([typeBytes, data])), 8 + data.length);
+  return result;
+}
+
+function recompressPng(bytes) {
+  const signature = bytes.subarray(0, 8);
+  const header = bytes.subarray(16, 29);
+  let offset = 8;
+  const imageData = [];
+  while (offset + 12 <= bytes.length) {
+    const length = bytes.readUInt32BE(offset);
+    const type = bytes.toString("ascii", offset + 4, offset + 8);
+    if (type === "IDAT") imageData.push(bytes.subarray(offset + 8, offset + 8 + length));
+    offset += 12 + length;
+    if (type === "IEND") break;
+  }
+  const raw = inflateSync(Buffer.concat(imageData));
+  return Buffer.concat([
+    signature,
+    pngChunk("IHDR", header),
+    pngChunk("IDAT", deflateSync(raw, { level: 0 })),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
 test("asset generation is deterministic and tracked outputs are current", async () => {
   const first = buildAssetOutputs();
   const second = buildAssetOutputs();
@@ -22,8 +66,19 @@ test("asset generation is deterministic and tracked outputs are current", async 
     const secondBytes = second.get(path);
     assert.ok(firstBytes.equals(secondBytes), path);
     const trackedBytes = await readFile(new URL(`../../${path}`, import.meta.url));
-    assert.ok(firstBytes.equals(trackedBytes), `${path} is stale`);
+    assert.ok(equivalentAssetBytes(trackedBytes, firstBytes), `${path} is stale`);
   }
+});
+
+test("asset comparison accepts equivalent PNG pixels across zlib versions", () => {
+  const original = buildAssetOutputs().get("public/icons/icon-192.png");
+  const recompressed = recompressPng(original);
+  assert.equal(original.equals(recompressed), false);
+  assert.equal(equivalentAssetBytes(original, recompressed), true);
+
+  const corrupted = Buffer.from(recompressed);
+  corrupted[corrupted.length - 1] ^= 1;
+  assert.equal(equivalentAssetBytes(original, corrupted), false);
 });
 
 test("standard and maskable icons are separate assets", () => {

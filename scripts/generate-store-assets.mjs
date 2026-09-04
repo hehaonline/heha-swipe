@@ -1,4 +1,4 @@
-import { deflateSync } from "node:zlib";
+import { deflateSync, inflateSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -174,6 +174,61 @@ function png(image, { rgb = false } = {}) {
   ]);
 }
 
+function canonicalPngBytes(bytes) {
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  if (!Buffer.isBuffer(bytes) || bytes.length < signature.length || !bytes.subarray(0, 8).equals(signature)) {
+    return null;
+  }
+
+  let offset = 8;
+  let header = null;
+  const imageData = [];
+  let sawEnd = false;
+
+  while (offset + 12 <= bytes.length) {
+    const length = bytes.readUInt32BE(offset);
+    const end = offset + 12 + length;
+    if (end > bytes.length) return null;
+
+    const type = bytes.toString("ascii", offset + 4, offset + 8);
+    const data = bytes.subarray(offset + 8, offset + 8 + length);
+    const expectedCrc = bytes.readUInt32BE(offset + 8 + length);
+    const actualCrc = crc32(Buffer.concat([Buffer.from(type, "ascii"), data]));
+    if (expectedCrc !== actualCrc || !["IHDR", "IDAT", "IEND"].includes(type)) return null;
+    if (type === "IHDR") {
+      if (header || offset !== 8) return null;
+      header = data;
+    }
+    if (type === "IDAT") imageData.push(data);
+    offset = end;
+    if (type === "IEND") {
+      sawEnd = true;
+      break;
+    }
+  }
+
+  if (!header || header.length !== 13 || imageData.length === 0 || !sawEnd || offset !== bytes.length) {
+    return null;
+  }
+
+  try {
+    return Buffer.concat([header, inflateSync(Buffer.concat(imageData))]);
+  } catch {
+    return null;
+  }
+}
+
+export function equivalentAssetBytes(actual, expected) {
+  if (actual.equals(expected)) return true;
+  const actualPng = canonicalPngBytes(actual);
+  const expectedPng = canonicalPngBytes(expected);
+  return Boolean(actualPng && expectedPng && actualPng.equals(expectedPng));
+}
+
+function canonicalAssetBytes(bytes) {
+  return canonicalPngBytes(bytes) || bytes;
+}
+
 export function buildAssetOutputs() {
   const outputs = new Map([
     ["public/icons/icon-192.png", png(icon(192))],
@@ -235,15 +290,18 @@ async function main() {
   const mismatches = [];
   for (const [relativePath, expected] of outputs) {
     const destination = resolve(root, relativePath);
-    if (check) {
-      let actual;
-      try {
-        actual = await readFile(destination);
-      } catch {
+    let actual;
+    try {
+      actual = await readFile(destination);
+    } catch {
+      if (check) {
         mismatches.push(`${relativePath} (missing)`);
-        continue;
       }
-      if (!actual.equals(expected)) mismatches.push(relativePath);
+    }
+
+    if (actual && equivalentAssetBytes(actual, expected)) continue;
+    if (check) {
+      if (actual) mismatches.push(relativePath);
     } else {
       await mkdir(dirname(destination), { recursive: true });
       await writeFile(destination, expected);
@@ -255,7 +313,7 @@ async function main() {
   }
 
   const digest = createHash("sha256")
-    .update(Buffer.concat([...outputs.values()]))
+    .update(Buffer.concat([...outputs.values()].map(canonicalAssetBytes)))
     .digest("hex");
   console.log(`${check ? "Verified" : "Generated"} deterministic store assets: ${digest}`);
 }

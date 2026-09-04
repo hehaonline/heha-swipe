@@ -27,6 +27,11 @@ package with `assembleDebug`. It uploads nothing. A passing result is
 repository evidence only; it is not a signed AAB, live-backend proof, an
 internal-track install, or store authorization.
 
+Every pull request also runs **iOS pull request validation** on a current
+macOS 26/Xcode 26 runner. It syncs iOS and compiles the shared App scheme for a
+generic iOS Simulator with code signing disabled. It uploads nothing and is
+compile evidence only, not an archive, signed device build, or TestFlight run.
+
 ## 2. Database review gates
 
 The SQL packet in `supabase/review_only/store_release` is not a migration.

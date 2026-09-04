@@ -1,4 +1,4 @@
-name: Android pull request validation
+name: iOS pull request validation
 
 on:
   pull_request:
@@ -8,13 +8,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: heha-swipe-android-pr-${{ github.event.pull_request.number }}
+  group: heha-swipe-ios-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  verify-unsigned-android:
-    name: Verify unsigned Android candidate
-    runs-on: ubuntu-latest
+  verify-unsigned-ios:
+    name: Verify unsigned iOS candidate
+    runs-on: macos-26
     timeout-minutes: 30
     env:
       # Nonfunctional CI fixtures; no repository or environment secrets are used.
@@ -30,11 +30,8 @@ jobs:
           node-version: 24
           cache: npm
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: gradle
+      - name: Confirm Apple build toolchain
+        run: xcodebuild -version
 
       - name: Install exact dependencies
         run: npm ci
@@ -45,9 +42,17 @@ jobs:
       - name: Verify store policy, contracts, and assets
         run: npm run test:store-release && npm run assets:check
 
-      - name: Build and sync the store web bundle for Android
-        run: npm run build:store && npx cap sync android
+      - name: Build and sync the store web bundle for iOS
+        run: npm run build:store && npx cap sync ios
 
-      - name: Test and build the unsigned debug Android package
-        working-directory: android
-        run: ./gradlew testDebugUnitTest assembleDebug --no-daemon
+      - name: Build the unsigned iOS Simulator app
+        run: >-
+          xcodebuild
+          -project ios/App/App.xcodeproj
+          -scheme App
+          -configuration Debug
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/heha-swipe-derived-data"
+          CODE_SIGNING_ALLOWED=NO
+          build

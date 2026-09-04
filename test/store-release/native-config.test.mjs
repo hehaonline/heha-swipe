@@ -35,6 +35,23 @@ test("iOS is iPhone-only portrait at version 0.1.0 build 1", async () => {
   assert.doesNotMatch(info, /UISupportedInterfaceOrientations~ipad/);
 });
 
+test("iOS has a shared scheme that can build and archive the App target", async () => {
+  const scheme = await text(
+    "ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme"
+  );
+  assert.match(scheme, /BlueprintIdentifier = "504EC3031FED79650016851F"/);
+  assert.match(scheme, /BlueprintName = "App"/);
+  assert.match(scheme, /buildForArchiving = "YES"/);
+  assert.match(scheme, /<ArchiveAction\s+buildConfiguration = "Release"/);
+});
+
+test("store web output remains compatible with the iOS 15 deployment target", async () => {
+  const vite = await text("vite.config.js");
+  assert.match(vite, /target:\s*\[[^\]]*['"]safari15['"]/s);
+  assert.match(vite, /rolldownOptions:/);
+  assert.doesNotMatch(vite, /\brollupOptions:/);
+});
+
 test("Android release signing fails closed on missing secret environment", async () => {
   const gradle = await text("android/app/build.gradle");
   assert.match(gradle, /Refusing unsigned HEHA Swipe release/);
@@ -72,6 +89,7 @@ test("iOS privacy manifest is bundled and truthfully declares linked app data wi
     "EmailAddress",
     "PhoneNumber",
     "PhysicalAddress",
+    "CoarseLocation",
     "UserID",
     "ProductInteraction",
   ]) {

@@ -60,7 +60,9 @@ domain and TLS responses before pasting them into a store console.
 - Payments/subscriptions: intentionally hidden; no digital purchase is offered
 - Location: manual area/address entry only; precise geolocation is hidden
 - App privacy draft: email, optional name/phone/address, user ID, and product
-  interactions are linked to the account for app functionality; no tracking
+  interactions are linked to the account for app functionality; no tracking.
+  Use `STORE_PRIVACY_ANSWERS.md` as the cross-store working sheet and reconcile
+  it with the final signed binaries and live operations before submission
 - Account deletion: Profile → Request account deletion invokes the
   authenticated no-argument `request_my_account_deletion()` RPC
 - Public partner client contract: 13 allowlisted fields; the dedicated backend
