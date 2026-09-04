@@ -2,7 +2,7 @@
 
 Status: **DOCUMENTATION / COMPATIBILITY TRIAGE COMPLETE; EXECUTABLE BASELINE STILL BLOCKED**  
 Task: `SWP-016`  
-Base evidence: `main@dc8b1709b80f5cc0fe7fae79e7e980b32b085eb8`  
+Base evidence: `main@dc8b1709b80f5cc0fe7fae79e7e980b32b085eb8`
 Extension evidence: draft PR #140 at `b8bb0f09583fa833851f69fdbc220fa6c305996d`, composed from `main@1ab63290fda9a967a36831cef50ef01b68a8c0a4` on 2026-09-03 ET
 
 ## Purpose

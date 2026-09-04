@@ -2,7 +2,7 @@ de60886434152d362778af9b650a1818adefb2da476e50f8f8708037570fb0f8  docs/migration
 5defa1b3091d05434fef904c746c63b4b93af069ab3f9eabf5e0286485659638  docs/migration-lineage/live-ledger-compatibility-map-2026-08-24.csv
 9f00e8121682ff64503e574121c1955eaa17ae3625b4c45e762a2867b0a79714  docs/migration-lineage/repository-migration-disposition-map-2026-08-24.csv
 8a91fa2fbfde9a1c900e59d82422c153bb97523359e70a9f1f8fa2c981cb87a7  docs/migration-lineage/repository-disposition-expectations-2026-08-24.csv
-4be008bd5c220294df4815cee2a1a075b6e03a1adc8e07b576b0310310df44a9  docs/migration-lineage/repository-ledger-compatibility-summary-2026-08-24.md
+2c92bded119d78d294c2cc3640b460dae1a593b0a6ddd6e5cee5a57581371e98  docs/migration-lineage/repository-ledger-compatibility-summary-2026-08-24.md
 e08cb0cba5a46709512015e197bb5c886951221b0f3de5cf423b15674f157a96  docs/migration-lineage/deep-metadata-capture-plan-2026-08-24.md
 c6327e81d0496ac1051375fe989df65d24fc035b5bff75a8d380929c38426ee4  docs/migration-lineage/historical-deep-capture-custody-2026-08-24.md
 ffbfa95fb33f45dbe67bf0905afbe8424d2f61ef51ea1c073d2cf9ff3aa2d176  docs/migration-lineage/queries/deep-structure-manifest-capture.sql
