@@ -93,7 +93,7 @@ create or replace function public.suggest_partner_local_lane(
 returns text
 language sql
 immutable
-as $
+as $routing$
   select case
     when lower(coalesce(p_category,'')) like '%private chef%'
       or lower(coalesce(p_business_type,'')) like '%private chef%'
@@ -127,10 +127,10 @@ as $
     ) then 'market'
     else null
   end;
-$;
+$routing$;
 
 create or replace function public.partner_cta_label_for_lane(p_lane text)
-returns text language sql immutable as $
+returns text language sql immutable as $routing$
   select case p_lane
     when 'meals' then 'Order Meals'
     when 'market' then 'Explore Market'
@@ -139,10 +139,10 @@ returns text language sql immutable as $
     when 'group_orders' then 'Group Orders'
     else 'Discover Partner'
   end;
-$;
+$routing$;
 
 create or replace function public.partner_cta_path_for_lane(p_lane text, p_partner_id uuid)
-returns text language sql immutable as $
+returns text language sql immutable as $routing$
   select case p_lane
     when 'meals' then '/restaurants'
     when 'market' then '/market'
@@ -151,13 +151,13 @@ returns text language sql immutable as $
     when 'group_orders' then '/group-orders'
     else '/?partner=' || p_partner_id::text
   end;
-$;
+$routing$;
 
 create or replace function public.suggest_partner_pillar(p_category text, p_business_type text)
 returns text
 language sql
 immutable
-as $
+as $routing$
   select case
     when lower(coalesce(p_category,'')) in ('restaurant','markets','vendor','catering','private chef')
       then 'nourish'
@@ -177,13 +177,13 @@ as $
       then 'relax'
     else null
   end;
-$;
+$routing$;
 
 create or replace function public.apply_partner_routing_suggestions()
 returns trigger
 language plpgsql
 set search_path = public, pg_temp
-as $
+as $routing$
 declare
   suggested_lane text;
   suggested_pillar text;
@@ -227,7 +227,7 @@ begin
 
   return new;
 end;
-$;
+$routing$;
 
 drop trigger if exists partners_apply_routing_suggestions on public.partners;
 create trigger partners_apply_routing_suggestions
