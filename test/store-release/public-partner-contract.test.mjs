@@ -176,7 +176,10 @@ test("review-only RPCs have fixed schemas, paths, and eligibility gates", () => 
     );
   }
 
-  assert.match(reviewSql, /stable\s+security\s+definer/i);
+  assert.equal(
+    (reviewSql.match(/stable\s+security\s+definer/gi) || []).length,
+    2
+  );
   assert.equal((reviewSql.match(/set\s+search_path\s*=\s*''/gi) || []).length, 2);
   assert.equal(
     (reviewSql.match(/status\s*=\s*any\s*\(array\['approved'::text,\s*'live'::text\]\)/gi) || []).length,
