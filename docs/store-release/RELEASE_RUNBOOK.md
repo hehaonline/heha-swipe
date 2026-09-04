@@ -36,15 +36,23 @@ compile evidence only, not an archive, signed device build, or TestFlight run.
 
 The SQL packet in `supabase/review_only/store_release` is not a migration.
 Before any live change, obtain explicit database approval, inspect the live
-schema, review grants/RLS, apply manually in an authorized context, and verify
-the deletion receipt and 13-field public projection. Preserve evidence.
+schema, review grants/RLS, apply manually in an authorized context, and preserve
+the proof.
 
-The current client allowlists the exact 13 fields when reading the existing
-public view, but that is not a backend security boundary. Store activation is
-blocked until the dedicated review-only projection exists live, exposes only
-those 13 fields, and the client is switched to it in a separately reviewed
-release. The deletion RPC is an equally strict activation gate: review and
-apply it separately, then verify a repeat call returns the same receipt.
+**Deployment ordering is strict.** This candidate already calls
+`list_public_swipe_partner_cards()` and `list_public_partner_directory()`
+unconditionally; it has no fallback to the legacy wide views. First review,
+approve, and apply Phase A (`002_public_partner_card_projection.sql`), then
+prove both RPCs as `anon` and `authenticated` against the exact typed fields
+and eligible ID sets. Only after that proof may this client head be deployed or
+tested in a hosted environment. Deploying the client first would fail closed.
+
+Phase B (`003_close_legacy_partner_browser_paths.sql`) is separate and remains
+blocked until HEHA Local, Wix, Make, website, and every external consumer is
+certified or cut over. The deletion packet is another independent gate: review
+and apply it separately, then prove repeat calls return the same receipt and
+that direct access is limited by role and column. The pricing-view packet also
+requires external-consumer proof and its own approval.
 
 ## 3. Android release candidate
 
@@ -57,10 +65,13 @@ Configure repository environment `store-review` with:
 - `HEHA_ANDROID_KEY_ALIAS`
 - `HEHA_ANDROID_KEY_PASSWORD`
 
-Dispatch **Store release candidate** manually. The job refuses to build a
-release when any signing value is missing and uploads a signed `.aab` artifact
-for review only. It does not upload to Google Play. This signed job remains
-manual and separate from the automatic unsigned pull-request workflow.
+The workflow cannot be dispatched from this unmerged PR because GitHub accepts
+`workflow_dispatch` only after the workflow exists on the default branch.
+After a separately approved merge places it on the default branch, dispatch
+**Store release candidate** manually. The job refuses to build a release when
+any signing value is missing and uploads a signed `.aab` artifact for review
+only. It does not upload to Google Play. This signed job remains manual and
+separate from the automatic unsigned pull-request workflow.
 
 Local unsigned validation may run `./gradlew tasks` or debug builds. A release
 task without the four signing environment values must fail.
@@ -88,7 +99,8 @@ On an authorized Mac with Xcode 26 or newer and the iOS 26 SDK:
 - Confirm social/passwordless buttons, Instagram gate, precise geolocation,
   payment controls, partner self-service, and admin shortcuts are absent.
 - Swipe public cards, save/unsave a card, and reopen the saved list.
-- Confirm public cards function with only the 13-field allowlist.
+- Confirm public cards come only from the 13-field RPC and the directory only
+  from the 17-field RPC; direct legacy/base reads must not be used.
 - Open Privacy, Support, and Account deletion from signed-out and signed-in UI.
 - Submit a deletion request and preserve the receipt; verify the UI does not say
   deletion is complete.
@@ -100,8 +112,11 @@ On an authorized Mac with Xcode 26 or newer and the iOS 26 SDK:
 
 - Publish and verify `https://hehaswipe.app`, its legal/support routes, SPA
   recovery behavior, TLS, and Supabase confirmation/reset redirect allowlist.
-- Apply and verify the dedicated 13-field backend projection only after database
-  approval, then switch and retest the client query.
+- Before deploying this client head, separately approve/apply and prove both
+  Phase-A bounded RPCs; the clients are already switched and fail closed without
+  them.
+- Inventory/cut over every HEHA Local, Wix, Make, website, and external consumer
+  before any separately approved Phase-B legacy-path closure.
 - Apply and verify the deletion RPC only after database approval.
 - Capture final phone screenshots for both store listings.
 - Reconcile Apple App Privacy and Google Data Safety answers with the verified
