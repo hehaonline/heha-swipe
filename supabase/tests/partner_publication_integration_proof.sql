@@ -204,7 +204,7 @@ begin
       )
   ), 'raw roles must not retain explicit public.partners column ACL entries';
   assert (
-    select pg_catalog.array_agg(polname order by polname)
+    select pg_catalog.array_agg(polname::text order by polname)
     from pg_catalog.pg_policy
     where polrelid='public.partners'::regclass
   ) = array['Owners can view own partner','partners_internal_read']::text[],
