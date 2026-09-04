@@ -8,8 +8,8 @@
 
 begin;
 
--- The service role and relation owner remain untouched. Browser roles lose the
--- three wide projections and the 56-column base-table path.
+-- The service role and relation owner remain untouched. Every browser role loses
+-- the three wide projections; public/anon lose the 56-column base-table path.
 revoke all on table
   public.public_swipe_partners,
   public.public_partner_directory,
@@ -36,7 +36,8 @@ alter policy "Owners can view own partner"
 commit;
 
 -- Required proof after a separately approved staging apply:
---   * anon/auth cannot select public.partners or any of the three legacy views;
+--   * anon cannot select public.partners or any legacy view;
+--   * authenticated cannot select any legacy view;
 --   * both Phase-A RPCs return only their exact typed contracts and eligible IDs;
 --   * anon/auth cannot DELETE, TRUNCATE, REFERENCES, or TRIGGER public.partners;
 --   * an ordinary authenticated user cannot read another owner's private row;

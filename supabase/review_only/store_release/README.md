@@ -50,26 +50,31 @@ This is intentionally split:
   gets exactly 17 website fields. The PR clients now call these RPCs and fail
   closed because the RPCs do not exist live.
 - Phase B — `003_close_legacy_partner_browser_paths.sql`: revoke the three wide
-  views and the base-table browser path, remove broad public/saver policies, and
-  preserve only authenticated owner/internal SELECT/INSERT/UPDATE.
+  views for every browser role, remove public/anonymous base-table access and
+  broad public/saver policies, then preserve authenticated owner/internal
+  SELECT/INSERT/UPDATE only through the reviewed RLS boundary.
 
 Do not preview-deploy or production-deploy the current client head until Phase A
 has received separate database approval, been applied, and passed anon/auth smoke
 proof. Do not apply Phase B until HEHA Local, Wix, Make, website, and every other
 consumer has a certified bounded replacement or verified non-use.
 Track owners and evidence in
-`docs/store-release/EXTERNAL_CONSUMER_CERTIFICATION.md`. Every row starts and
-remains **NOT CERTIFIED** until its explicit evidence checklist is complete;
-absence from a repository search never proves non-use.
+`docs/store-release/EXTERNAL_CONSUMER_CERTIFICATION.md`. Every Phase-B and
+pricing cell remains **NOT CERTIFIED** until its own evidence is complete;
+absence from a repository search never proves non-use. Phase A is limited to
+the two additive RPC callers and is `N/A` for unrelated consumers.
+Any staging apply requires explicit approval for that exact packet first.
+Staging proof never authorizes production or another packet.
 
 Required Phase B proof:
 
-1. Anonymous/authenticated direct reads of `partners` and all three legacy views
-   are denied.
+1. Anonymous reads of `partners` and every legacy view are denied;
+   authenticated reads of every legacy view are denied.
 2. Each RPC returns only its exact typed fields and exactly the eligible ID set.
 3. Browser roles cannot DELETE, TRUNCATE, REFERENCES, or TRIGGER `partners`.
 4. Ordinary authenticated users cannot read another owner's private row.
-5. Owner and internal-role SELECT/INSERT/UPDATE flows still pass.
+5. Authenticated owner and internal-role SELECT/INSERT/UPDATE flows still pass
+   only within their RLS boundaries.
 6. HEHA Local, Wix, Make, and website smoke tests pass on their replacements.
 
 The SECURITY DEFINER RPCs are intentional and bounded by zero arguments, fixed
