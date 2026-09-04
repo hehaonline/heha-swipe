@@ -969,6 +969,7 @@ select pg_temp.expect_state(
     :'submitted_profile_hash'
   )
 );
+reset role;
 
 select pg_catalog.set_config(
   'heha.edited_profile_hash',
