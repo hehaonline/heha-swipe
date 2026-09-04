@@ -970,16 +970,34 @@ select pg_temp.expect_state(
   )
 );
 
+select pg_catalog.set_config(
+  'heha.edited_profile_hash',
+  :'edited_profile_hash',
+  true
+);
+select pg_catalog.set_config(
+  'heha.prior_evidence_invalidated',
+  :'prior_evidence_invalidated',
+  true
+);
+select pg_catalog.set_config(
+  'heha.submitted_profile_hash',
+  :'submitted_profile_hash',
+  true
+);
+
 do $proof$
 declare
   status_payload jsonb;
 begin
-  assert :'edited_profile_hash'<>:'submitted_profile_hash';
-  assert :'prior_evidence_invalidated'='true';
+  assert current_setting('heha.edited_profile_hash')
+    <>current_setting('heha.submitted_profile_hash');
+  assert current_setting('heha.prior_evidence_invalidated')='true';
   status_payload := public.get_my_partner_publication_status(
-    :'submitted_partner_id'::uuid
+    current_setting('heha.submitted_partner_id')::uuid
   );
-  assert status_payload->>'profile_snapshot_hash'=:'edited_profile_hash';
+  assert status_payload->>'profile_snapshot_hash'
+    =current_setting('heha.edited_profile_hash');
   assert status_payload->'publication_destinations'='[]'::jsonb;
   assert status_payload->'staff_review_destinations'='[]'::jsonb;
   assert (
@@ -1000,26 +1018,26 @@ begin
       and primary_cta_path is null
       and complete_pct=app_private.partner_completion_pct(partners)
     from public.partners
-    where id=:'submitted_partner_id'::uuid
+    where id=current_setting('heha.submitted_partner_id')::uuid
   );
   assert not exists (
     select 1
     from app_private.partner_lifecycle_mutation_capabilities capability_row
     where capability_row.backend_pid=pg_catalog.pg_backend_pid()
       and capability_row.transaction_id=pg_catalog.txid_current()
-      and capability_row.partner_id=:'submitted_partner_id'::uuid
+      and capability_row.partner_id=current_setting('heha.submitted_partner_id')::uuid
   );
   assert exists (
     select 1
     from public.partner_publication_consent_events
-    where partner_id=:'submitted_partner_id'::uuid
-      and profile_snapshot_hash=:'submitted_profile_hash'
+    where partner_id=current_setting('heha.submitted_partner_id')::uuid
+      and profile_snapshot_hash=current_setting('heha.submitted_profile_hash')
   );
   assert exists (
     select 1
     from public.partner_publication_review_events
-    where partner_id=:'submitted_partner_id'::uuid
-      and profile_snapshot_hash=:'submitted_profile_hash'
+    where partner_id=current_setting('heha.submitted_partner_id')::uuid
+      and profile_snapshot_hash=current_setting('heha.submitted_profile_hash')
   );
   insert into partner_publication_integration_results(label,ok,detail)
   values (
