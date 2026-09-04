@@ -42,3 +42,18 @@ test("review-only function derives identity from auth and returns a request rece
   assert.doesNotMatch(reviewSql, /clock_timestamp\(\)/i);
   assert.doesNotMatch(reviewSql, /delete\s+from\s+auth\.users/i);
 });
+
+test("review-only packet narrows the private request queue to least privilege", () => {
+  assert.match(
+    reviewSql,
+    /revoke\s+all\s+on\s+table\s+public\.account_deletion_requests\s+from\s+public,\s*anon,\s*authenticated/i
+  );
+  assert.match(
+    reviewSql,
+    /grant\s+select,\s*insert\s+on\s+table\s+public\.account_deletion_requests\s+to\s+authenticated/i
+  );
+  assert.doesNotMatch(
+    reviewSql,
+    /grant\s+(?:all|update|delete|truncate)[^;]*on\s+table\s+public\.account_deletion_requests/i
+  );
+});
