@@ -43,17 +43,29 @@ test("review-only function derives identity from auth and returns a request rece
   assert.doesNotMatch(reviewSql, /delete\s+from\s+auth\.users/i);
 });
 
-test("review-only packet narrows the private request queue to least privilege", () => {
+test("review-only packet narrows the private request queue by role and column", () => {
   assert.match(
     reviewSql,
     /revoke\s+all\s+on\s+table\s+public\.account_deletion_requests\s+from\s+public,\s*anon,\s*authenticated/i
   );
   assert.match(
     reviewSql,
-    /grant\s+select,\s*insert\s+on\s+table\s+public\.account_deletion_requests\s+to\s+authenticated/i
+    /grant\s+select\s*\(id,\s*user_id,\s*status,\s*created_at\)\s+on\s+table\s+public\.account_deletion_requests\s+to\s+authenticated/i
+  );
+  assert.match(
+    reviewSql,
+    /grant\s+insert\s*\(user_id,\s*email,\s*reason\)\s+on\s+table\s+public\.account_deletion_requests\s+to\s+authenticated/i
+  );
+  assert.match(
+    reviewSql,
+    /alter\s+policy\s+"Users can create own deletion request"[\s\S]*?to\s+authenticated[\s\S]*?with\s+check\s*\(\(select\s+auth\.uid\(\)\)\s*=\s*user_id\)/i
+  );
+  assert.match(
+    reviewSql,
+    /alter\s+policy\s+"Users can view own deletion request"[\s\S]*?to\s+authenticated[\s\S]*?using\s*\(\(select\s+auth\.uid\(\)\)\s*=\s*user_id\)/i
   );
   assert.doesNotMatch(
     reviewSql,
-    /grant\s+(?:all|update|delete|truncate)[^;]*on\s+table\s+public\.account_deletion_requests/i
+    /grant\s+(?:all|select\s*,\s*insert|update|delete|truncate)[^;]*on\s+table\s+public\.account_deletion_requests/i
   );
 });
