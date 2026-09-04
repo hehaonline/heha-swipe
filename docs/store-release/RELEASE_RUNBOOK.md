@@ -20,6 +20,13 @@ Expected results:
 - Vite builds with `VITE_RELEASE_CHANNEL=store`;
 - Capacitor sync succeeds for Android and iOS.
 
+Every pull request also runs **Android pull request validation** with
+nonfunctional CI fixtures. That job uses no repository or environment secrets,
+syncs only Android, runs `testDebugUnitTest`, and builds an unsigned debug
+package with `assembleDebug`. It uploads nothing. A passing result is
+repository evidence only; it is not a signed AAB, live-backend proof, an
+internal-track install, or store authorization.
+
 ## 2. Database review gates
 
 The SQL packet in `supabase/review_only/store_release` is not a migration.
@@ -47,7 +54,8 @@ Configure repository environment `store-review` with:
 
 Dispatch **Store release candidate** manually. The job refuses to build a
 release when any signing value is missing and uploads a signed `.aab` artifact
-for review only. It does not upload to Google Play.
+for review only. It does not upload to Google Play. This signed job remains
+manual and separate from the automatic unsigned pull-request workflow.
 
 Local unsigned validation may run `./gradlew tasks` or debug builds. A release
 task without the four signing environment values must fail.
