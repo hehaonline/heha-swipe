@@ -48,6 +48,9 @@ jobs:
       - name: Build and sync the store web bundle for Android
         run: npm run build:store && npx cap sync android
 
+      - name: Verify the Android release signing task-graph gate
+        run: node scripts/verify-android-signing-task-graph.mjs
+
       - name: Test and build the unsigned debug Android package
         working-directory: android
         run: ./gradlew testDebugUnitTest assembleDebug --no-daemon

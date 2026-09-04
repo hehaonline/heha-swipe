@@ -75,8 +75,10 @@ any signing value is missing and uploads a signed `.aab` artifact for review
 only. It does not upload to Google Play. This signed job remains manual and
 separate from the automatic unsigned pull-request workflow.
 
-Local unsigned validation may run `./gradlew tasks` or debug builds. A release
-task without the four signing environment values must fail.
+Local unsigned validation may run `./gradlew tasks` or debug builds. Any task
+graph that includes a release output must have all four signing environment
+values or fail, including aggregate `./gradlew assemble` and `./gradlew build`
+invocations.
 
 Android 16 may ignore orientation restrictions on displays at least 600dp wide.
 Treat portrait as a phone preference and explicitly review tablet/foldable

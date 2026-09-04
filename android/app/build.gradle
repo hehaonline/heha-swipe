@@ -1,18 +1,32 @@
 apply plugin: 'com.android.application'
 
-def releaseTaskRequested = gradle.startParameter.taskNames.any {
-    it.toLowerCase().contains('release')
-}
 def requiredSigningEnvironment = [
     'HEHA_ANDROID_KEYSTORE_PATH',
     'HEHA_ANDROID_KEYSTORE_PASSWORD',
     'HEHA_ANDROID_KEY_ALIAS',
     'HEHA_ANDROID_KEY_PASSWORD'
 ]
-def missingSigningEnvironment = requiredSigningEnvironment.findAll { !System.getenv(it) }
+def signingEnvironment = requiredSigningEnvironment.collectEntries { name ->
+    [(name): System.getenv(name)]
+}
+def missingSigningEnvironment = requiredSigningEnvironment.findAll { name ->
+    !signingEnvironment[name]?.trim()
+}
+def appProject = project
 
-if (releaseTaskRequested && !missingSigningEnvironment.isEmpty()) {
-    throw new GradleException("Refusing unsigned HEHA Swipe release. Missing: ${missingSigningEnvironment.join(', ')}")
+// Inspect the resolved graph instead of only the command-line task names. Lifecycle
+// tasks such as `assemble` and `build` pull release outputs into the graph even
+// though their own names do not contain "release".
+gradle.taskGraph.whenReady { taskGraph ->
+    def releaseOutputTasks = taskGraph.allTasks.findAll { task ->
+        task.project == appProject &&
+            task.name.toLowerCase(java.util.Locale.ROOT) ==~ /(?:assemble|bundle|package).*release.*/
+    }
+    if (!releaseOutputTasks.isEmpty() && !missingSigningEnvironment.isEmpty()) {
+        throw new GradleException(
+            "Refusing unsigned HEHA Swipe release. Missing: ${missingSigningEnvironment.join(', ')}"
+        )
+    }
 }
 
 android {
@@ -33,11 +47,11 @@ android {
     }
     signingConfigs {
         release {
-            if (releaseTaskRequested) {
-                storeFile file(System.getenv('HEHA_ANDROID_KEYSTORE_PATH'))
-                storePassword System.getenv('HEHA_ANDROID_KEYSTORE_PASSWORD')
-                keyAlias System.getenv('HEHA_ANDROID_KEY_ALIAS')
-                keyPassword System.getenv('HEHA_ANDROID_KEY_PASSWORD')
+            if (missingSigningEnvironment.isEmpty()) {
+                storeFile file(signingEnvironment['HEHA_ANDROID_KEYSTORE_PATH'])
+                storePassword signingEnvironment['HEHA_ANDROID_KEYSTORE_PASSWORD']
+                keyAlias signingEnvironment['HEHA_ANDROID_KEY_ALIAS']
+                keyPassword signingEnvironment['HEHA_ANDROID_KEY_PASSWORD']
             }
         }
     }

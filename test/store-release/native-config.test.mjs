@@ -63,6 +63,30 @@ test("Android release signing fails closed on missing secret environment", async
   ]) assert.match(gradle, new RegExp(name));
 });
 
+test("Android aggregate tasks are adversarially checked through the resolved task graph", async () => {
+  const [gradle, verifier, workflow] = await Promise.all([
+    text("android/app/build.gradle"),
+    text("scripts/verify-android-signing-task-graph.mjs"),
+    text(".github/workflows/android-pr-validation.yml"),
+  ]);
+  assert.doesNotMatch(gradle, /startParameter\.taskNames/);
+  assert.match(gradle, /gradle\.taskGraph\.whenReady/);
+  assert.match(gradle, /\(\?:assemble\|bundle\|package\)\.\*release/);
+  assert.match(verifier, /\["assemble", "build"\]/);
+  assert.match(verifier, /runGradle\("assembleDebug"\)/);
+  assert.match(verifier, /delete unsignedEnvironment\[name\]/);
+  assert.match(workflow, /node scripts\/verify-android-signing-task-graph\.mjs/);
+});
+
+test("HTML declares one deterministic 180px Apple touch icon", async () => {
+  const html = await text("index.html");
+  const declarations = html.match(/<link rel="apple-touch-icon"[^>]*>/g) ?? [];
+  assert.equal(declarations.length, 1);
+  assert.match(declarations[0], /sizes="180x180"/);
+  assert.match(declarations[0], /href="\/icons\/apple-touch-icon\.png"/);
+  assert.doesNotMatch(html, /apple-touch-icon[^>]*icon-192\.png/);
+});
+
 test("Android disables backups and limits FileProvider sharing to app cache", async () => {
   const [manifest, filePaths] = await Promise.all([
     text("android/app/src/main/AndroidManifest.xml"),
