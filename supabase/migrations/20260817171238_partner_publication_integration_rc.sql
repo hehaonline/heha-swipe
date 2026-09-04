@@ -932,10 +932,11 @@ grant select on table public.partners to authenticated;
 -- creation path. Existing owners may replace this exact, typed, public-profile
 -- content set through one SECURITY DEFINER function. No JSON patch, lifecycle,
 -- staff-review, media or publication-state input crosses this boundary. The
--- server resets routing, eligibility, lane, pillar and CTA decisions to safe
--- undecided defaults. Every successful edit changes the exact snapshot hash, so
--- prior consent and HEHA review evidence becomes stale without rewriting either
--- append-only ledger.
+-- server clears prior routing approval and derived routing/eligibility/CTA
+-- fields. The retained current-main suggestion trigger may repopulate
+-- non-authoritative suggestions, but must leave them at needs_review. Every
+-- successful edit changes the exact snapshot hash, so prior consent and HEHA
+-- review evidence becomes stale without rewriting either append-only ledger.
 create or replace function public.update_my_partner_profile(
   p_partner_id uuid,
   p_expected_profile_snapshot_hash text,
@@ -1193,7 +1194,7 @@ grant execute on function public.update_my_partner_profile(
 comment on function public.update_my_partner_profile(
   uuid,text,text,text[],text,text,text,text[],text,text,text[],text,text,text,text[]
 ) is
-  'Verified current-owner, typed public-profile replacement boundary. Raw authenticated partner INSERT/UPDATE stays revoked; protected state is not accepted; successful edits invalidate prior exact-hash consent/review evidence and prior routing decisions.';
+  'Verified current-owner, typed public-profile replacement boundary. Raw authenticated partner INSERT/UPDATE stays revoked; protected state is not accepted; successful edits invalidate prior exact-hash consent/review evidence and force any retained current-main routing suggestions back through needs_review.';
 
 -- ---------------------------------------------------------------------------
 -- 4. Sole final private projection. The current-owner consent decision and the

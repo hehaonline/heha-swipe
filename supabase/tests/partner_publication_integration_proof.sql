@@ -644,7 +644,7 @@ begin
       and swipe_eligible is null
       and local_eligible is null
       and local_lane is null
-      and heha_pillar is null
+      and heha_pillar='nourish'
       and primary_cta_destination is null
       and primary_cta_label is null
       and primary_cta_path is null
@@ -659,7 +659,7 @@ begin
   values (
     'new registration starts pending',
     true,
-    'supported owner RPC created the same claimed, pending, hidden, unrouted, no-staff-evidence defaults for an internal-role caller'
+    'supported owner RPC created claimed, pending, hidden, no-approved-routing, no-staff-evidence defaults while retaining the current-main nourish suggestion'
   );
 end;
 $proof$;
@@ -1004,19 +1004,19 @@ begin
   assert (
     select status='approved'
       and listing_status='listed'
-      and reviewed_by is not null
-      and routing_status='suggested'
+      and reviewed_by is null
+      and routing_status='needs_review'
       and routing_notes is null
       and routing_updated_by is null
-      and routing_updated_at is null
-      and website_eligible is null
-      and swipe_eligible is null
-      and local_eligible is null
-      and local_lane is null
-      and heha_pillar is null
-      and primary_cta_destination is null
-      and primary_cta_label is null
-      and primary_cta_path is null
+      and routing_updated_at is not null
+      and website_eligible is true
+      and swipe_eligible is true
+      and local_eligible is true
+      and local_lane='meals'
+      and heha_pillar='nourish'
+      and primary_cta_destination='local'
+      and primary_cta_label='Order Meals'
+      and primary_cta_path='/restaurants'
       and complete_pct=app_private.partner_completion_pct(partners)
     from public.partners
     where id=current_setting('heha.submitted_partner_id')::uuid
@@ -1044,7 +1044,7 @@ begin
   values (
     'owner profile RPC invalidates prior evidence and routing',
     true,
-    'typed current-owner edit changed the exact snapshot hash, recomputed completion, consumed its private capability, preserved append-only evidence, and reset routing/eligibility for fresh review'
+    'typed current-owner edit changed the exact snapshot hash, recomputed completion, consumed its private capability, preserved append-only evidence, and forced current-main routing suggestions back through needs_review'
   );
 end;
 $proof$;
