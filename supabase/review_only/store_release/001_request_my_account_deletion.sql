@@ -2,10 +2,20 @@
 -- Purpose: authenticated, no-argument deletion-request receipt for store review.
 -- Preconditions (verify against the live schema before approval):
 --   * public.account_deletion_requests has id uuid, user_id uuid, email text,
---     reason text, and created_at timestamptz not null default now().
---   * authenticated has SELECT and INSERT on the table.
---   * RLS SELECT/INSERT policies restrict rows to auth.uid() = user_id.
+--     reason text, status text not null default, and created_at timestamptz
+--     not null default now().
+--   * RLS is enabled and SELECT/INSERT policies restrict rows to
+--     auth.uid() = user_id.
 --   * Existing duplicate user_id rows have been reviewed and reconciled.
+--   * Direct table access can be reduced to SELECT and INSERT for authenticated;
+--     public and anon require no privileges on this private request queue.
+
+-- Narrow existing broad browser-role grants before exposing the RPC. This is
+-- intentionally limited to this table and leaves the owner/service role intact.
+revoke all on table public.account_deletion_requests
+  from public, anon, authenticated;
+grant select, insert on table public.account_deletion_requests
+  to authenticated;
 
 -- The unique index is required for global idempotency. The function's advisory
 -- lock serializes calls through this RPC; the index also protects against a
