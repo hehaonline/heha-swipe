@@ -18,6 +18,10 @@ const reviewSql = await readFile(
   new URL("../../supabase/review_only/store_release/002_public_partner_card_projection.sql", import.meta.url),
   "utf8"
 );
+const closureSql = await readFile(
+  new URL("../../supabase/review_only/store_release/003_close_legacy_partner_browser_paths.sql", import.meta.url),
+  "utf8"
+);
 
 const expectedFields = [
   "id",
@@ -195,4 +199,36 @@ test("review-only RPCs have fixed schemas, paths, and eligibility gates", () => 
 test("Phase A does not prematurely revoke legacy or base-table access", () => {
   assert.doesNotMatch(reviewSql, /revoke\s+all\s+on\s+table\s+public\.partners/i);
   assert.doesNotMatch(reviewSql, /drop\s+policy/i);
+});
+
+test("Phase B packet closes every wide browser path but stays explicitly blocked", () => {
+  assert.match(closureSql, /REVIEW ONLY\. DO NOT APPLY YET/i);
+  for (const relation of [
+    "public_swipe_partners",
+    "public_partner_directory",
+    "public_local_partners",
+  ]) {
+    assert.match(
+      closureSql,
+      new RegExp(`revoke\\s+all[\\s\\S]*public\\.${relation}[\\s\\S]*from\\s+public,\\s*anon,\\s*authenticated`, "i")
+    );
+  }
+  assert.match(
+    closureSql,
+    /revoke\s+all\s+on\s+table\s+public\.partners\s+from\s+public,\s*anon,\s*authenticated/i
+  );
+  assert.match(
+    closureSql,
+    /grant\s+select,\s*insert,\s*update\s+on\s+table\s+public\.partners\s+to\s+authenticated/i
+  );
+  assert.doesNotMatch(
+    closureSql,
+    /grant\s+(?:all|delete|truncate|references|trigger)[^;]*on\s+table\s+public\.partners/i
+  );
+  assert.match(closureSql, /drop\s+policy\s+if\s+exists\s+"Anyone can view approved partners"/i);
+  assert.match(closureSql, /drop\s+policy\s+if\s+exists\s+"Saved partners visible to saver"/i);
+  assert.match(
+    closureSql,
+    /alter\s+policy\s+"Owners can view own partner"[\s\S]*?to\s+authenticated[\s\S]*?using\s*\(\(select\s+auth\.uid\(\)\)\s*=\s*owner_id\)/i
+  );
 });
