@@ -2,7 +2,8 @@
 
 Status: **DOCUMENTATION / COMPATIBILITY TRIAGE COMPLETE; EXECUTABLE BASELINE STILL BLOCKED**  
 Task: `SWP-016`  
-Base evidence: `main@dc8b1709b80f5cc0fe7fae79e7e980b32b085eb8`
+Base evidence: `main@dc8b1709b80f5cc0fe7fae79e7e980b32b085eb8`  
+Extension evidence: draft PR #140 at `b8bb0f09583fa833851f69fdbc220fa6c305996d`, composed from `main@1ab63290fda9a967a36831cef50ef01b68a8c0a4` on 2026-09-03 ET
 
 ## Purpose
 
@@ -11,7 +12,7 @@ Account for every committed live-ledger row and every current executable migrati
 This packet compares:
 
 - the committed **96-row** live ledger;
-- the current **35-file / 31-version** `supabase/migrations` tree;
+- the current **46-file / 42-version** `supabase/migrations` tree;
 - the byte-preserved historical supporter source outside the executable chain.
 
 It does not rewrite history, infer missing SQL bodies, or authorize a baseline, migration, paid branch, Production action, Community Pass merge, Stripe action, entitlement, benefit, or launch.
@@ -26,11 +27,11 @@ It does not rewrite history, infer missing SQL bodies, or authorize a baseline, 
 | `B` | 15 | No current executable source candidate was identified. Reconstruct from sanitized current definitions while preserving the ledger row as history. |
 | `D` | 2 | Two live versions share one name. Recover and compare both original SQL bodies before deciding equivalence or supersession. |
 
-## Repository-file class codes — 35 files
+## Repository-file class codes — 46 files
 
 | Code | Files | Canonical disposition |
 |---|---:|---|
-| `BC` | 26 | Candidate component only after deep metadata, normalized-effect, dependency, and security review. |
+| `BC` | 37 | Candidate component only after deep metadata, normalized-effect, dependency, and security review. |
 | `BS` | 6 | Useful behavior may be retained, but same-version collisions require uniquely identified canonical sections. |
 | `AN` | 1 | Historical explanation, not executable reconstruction. |
 | `AR` | 1 | Preserve for incident history; exclude from the future zero-build executable chain. |
@@ -38,7 +39,7 @@ It does not rewrite history, infer missing SQL bodies, or authorize a baseline, 
 
 ## Critical conclusion
 
-There are **zero exact version matches** between the 96 live versions and the 31 unique versions in the current executable migration tree.
+There are **zero exact version matches** between the 96 live versions and the 42 unique versions in the current executable migration tree.
 
 Therefore:
 
@@ -52,7 +53,7 @@ Therefore:
 ## Packet
 
 - `live-ledger-compatibility-map-2026-08-24.csv` — all 96 live versions.
-- `repository-migration-disposition-map-2026-08-24.csv` — all 35 current executable files.
+- `repository-migration-disposition-map-2026-08-24.csv` — all 46 current executable files.
 - `deep-metadata-capture-plan-2026-08-24.md` — staged next-evidence plan.
 - `queries/deep-structure-manifest-capture.sql` — prepared, unexecuted, metadata-only first-tranche query.
 - `verify-repository-ledger-map.mjs` — fail-closed verifier.
@@ -61,6 +62,8 @@ Therefore:
 ## Evidence boundary
 
 Codes `N` and `C` do **not** mean SQL equivalence, complete object coverage, safe replay, final security posture, or live-to-repository provenance.
+
+The 11 PR #140 extension rows are repository-proven forward candidates only. Blank `live_candidates` values are deliberate: no exact live-ledger edge, live equivalence, complete zero-build chain, or Production safety is claimed.
 
 ## Next bounded lane
 

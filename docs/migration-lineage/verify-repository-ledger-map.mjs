@@ -142,11 +142,11 @@ const repositoryExpectations = parseCsv(
 
 if (ledger.length !== 96) fail(`live ledger: expected 96 rows, got ${ledger.length}`);
 if (new Set(ledger.map((row) => row.version)).size !== 96) fail('live ledger: versions are not unique');
-if (inventory.length !== 35) fail(`repository inventory: expected 35 rows, got ${inventory.length}`);
+if (inventory.length !== 46) fail(`repository inventory: expected 46 rows, got ${inventory.length}`);
 if (liveMap.length !== 96) fail(`live compatibility map: expected 96 rows, got ${liveMap.length}`);
-if (repoMap.length !== 35) fail(`repository disposition map: expected 35 rows, got ${repoMap.length}`);
-if (repositoryExpectations.length !== 35) {
-  fail(`reviewed repository expectations: expected 35 rows, got ${repositoryExpectations.length}`);
+if (repoMap.length !== 46) fail(`repository disposition map: expected 46 rows, got ${repoMap.length}`);
+if (repositoryExpectations.length !== 46) {
+  fail(`reviewed repository expectations: expected 46 rows, got ${repositoryExpectations.length}`);
 }
 for (const row of repositoryExpectations) {
   if (!/^[0-9a-f]{64}$/.test(row.sha256)) {
@@ -279,7 +279,7 @@ for (const row of repoMap) {
   }
 }
 
-const expectedRepoCounts = { AN: 1, AR: 1, AS: 1, BC: 26, BS: 6 };
+const expectedRepoCounts = { AN: 1, AR: 1, AS: 1, BC: 37, BS: 6 };
 const actualRepoCounts = countBy(repoMap, 'class');
 for (const [classification, expected] of Object.entries(expectedRepoCounts)) {
   if (actualRepoCounts[classification] !== expected) {
