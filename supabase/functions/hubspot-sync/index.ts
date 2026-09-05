@@ -21,19 +21,15 @@ type QueueRow = {
 };
 
 type PartnerRow = {
-  id: string;
   name: string | null;
   category: string | null;
-  location: string | null;
   contact: string | null;
   instagram: string | null;
   website: string | null;
   bio: string | null;
   phone: string | null;
-  business_type: string | null;
   partner_type: string | null;
   neighborhood: string | null;
-  tagline: string | null;
   hours: string | null;
 };
 
@@ -456,9 +452,7 @@ async function processQueueRow(
   queue: QueueRow,
 ): Promise<{ companyId: string; contactCount: number; noteCreated: boolean; skipped: boolean }> {
   const { data: partner, error: partnerError } = await supabase
-    .from('partners')
-    .select('id,name,category,location,contact,instagram,website,bio,phone,business_type,partner_type,neighborhood,tagline,hours')
-    .eq('id', queue.partner_id)
+    .rpc('get_partner_hubspot_sync_source', { p_partner_id: queue.partner_id })
     .maybeSingle();
 
   if (partnerError) throw partnerError;

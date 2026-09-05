@@ -21,14 +21,17 @@ import InternalDashboardShortcut from "./components/InternalDashboardShortcut.js
 import BecomePartnerEmbed from "./components/embed/BecomePartnerEmbed.jsx";
 import PartnerDirectoryEmbed from "./components/embed/PartnerDirectoryEmbed.jsx";
 import { supabase } from "./lib/supabase";
+import LegalPage, { isPublicInfoPath } from "./components/LegalPage.jsx";
+import { releasePolicy } from "./lib/releasePolicy";
 
 const SIGNUP_ROLE_KEY = "heha_signup_role";
 
-if (new URLSearchParams(window.location.search).get("becomePartner") === "1") {
+if (releasePolicy.partnerSelfService && new URLSearchParams(window.location.search).get("becomePartner") === "1") {
   localStorage.setItem(SIGNUP_ROLE_KEY, "partner");
 }
 
 function shouldRenderAdminApp() {
+  if (!releasePolicy.internalAdmin) return false;
   const hostIsAdmin = window.location.hostname.startsWith("admin.");
   const buildIsAdmin = import.meta.env.VITE_APP_MODE === "admin";
   const adminRoute = window.location.pathname.startsWith("/admin");
@@ -36,12 +39,16 @@ function shouldRenderAdminApp() {
 }
 
 function embedFromPath() {
+  if (releasePolicy.storeBuild) return null;
   if (window.location.pathname === "/embed/partners") return "partners";
   if (window.location.pathname === "/embed/become-partner") return "become-partner";
   return null;
 }
 
 function Root() {
+  if (isPublicInfoPath(window.location.pathname)) {
+    return <LegalPage pathname={window.location.pathname} />;
+  }
   const isAdminRoute = shouldRenderAdminApp();
   const embed = embedFromPath();
 
@@ -52,7 +59,7 @@ function Root() {
   return (
     <>
       <App />
-      <InternalDashboardShortcut />
+      {releasePolicy.internalAdmin && <InternalDashboardShortcut />}
     </>
   );
 }

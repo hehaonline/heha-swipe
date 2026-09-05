@@ -1,0 +1,67 @@
+name: Store release candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heha-swipe-store-release
+  cancel-in-progress: false
+
+jobs:
+  verify-and-build-android:
+    runs-on: ubuntu-latest
+    environment: store-review
+    env:
+      VITE_RELEASE_CHANNEL: store
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Verify store policy, contracts, and assets
+        run: npm run test:store-release && npm run assets:check
+
+      - name: Validate public store runtime configuration
+        run: npm run env:check:store
+
+      - name: Build and sync store web bundle
+        run: npm run build:store && npx cap sync
+
+      - name: Build signed Google Play bundle
+        working-directory: android
+        env:
+          HEHA_ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/heha-swipe-android-release.jks
+          HEHA_ANDROID_KEYSTORE_BASE64: ${{ secrets.HEHA_ANDROID_KEYSTORE_BASE64 }}
+          HEHA_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.HEHA_ANDROID_KEYSTORE_PASSWORD }}
+          HEHA_ANDROID_KEY_ALIAS: ${{ secrets.HEHA_ANDROID_KEY_ALIAS }}
+          HEHA_ANDROID_KEY_PASSWORD: ${{ secrets.HEHA_ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$HEHA_ANDROID_KEYSTORE_BASE64"
+          printf '%s' "$HEHA_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$HEHA_ANDROID_KEYSTORE_PATH"
+          node ../scripts/require-android-signing-env.mjs
+          ./gradlew bundleRelease
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: heha-swipe-android-0.1.0-1
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 14

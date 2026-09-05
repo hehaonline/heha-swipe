@@ -1,12 +1,18 @@
 import { useState, useRef } from "react";
 import { supabase } from "../lib/supabase";
+import { releasePolicy } from "../lib/releasePolicy";
+import { canonicalPublicAppUrl } from "../lib/authRedirect";
 
-const redirectTo = window.location.origin;
+const redirectTo = releasePolicy.storeBuild
+  ? canonicalPublicAppUrl(import.meta.env.VITE_PUBLIC_APP_URL)
+  : window.location.origin;
 // Single source of truth for the sign-up intent key so it stays in sync with App.jsx.
 const SIGNUP_ROLE_KEY = "heha_signup_role";
 
 export default function AuthScreen() {
-  const [role, setRole] = useState(() => localStorage.getItem(SIGNUP_ROLE_KEY) || "");
+  const [role, setRole] = useState(() =>
+    releasePolicy.partnerSelfService ? localStorage.getItem(SIGNUP_ROLE_KEY) || "" : "customer"
+  );
   const [mode, setMode] = useState("create");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,7 +26,7 @@ export default function AuthScreen() {
   // Persist the chosen customer/partner intent right before an auth call so it
   // survives the OAuth/magic-link round trip and can be read after login.
   const persistIntent = () => {
-    localStorage.setItem(SIGNUP_ROLE_KEY, role || "customer");
+    localStorage.setItem(SIGNUP_ROLE_KEY, releasePolicy.partnerSelfService ? role || "customer" : "customer");
   };
 
   const chooseRole = (nextRole) => {
@@ -186,9 +192,11 @@ export default function AuthScreen() {
   return (
     <main className="auth-screen">
       <section className="auth-card role-auth-card">
-        <button type="button" className="role-switch-pill" onClick={changeRole}>
-          {switchLabel}
-        </button>
+        {releasePolicy.partnerSelfService && (
+          <button type="button" className="role-switch-pill" onClick={changeRole}>
+            {switchLabel}
+          </button>
+        )}
 
         <div className="auth-hero">
           <div className="brand-mark large">✦</div>
@@ -234,23 +242,31 @@ export default function AuthScreen() {
           </button>
         )}
 
-        <button type="button" className="text-button center" onClick={sendSignInEmail} disabled={!email || loading}>
-          Send secure sign-in email instead
-        </button>
+        {releasePolicy.passwordlessAuth && (
+          <button type="button" className="text-button center" onClick={sendSignInEmail} disabled={!email || loading}>
+            Send secure sign-in email instead
+          </button>
+        )}
 
-        <div className="divider"><span>or continue with</span></div>
-
-        <div className="provider-row">
-          <button type="button" onClick={() => signInWithProvider("google")} disabled={loading}>Google</button>
-          <button type="button" onClick={() => signInWithProvider("apple")} disabled={loading}>Apple</button>
-          <button type="button" onClick={() => signInWithProvider("facebook")} disabled={loading}>Facebook</button>
-        </div>
+        {releasePolicy.socialAuth && (
+          <>
+            <div className="divider"><span>or continue with</span></div>
+            <div className="provider-row">
+              <button type="button" onClick={() => signInWithProvider("google")} disabled={loading}>Google</button>
+              <button type="button" onClick={() => signInWithProvider("apple")} disabled={loading}>Apple</button>
+              <button type="button" onClick={() => signInWithProvider("facebook")} disabled={loading}>Facebook</button>
+            </div>
+          </>
+        )}
 
         {message && <div className="success-banner">{message}</div>}
         {error && <div className="error-banner">{error}</div>}
 
         <p className="fine-print">
           Passwords are handled securely by Supabase Auth. HEHA does not store your password inside your public profile.
+        </p>
+        <p className="fine-print auth-legal-links">
+          <a href="/privacy">Privacy</a> · <a href="/support">Support</a> · <a href="/account-deletion">Account deletion</a>
         </p>
       </section>
     </main>

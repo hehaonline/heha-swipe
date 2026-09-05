@@ -10,13 +10,15 @@ import PasswordResetScreen from "./components/PasswordResetScreen";
 import LocationModal, { getActiveLocationLabel } from "./components/LocationModal";
 import CommunityPassTab from "./components/CommunityPassTab";
 import { fetchActiveSupporterSubscription } from "./lib/supporterStatus";
+import { fetchPublicPartners } from "./lib/publicPartner";
+import { releasePolicy } from "./lib/releasePolicy";
 
 const TABS = [
   { id: "swipe", label: "Discover", icon: "⌕" },
   { id: "faves", label: "Saved", icon: "♡" },
   { id: "deals", label: "Community", icon: "⌑" },
   { id: "profile", label: "Profile", icon: "♙" },
-];
+].filter((item) => item.id !== "deals" || releasePolicy.payments);
 
 const COMPLETED_SUBSCRIPTION_TYPES = [
   "instagram",
@@ -86,9 +88,13 @@ export default function App() {
   const [appError, setAppError] = useState(null);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [locationLabel, setLocationLabel] = useState(null);
-  const [supportReturn] = useState(() => window.location.pathname === "/support/success");
+  const [supportReturn] = useState(() =>
+    releasePolicy.payments && window.location.pathname === "/support/success"
+  );
   const [supportView, setSupportView] = useState(() =>
-    window.location.pathname === "/support/success"
+    !releasePolicy.payments
+      ? null
+      : window.location.pathname === "/support/success"
       ? "success"
       : window.location.pathname === "/support/cancel"
       ? "cancel"
@@ -142,7 +148,7 @@ export default function App() {
   }, [session?.user?.id, passwordRecovery]);
 
   useEffect(() => {
-    if (!session?.user) return;
+    if (!session?.user || !releasePolicy.payments) return;
     const params = new URLSearchParams(window.location.search);
     const checkoutSuccess = params.get("checkout") === "success";
     if (!checkoutSuccess) return;
@@ -167,22 +173,18 @@ export default function App() {
     setAppError(null);
 
     try {
-      const [profileResult, partnerResult, saveResult] = await Promise.all([
+      const [profileResult, nextPartners, saveResult] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
-        supabase
-          .from("public_swipe_partners")
-          .select("*")
-          .order("heha_partner", { ascending: false })
-          .order("created_at", { ascending: false }),
+        fetchPublicPartners(supabase, {
+          channel: releasePolicy.storeBuild ? "store" : "web",
+        }),
         supabase.from("saves").select("*").eq("user_id", uid),
       ]);
 
       if (profileResult.error) throw profileResult.error;
-      if (partnerResult.error) throw partnerResult.error;
       if (saveResult.error) throw saveResult.error;
 
       const nextProfile = profileResult.data;
-      const nextPartners = partnerResult.data || [];
       const nextSaves = saveResult.data || [];
 
       setProfile(nextProfile);
@@ -191,18 +193,23 @@ export default function App() {
       const supporterByEntitlement = await hasActiveSupporterSub(uid);
       setNeedsOnboarding(!(isOnboarded(nextProfile) || supporterByEntitlement));
 
-      const signupIntent = localStorage.getItem("heha_signup_role");
-      const { data: ownedListings, error: ownedListingError } = await supabase
-        .from("partners")
-        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner")
-        .eq("owner_id", uid)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (ownedListingError) throw ownedListingError;
-      const existing = ownedListings?.[0] || null;
+      const signupIntent = releasePolicy.partnerSelfService
+        ? localStorage.getItem("heha_signup_role")
+        : "customer";
+      let existing = null;
+      if (releasePolicy.partnerSelfService) {
+        const { data: ownedListings, error: ownedListingError } = await supabase
+          .from("partners")
+          .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner")
+          .eq("owner_id", uid)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (ownedListingError) throw ownedListingError;
+        existing = ownedListings?.[0] || null;
+      }
       setMyListing(existing);
 
-      if (isPartnerProfile(nextProfile) || existing || signupIntent === "partner") {
+      if (releasePolicy.partnerSelfService && (isPartnerProfile(nextProfile) || existing || signupIntent === "partner")) {
         if (!existing) {
           setShowPartnerWizard(true);
           setNeedsOnboarding(false);
@@ -217,6 +224,7 @@ export default function App() {
   };
 
   const pingNewUserWebhook = async (user) => {
+    if (!releasePolicy.outboundWebhooks) return;
     try {
       const webhookUrl = import.meta.env.VITE_MAKE_NEW_USER_WEBHOOK;
       if (!webhookUrl) return;
@@ -314,6 +322,8 @@ export default function App() {
   };
 
   const handleDiscountCheck = async (partner, request = {}) => {
+    if (!releasePolicy.contactRequests) return;
+
     const uid = session?.user?.id;
     if (!uid || !partner?.id) return;
 
@@ -425,7 +435,7 @@ export default function App() {
     );
   }
 
-  if (showPartnerWizard) {
+  if (releasePolicy.partnerSelfService && showPartnerWizard) {
     return (
       <PartnerWizard
         user={session.user}
@@ -443,16 +453,13 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header luxe-header">
         <SwipeLogo compact />
-        <button
-          className="location-pill ghost-pill"
-          onClick={() => setShowLocationModal(true)}
-          aria-label="Set your location"
-          title="Set your location"
-        >
+        <button className="location-pill ghost-pill" onClick={() => setShowLocationModal(true)} aria-label="Set your location" title="Set your location">
           <span className="location-pill-icon">📍</span>
           <span className="location-pill-label">{locationLabel || "Tampa Bay"}</span>
         </button>
-        <button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
+        {releasePolicy.partnerSelfService && (
+          <button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
+        )}
       </header>
 
       {notice && <div className="toast-notice">{notice}</div>}
@@ -462,6 +469,7 @@ export default function App() {
         <LocationModal
           user={session?.user || null}
           profileLocation={profile?.location || null}
+          allowGeolocation={releasePolicy.geolocation}
           onClose={() => setShowLocationModal(false)}
           onLocationSaved={handleLocationSaved}
         />
@@ -484,10 +492,11 @@ export default function App() {
             partners={partners}
             saves={saves}
             onUnsave={handleUnsave}
-            onDiscountCheck={handleDiscountCheck}
+            onDiscountCheck={releasePolicy.contactRequests ? handleDiscountCheck : undefined}
+            allowContactRequests={releasePolicy.contactRequests}
           />
         )}
-        {tab === "deals" && (
+        {releasePolicy.payments && tab === "deals" && (
           <CommunityPassTab
             user={session.user}
             profile={profile}
@@ -500,11 +509,14 @@ export default function App() {
             profile={profile}
             partners={partners}
             saves={saves}
-            isBusiness={isPartnerProfile(profile) || !!myListing}
+            isBusiness={releasePolicy.partnerSelfService && (isPartnerProfile(profile) || !!myListing)}
             listing={myListing}
             onSignOut={handleSignOut}
             onListBusiness={() => setShowPartnerWizard(true)}
             onRefresh={() => loadData(session.user.id)}
+            allowInstagram={releasePolicy.instagram}
+            allowPartnerSelfService={releasePolicy.partnerSelfService}
+            allowProfileReset={releasePolicy.profileReset}
           />
         )}
       </main>

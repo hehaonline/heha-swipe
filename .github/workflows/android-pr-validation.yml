@@ -1,0 +1,68 @@
+name: Android pull request validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heha-swipe-android-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify-unsigned-android:
+    name: Verify unsigned Android candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Nonfunctional CI fixtures; no repository or environment secrets are used.
+      VITE_RELEASE_CHANNEL: store
+      VITE_SUPABASE_URL: https://ci-validation.supabase.co
+      VITE_SUPABASE_ANON_KEY: sb_publishable_ci_validation_only_00000000000000000000
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify literal pull-request head
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          checked_out_sha="$(git rev-parse HEAD)"
+          test -z "${PR_HEAD_SHA}" || test "${checked_out_sha}" = "${PR_HEAD_SHA}"
+          echo "checked_out_sha=${checked_out_sha}"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Audit shipped dependencies
+        run: npm audit --omit=dev
+
+      - name: Verify store policy, contracts, and assets
+        run: npm run test:store-release && npm run assets:check
+
+      - name: Build and sync the store web bundle for Android
+        run: npm run build:store && npx cap sync android
+
+      - name: Verify the Android release signing task-graph gate
+        run: node scripts/verify-android-signing-task-graph.mjs
+
+      - name: Test and build the unsigned debug Android package
+        working-directory: android
+        run: ./gradlew testDebugUnitTest assembleDebug --no-daemon

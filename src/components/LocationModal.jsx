@@ -28,7 +28,7 @@ export function getActiveLocationLabel(profileLocation) {
   return "Tampa Bay";
 }
 
-export default function LocationModal({ user, profileLocation, onClose, onLocationSaved }) {
+export default function LocationModal({ user, profileLocation, onClose, onLocationSaved, allowGeolocation = true }) {
   const [busy, setBusy] = useState(false);
   const [geoError, setGeoError] = useState(null);
   const [toast, setToast] = useState(null);
@@ -145,18 +145,16 @@ export default function LocationModal({ user, profileLocation, onClose, onLocati
 
         {toast && <div className="location-toast">{toast}</div>}
 
-        <button
-          className="location-geo-btn"
-          onClick={handleUseCurrentLocation}
-          disabled={busy}
-        >
-          <span>Location</span>
-          {busy ? "Detecting location..." : "Use my current location"}
-        </button>
-
-        {geoError && <p className="location-geo-error">{geoError}</p>}
-
-        <div className="location-divider"><span>or enter manually</span></div>
+        {allowGeolocation && (
+          <>
+            <button className="location-geo-btn" onClick={handleUseCurrentLocation} disabled={busy}>
+              <span>Location</span>
+              {busy ? "Detecting location..." : "Use my current location"}
+            </button>
+            {geoError && <p className="location-geo-error">{geoError}</p>}
+            <div className="location-divider"><span>or enter manually</span></div>
+          </>
+        )}
 
         <div className="location-form">
           <label className="location-field">

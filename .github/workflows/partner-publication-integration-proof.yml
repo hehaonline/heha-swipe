@@ -1,0 +1,434 @@
+name: Partner Publication Integration Proof
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/partner-publication-integration-proof.yml
+      - supabase/migrations/20260810072829_wave1_partner_publication_consent.sql
+      - supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql
+      - supabase/migrations/20260811090100_hybrid_partner_claim_invite_qualification.sql
+      - supabase/migrations/20260811090200_hybrid_partner_private_mutation_capabilities.sql
+      - supabase/migrations/20260811090300_hybrid_partner_capability_gate_hardening.sql
+      - supabase/migrations/20260811090400_hybrid_partner_owner_release_actor_cleanup.sql
+      - supabase/migrations/20260811090500_hybrid_partner_agreement_evidence.sql
+      - supabase/migrations/20260811090600_hybrid_partner_context_authenticity.sql
+      - supabase/migrations/20260817154529_hybrid_partner_security_reconciliation.sql
+      - supabase/migrations/20260817154927_hybrid_partner_claim_recipient_contract.sql
+      - supabase/migrations/20260817171238_partner_publication_integration_rc.sql
+      - supabase/functions/hubspot-sync/index.ts
+      - supabase/tests/fixtures/partner_publication_integration_baseline.sql
+      - supabase/tests/partner_publication_consent_proof.sql
+      - supabase/tests/partner_publication_integration_proof.sql
+      - supabase/tests/hybrid_partner_lifecycle_proof.sql
+      - scripts/partner_publication_integration_concurrency_proof.sh
+      - scripts/hybrid_partner_concurrency_proof.sh
+      - .env.example
+      - README.md
+      - vite.config.js
+      - index.html
+      - package.json
+      - package-lock.json
+      - public/**
+      - src/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # A pull_request event normally checks out a synthetic merge ref. The
+          # security evidence must come from the literal, reviewable PR head.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Supabase CLI (pinned)
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.112.0
+
+      - name: Verify literal revision and proof syntax
+        shell: bash
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          mkdir -p artifacts/partner-publication-integration-proof
+          checked_out_sha="$(git rev-parse HEAD)"
+          {
+            echo "checked_out_sha=${checked_out_sha}"
+            echo "github_sha=${GITHUB_SHA}"
+            echo "pr_head_sha=${PR_HEAD_SHA}"
+            echo "pr_base_sha=${PR_BASE_SHA}"
+            echo "supabase_cli=$(supabase --version)"
+            echo "psql=$(psql --version)"
+          } | tee artifacts/partner-publication-integration-proof/revision.txt
+          if [ -n "${PR_HEAD_SHA}" ]; then
+            test "${checked_out_sha}" = "${PR_HEAD_SHA}"
+            echo 'exact_head_check=pass' \
+              | tee -a artifacts/partner-publication-integration-proof/revision.txt
+          fi
+          bash -n scripts/partner_publication_integration_concurrency_proof.sh
+          bash -n scripts/hybrid_partner_concurrency_proof.sh
+          git diff --check
+
+      - name: Prepare disposable synthetic Supabase project
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .ci/partner-publication-integration
+          mkdir -p .ci/partner-publication-integration
+          cd .ci/partner-publication-integration
+          supabase init
+          mkdir -p supabase/migrations
+          cp ../../supabase/tests/fixtures/partner_publication_integration_baseline.sql \
+            supabase/migrations/20260810070000_partner_publication_integration_baseline.sql
+          cp ../../supabase/migrations/20260810072829_wave1_partner_publication_consent.sql \
+            supabase/migrations/
+
+          expected=(
+            20260810070000_partner_publication_integration_baseline.sql
+            20260810072829_wave1_partner_publication_consent.sql
+            20260811090000_hybrid_partner_lifecycle.sql
+            20260811090100_hybrid_partner_claim_invite_qualification.sql
+            20260811090200_hybrid_partner_private_mutation_capabilities.sql
+            20260811090300_hybrid_partner_capability_gate_hardening.sql
+            20260811090400_hybrid_partner_owner_release_actor_cleanup.sql
+            20260811090500_hybrid_partner_agreement_evidence.sql
+            20260811090600_hybrid_partner_context_authenticity.sql
+            20260817154529_hybrid_partner_security_reconciliation.sql
+            20260817154927_hybrid_partner_claim_recipient_contract.sql
+            20260817171238_partner_publication_integration_rc.sql
+          )
+          printf '%s\n' "${expected[@]}" \
+            | tee ../../artifacts/partner-publication-integration-proof/migration-order.txt
+          for migration in "${expected[@]:1}"; do
+            test -s "../../supabase/migrations/${migration}"
+          done
+
+      - name: Start disposable Supabase and apply baseline plus consent donor
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd .ci/partner-publication-integration
+          if supabase start > supabase-start-full.log 2>&1; then
+            status=started
+          else
+            status=failed
+          fi
+          grep -Ei 'started|stopped|error|warn|local development|migration' \
+            supabase-start-full.log \
+            | grep -viE 'key|secret|token|jwt|password|url|s3' \
+            > ../../artifacts/partner-publication-integration-proof/start-sanitized.txt || true
+          echo "supabase_start=${status}" \
+            >> ../../artifacts/partner-publication-integration-proof/start-sanitized.txt
+          test "${status}" = started
+
+      - name: Prove safe #118 to #120 handoff
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 <<'SQL' \
+            2>&1 | tee artifacts/partner-publication-integration-proof/handoff-proof.txt
+          do $proof$
+          declare
+            expected constant text[] := array[
+              'id','created_at','name','category','categories','instagram','website','bio',
+              'tags','rating','review_count','distance_text','color','photo_emoji',
+              'heha_partner','status','hours','business_type','offerings','neighborhood',
+              'tagline','items','image_url','price_range','gallery_urls','partner_type',
+              'delivery_days','heha_pillar','local_eligible','local_lane',
+              'primary_cta_destination','primary_cta_label','primary_cta_path'
+            ]::text[];
+            actual text[];
+            actual_versions text[];
+            view_definition text;
+            normalized_view_definition text;
+            view_row_count bigint;
+            view_name text;
+          begin
+            select array_agg(version order by version)
+            into actual_versions
+            from supabase_migrations.schema_migrations;
+            assert actual_versions = array['20260810070000','20260810072829']::text[],
+              'disposable database did not apply exactly baseline then #118';
+            assert to_regclass('app_private.partner_publication_projection') is not null,
+              '#118 private consent projection is missing';
+            assert not has_table_privilege('anon','public.partners','SELECT'),
+              '#118 left raw partner SELECT available to anon';
+            foreach view_name in array array[
+              'public_partner_directory','public_swipe_partners','public_local_partners'
+            ]::text[] loop
+              select array_agg(column_name order by ordinal_position) into actual
+              from information_schema.columns
+              where table_schema='public' and table_name=view_name;
+              assert actual=expected, format('%s does not have the exact 33-column contract',view_name);
+              select pg_get_viewdef(format('public.%I',view_name)::regclass,true)
+              into view_definition;
+              normalized_view_definition := regexp_replace(
+                lower(view_definition),
+                '\s+',
+                ' ',
+                'g'
+              );
+              assert position(' where false' in normalized_view_definition) > 0,
+                format('%s is not structurally held empty before the final migration',view_name);
+              execute format('select count(*) from public.%I',view_name)
+              into view_row_count;
+              assert view_row_count=0,
+                format('%s exposed rows before the final migration',view_name);
+            end loop;
+          end;
+          $proof$;
+          select 'safe_118_to_120_handoff=pass';
+          SQL
+
+      - name: Apply the complete #120 lifecycle chain lexically
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          {
+            echo 'apply=supabase/migrations/20260810070000_partner_publication_integration_baseline.sql'
+            echo 'apply=supabase/migrations/20260810072829_wave1_partner_publication_consent.sql'
+          } > artifacts/partner-publication-integration-proof/lexical-apply.txt
+          migrations=(
+            supabase/migrations/20260811090000_hybrid_partner_lifecycle.sql
+            supabase/migrations/20260811090100_hybrid_partner_claim_invite_qualification.sql
+            supabase/migrations/20260811090200_hybrid_partner_private_mutation_capabilities.sql
+            supabase/migrations/20260811090300_hybrid_partner_capability_gate_hardening.sql
+            supabase/migrations/20260811090400_hybrid_partner_owner_release_actor_cleanup.sql
+            supabase/migrations/20260811090500_hybrid_partner_agreement_evidence.sql
+            supabase/migrations/20260811090600_hybrid_partner_context_authenticity.sql
+            supabase/migrations/20260817154529_hybrid_partner_security_reconciliation.sql
+            supabase/migrations/20260817154927_hybrid_partner_claim_recipient_contract.sql
+          )
+          for migration in "${migrations[@]}"; do
+            echo "apply=${migration}" \
+              | tee -a artifacts/partner-publication-integration-proof/lexical-apply.txt
+            psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 -f "${migration}" \
+              2>&1 | tee -a artifacts/partner-publication-integration-proof/lexical-apply.txt
+          done
+
+      - name: Prove the complete donor hybrid lifecycle before final handoff
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -v publication_integration_pre_final=true \
+            -f supabase/tests/hybrid_partner_lifecycle_proof.sql \
+            2>&1 | tee artifacts/partner-publication-integration-proof/hybrid-proof-before-final.txt
+
+      - name: Prove same-name wrong-command policy drift fails closed
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          negative_log=artifacts/partner-publication-integration-proof/policy-drift-negative-control.txt
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 <<'SQL'
+          drop policy partners_owner_insert on public.partners;
+          create policy partners_owner_insert
+          on public.partners
+          for delete
+          to authenticated
+          using (owner_id=auth.uid());
+          SQL
+          if psql -X -1 "${DATABASE_URL}" -v ON_ERROR_STOP=1             -f supabase/migrations/20260817171238_partner_publication_integration_rc.sql             > "${negative_log}" 2>&1; then
+            echo 'Same-name wrong-command policy drift unexpectedly passed.'
+            exit 1
+          fi
+          grep -q 'Unexpected public.partners DML/FOR ALL policy requires review before reset'             "${negative_log}"
+          grep -q 'partners_owner_insert\[d\]' "${negative_log}"
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 <<'SQL'
+          drop policy partners_owner_insert on public.partners;
+          create policy partners_owner_insert
+          on public.partners
+          for insert
+          to authenticated
+          with check (owner_id=auth.uid());
+          SQL
+          echo 'same_name_wrong_command_policy_drift=pass' >> "${negative_log}"
+
+      - name: Apply the sole final integration migration
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          echo 'apply=supabase/migrations/20260817171238_partner_publication_integration_rc.sql' \
+            | tee -a artifacts/partner-publication-integration-proof/lexical-apply.txt
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20260817171238_partner_publication_integration_rc.sql \
+            2>&1 | tee -a artifacts/partner-publication-integration-proof/lexical-apply.txt
+
+      - name: Execute the consent-specific post-final proof
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -v wave1_partner_id=78787878-7878-4787-8787-787878787878 \
+            -v super_admin_user_id=dddddddd-dddd-4ddd-8ddd-dddddddddddd \
+            -f supabase/tests/partner_publication_consent_proof.sql \
+            2>&1 | tee artifacts/partner-publication-integration-proof/consent-proof.txt
+
+      - name: Execute combined post-final behavioral SQL proof
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/partner_publication_integration_proof.sql \
+            2>&1 | tee artifacts/partner-publication-integration-proof/behavioral-proof.txt
+
+      - name: Reapply final migration and rerun the post-final proof
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -c 'grant select (contact),insert (contact),update (contact),references (contact) on table public.partners to public,anon,authenticated,service_role' \
+            2>&1 | tee artifacts/partner-publication-integration-proof/final-reapply.txt
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -c 'grant select,insert,update,delete,truncate,references,trigger on table public.partners to public,anon,authenticated,service_role' \
+            2>&1 | tee -a artifacts/partner-publication-integration-proof/final-reapply.txt
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20260817171238_partner_publication_integration_rc.sql \
+            2>&1 | tee -a artifacts/partner-publication-integration-proof/final-reapply.txt
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/partner_publication_integration_proof.sql \
+            > artifacts/partner-publication-integration-proof/behavioral-proof-after-reapply.txt 2>&1
+          {
+            echo 'raw_table_and_column_acl_reapply_convergence=pass'
+            echo 'final_migration_reapply_and_post_final_proof=pass'
+          } | tee -a artifacts/partner-publication-integration-proof/final-reapply.txt
+
+      - name: Execute genuine publication approve-withdraw concurrency proof
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          bash scripts/partner_publication_integration_concurrency_proof.sh \
+            2>&1 | tee artifacts/partner-publication-integration-proof/publication-concurrency.txt
+
+      - name: Execute complete hybrid claim concurrency proof
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          bash scripts/hybrid_partner_concurrency_proof.sh \
+            2>&1 | tee artifacts/partner-publication-integration-proof/hybrid-concurrency.txt
+
+      - name: Run focused JavaScript contracts and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          node --test \
+            src/lib/hehaLocalRouting.test.js \
+            src/lib/hubspotSyncAccessContract.test.js \
+            src/lib/partnerBrowserWebhookBoundary.test.js \
+            src/lib/partnerPublicationConsent.test.js \
+            src/lib/partnerPublicationUiContract.test.js \
+            src/lib/partnerPublicationWithdrawalBoundary.test.js \
+            src/lib/partnerVisibility.test.js \
+            src/lib/publicPartnerDirectoryContract.test.js
+          forbidden_env_name="$(printf '%s_' VITE MAKE PARTNER APPROVAL)WEBHOOK"
+          if git grep -nF "${forbidden_env_name}"; then
+            echo 'Removed partner browser webhook configuration was reintroduced.'
+            exit 1
+          fi
+          sentinel='https://heha.invalid/sec-002-partner-webhook-sentinel'
+          env "${forbidden_env_name}=${sentinel}" npm run build
+          if grep -rFq "${sentinel}" dist; then
+            echo 'Partner browser webhook sentinel leaked into the production bundle.'
+            exit 1
+          fi
+          if grep -rFq "${forbidden_env_name}" dist; then
+            echo 'Partner browser webhook configuration name leaked into the production bundle.'
+            exit 1
+          fi
+          {
+            echo 'partner_browser_webhook_source_guard=pass'
+            echo 'partner_browser_webhook_bundle_guard=pass'
+          } | tee artifacts/partner-publication-integration-proof/browser-webhook-guard.txt
+          git diff --check
+
+      - name: Prove SQL evidence detects raw anon exposure
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          negative_log=artifacts/partner-publication-integration-proof/negative-control.txt
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -c 'grant select on table public.partners to anon'
+          if psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/partner_publication_integration_proof.sql \
+            > "${negative_log}" 2>&1; then
+            psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+              -c 'revoke select on table public.partners from anon'
+            echo 'Negative control unexpectedly passed.'
+            exit 1
+          fi
+          psql -X "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+            -c 'revoke select on table public.partners from anon'
+          grep -q 'anon must not have raw SELECT on public.partners' "${negative_log}"
+          echo 'raw_anon_negative_control=pass' >> "${negative_log}"
+
+      - name: Scan sanitized evidence
+        shell: bash
+        env:
+          SCAN: (eyJ[A-Za-z0-9_-]{20,}|[0-9a-f]{64}|sb_secret_|sb_publishable_|service_role_key|anon[ _]key|secret[ _]key|access[ _]key)
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          printf 'synthetic token %s\n' "$(printf 'ab%.0s' $(seq 1 32))" > "${scratch}/token.txt"
+          grep -Eq "${SCAN}" "${scratch}/token.txt"
+          rm -rf "${scratch}"
+          if grep -rInE "${SCAN}" artifacts/partner-publication-integration-proof; then
+            echo 'Sensitive token/credential-shaped material found in evidence.'
+            exit 1
+          fi
+          echo 'evidence_scan=clean' \
+            | tee artifacts/partner-publication-integration-proof/evidence-scan.txt
+
+      - name: Upload sanitized successful evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: partner-publication-integration-proof-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/partner-publication-integration-proof
+          retention-days: 14
+
+      - name: Stop and destroy disposable Supabase
+        if: always()
+        shell: bash
+        run: |
+          if [ -d .ci/partner-publication-integration ]; then
+            cd .ci/partner-publication-integration
+            supabase stop --no-backup || true
+          fi

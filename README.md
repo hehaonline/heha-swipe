@@ -38,7 +38,7 @@ See the integration planning document:
 - React + Vite
 - Supabase Auth
 - Supabase public tables: `profiles`, `partners`, `saves`, `swipe_events`, `customer_profiles`, and future order/contribution tables
-- Optional Make.com webhooks for new user and partner approval notifications
+- Optional legacy Make.com webhook for new-user notifications
 
 ## Required env variables
 
@@ -53,7 +53,6 @@ Optional:
 
 ```bash
 VITE_MAKE_NEW_USER_WEBHOOK=
-VITE_MAKE_PARTNER_APPROVAL_WEBHOOK=
 ```
 
 ## Local development
@@ -103,4 +102,4 @@ Those functions belong to HEHA Order Hub or later customer app phases.
 - Do not add payments until the discovery and partner flows are stable.
 - Keep Supabase schema changes in separate migrations.
 - SuperSwoop currently records a `swipe_events.direction = "super"` event.
-- Partner listings submit with `status = "pending"`; admin approval should happen outside the public UI for now.
+- Partner listings submit with `status = "pending"`; the service-only exact-hash staff-review RPC can advance that legacy status to `approved`, while routing finalization, listing activation, and owner consent remain independent gates.
