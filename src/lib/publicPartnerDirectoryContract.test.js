@@ -16,13 +16,14 @@ test("the public directory field contract excludes private location data", () =>
   );
 });
 
-test("PartnerDirectoryEmbed uses the shared field contract and no location fallback", async () => {
+test("PartnerDirectoryEmbed uses the bounded directory RPC and no location fallback", async () => {
   const source = await readFile(
     new URL("../components/embed/PartnerDirectoryEmbed.jsx", import.meta.url),
     "utf8"
   );
 
-  assert.match(source, /\.select\(PUBLIC_PARTNER_DIRECTORY_FIELD_LIST\)/);
+  assert.match(source, /\.rpc\(\s*["']list_public_partner_directory["']/);
+  assert.doesNotMatch(source, /\.from\(["']public_partner_directory["']\)/);
   assert.doesNotMatch(source, /partner\.location/);
   assert.doesNotMatch(source, /["']location["']/);
 });

@@ -18,6 +18,9 @@ import {
 } from "../services/partnerPublicationConsentRepository";
 import { partnerSurfaceVisibility } from "../lib/partnerVisibility";
 import PartnerPublicationPreview from "./PartnerPublicationPreview";
+import { requestAccountDeletion as submitAccountDeletionRequest } from "../lib/accountDeletion";
+
+const VISIBLE_LISTING_STATUSES = ["approved", "listed", "live"];
 
 function formatMonthYear(value) {
   if (!value) return "recently";
@@ -57,6 +60,9 @@ export default function ProfileTab({
   onSignOut,
   onListBusiness,
   onRefresh,
+  allowInstagram = true,
+  allowPartnerSelfService = true,
+  allowProfileReset = true,
 }) {
   const [busy, setBusy] = useState(false);
   const [profileMessage, setProfileMessage] = useState(null);
@@ -411,7 +417,7 @@ export default function ProfileTab({
     setProfileMessage(null);
 
     try {
-      const cleanInstagram = form.instagram.trim().replace(/^@/, "");
+      const cleanInstagram = allowInstagram ? form.instagram.trim().replace(/^@/, "") : null;
 
       // This screen edits an existing authenticated user's profile only.
       // Using update avoids the INSERT candidate created by upsert, which can
@@ -422,7 +428,7 @@ export default function ProfileTab({
           full_name: form.full_name.trim() || null,
           phone: form.phone.trim() || null,
           location: form.location.trim() || null,
-          instagram: cleanInstagram || null,
+          ...(allowInstagram ? { instagram: cleanInstagram || null } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq("id", user.id)
@@ -717,7 +723,7 @@ export default function ProfileTab({
 
   const requestAccountDeletion = async () => {
     const confirmed = window.confirm(
-      "Request full account deletion? HEHA will receive a deletion request. Your login may remain active until the account is removed from Supabase Auth by an admin."
+      "Request full account deletion? HEHA will verify and process the request. You will receive confirmation when deletion is complete."
     );
     if (!confirmed) return;
 
@@ -726,17 +732,8 @@ export default function ProfileTab({
     setProfileMessage(null);
 
     try {
-      const { error } = await supabase.from("account_deletion_requests").insert({
-        user_id: user.id,
-        email: user.email || null,
-        reason: "User requested account deletion from HEHA Swipe profile.",
-      });
-      if (error) throw error;
-      await supabase.from("saves").delete().eq("user_id", user.id);
-      await supabase.from("customer_profiles").delete().eq("user_id", user.id);
-      await supabase.from("profiles").delete().eq("id", user.id);
-      localStorage.removeItem("heha_signup_role");
-      setProfileMessage("Deletion request created. Your HEHA Swipe data was cleared from the app tables.");
+      const result = await submitAccountDeletionRequest();
+      setProfileMessage(result.message);
     } catch (error) {
       setProfileError(error.message || "Could not request account deletion.");
     } finally {
@@ -868,14 +865,16 @@ export default function ProfileTab({
             />
           </label>
 
-          <label className="field-block">
-            <span>Instagram optional</span>
-            <input
-              value={form.instagram}
-              onChange={(event) => updateForm("instagram", event.target.value)}
-              placeholder="@yourhandle"
-            />
-          </label>
+          {allowInstagram && (
+            <label className="field-block">
+              <span>Instagram optional</span>
+              <input
+                value={form.instagram}
+                onChange={(event) => updateForm("instagram", event.target.value)}
+                placeholder="@yourhandle"
+              />
+            </label>
+          )}
 
           <button className="primary-button" onClick={saveUserProfile} disabled={busy}>
             {busy ? "Saving…" : isBusiness ? "Save contact details" : "Save profile"}
@@ -883,7 +882,7 @@ export default function ProfileTab({
         </div>
       </div>
 
-      {isBusiness ? (
+      {allowPartnerSelfService && (isBusiness ? (
         activeListing ? (
           <div className="profile-card card-like">
             <p className="eyebrow">Your business</p>
@@ -1250,7 +1249,7 @@ export default function ProfileTab({
           </div>
           <strong>Start →</strong>
         </button>
-      )}
+      ))}
 
       <div className="profile-card card-like">
         <p className="eyebrow">Why HEHA Swipe exists</p>
@@ -1270,10 +1269,17 @@ export default function ProfileTab({
 
       <div className="profile-actions">
         <button className="secondary-button" onClick={handleRefreshBusinesses} disabled={busy}>{busy ? "Refreshing…" : "Refresh businesses"}</button>
-        <button className="secondary-button" onClick={resetAppProfile} disabled={busy}>Reset app profile</button>
+        {allowProfileReset && (
+          <button className="secondary-button" onClick={resetAppProfile} disabled={busy}>Reset app profile</button>
+        )}
         <button className="danger-button" onClick={requestAccountDeletion} disabled={busy}>Request account deletion</button>
         <button className="secondary-button" onClick={onSignOut} disabled={busy}>Sign out</button>
       </div>
+      <nav className="profile-legal-links" aria-label="Legal and support">
+        <a href="/privacy">Privacy</a>
+        <a href="/support">Support</a>
+        <a href="/account-deletion">Account deletion</a>
+      </nav>
     </section>
   );
 }

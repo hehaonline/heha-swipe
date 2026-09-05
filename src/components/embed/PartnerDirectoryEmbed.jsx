@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { PUBLIC_PARTNER_DIRECTORY_FIELD_LIST } from "../../lib/publicPartnerDirectoryContract";
 
 const PILLARS = [
   ["all", "All"],
@@ -63,10 +62,9 @@ export default function PartnerDirectoryEmbed() {
     async function loadPartners() {
       setLoading(true);
       setError("");
-      const { data, error: loadError } = await supabase
-        .from("public_partner_directory")
-        .select(PUBLIC_PARTNER_DIRECTORY_FIELD_LIST)
-        .order("created_at", { ascending: false });
+      const { data, error: loadError } = await supabase.rpc(
+        "list_public_partner_directory"
+      );
 
       if (cancelled) return;
       if (loadError) {

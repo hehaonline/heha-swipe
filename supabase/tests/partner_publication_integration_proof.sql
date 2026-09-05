@@ -929,6 +929,57 @@ reset role;
 
 select pg_temp.set_auth('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
 set local role authenticated;
+select pg_temp.expect_state(
+  'oversized multibyte partner tag denied',
+  '23514',
+  format(
+    $$select public.update_my_partner_profile(
+      %L::uuid,%L,'Supported Registration Proof',
+      array['Restaurant']::text[],'Tampa Bay','bounded tag proof',
+      'A complete synthetic public profile for the supported registration proof.',
+      array[repeat('é',161)]::text[],'Mon-Fri 9-5','Restaurant',
+      array['Prepared meals']::text[],
+      'https://registration-proof.example.invalid','@registrationproof',
+      null,array[]::text[]
+    )$$,
+    :'submitted_partner_id',
+    :'submitted_profile_hash'
+  )
+);
+select pg_temp.expect_state(
+  'oversized multibyte partner offering denied',
+  '23514',
+  format(
+    $$select public.update_my_partner_profile(
+      %L::uuid,%L,'Supported Registration Proof',
+      array['Restaurant']::text[],'Tampa Bay','bounded offering proof',
+      'A complete synthetic public profile for the supported registration proof.',
+      array[]::text[],'Mon-Fri 9-5','Restaurant',
+      array[repeat('é',161)]::text[],
+      'https://registration-proof.example.invalid','@registrationproof',
+      null,array[]::text[]
+    )$$,
+    :'submitted_partner_id',
+    :'submitted_profile_hash'
+  )
+);
+select pg_temp.expect_state(
+  'oversized multibyte delivery day denied',
+  '23514',
+  format(
+    $$select public.update_my_partner_profile(
+      %L::uuid,%L,'Supported Registration Proof',
+      array['Restaurant']::text[],'Tampa Bay','bounded delivery-day proof',
+      'A complete synthetic public profile for the supported registration proof.',
+      array[]::text[],'Mon-Fri 9-5','Restaurant',
+      array['Prepared meals']::text[],
+      'https://registration-proof.example.invalid','@registrationproof',
+      null,array[repeat('é',17)]::text[]
+    )$$,
+    :'submitted_partner_id',
+    :'submitted_profile_hash'
+  )
+);
 select
   edit_result.result->>'profile_snapshot_hash' as edited_profile_hash,
   edit_result.result->>'prior_evidence_invalidated' as prior_evidence_invalidated

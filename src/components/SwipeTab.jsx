@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SwipeCard from "./SwipeCard";
 import { hehaLocalItemUrl, isHehaLocalPartner } from "../lib/hehaLocalRouting";
+import { releasePolicy } from "../lib/releasePolicy";
 
 const CATEGORIES = [
   "All",
@@ -187,6 +188,7 @@ export default function SwipeTab({
 
   const handleSwipe = (direction) => {
     if (!current || undoingRef.current) return;
+    if (direction === "super" && !releasePolicy.superSwipe) return;
     const partner = current;
     const wasSaved = savedIds.has(partner.id);
 
@@ -278,7 +280,7 @@ export default function SwipeTab({
         {routedCurrent ? (
           <>
             {deck[1] && <div className="next-card-shadow clean-shadow luxe-shadow" />}
-            <SwipeCard partner={routedCurrent} onSwipe={handleSwipe} />
+            <SwipeCard partner={routedCurrent} onSwipe={handleSwipe} allowSuperSwipe={releasePolicy.superSwipe} />
           </>
         ) : (
           <EmptyDeck category={CATEGORY_LABELS[category] || category} onReset={() => setCategory("All")} />
@@ -303,7 +305,9 @@ export default function SwipeTab({
           {current && (
             <>
               <button className="action-circle pass" type="button" onClick={() => handleSwipe("left")} disabled={undoing} aria-label="Pass for now">×</button>
-              <button className="action-circle super" type="button" onClick={() => handleSwipe("super")} disabled={undoing} aria-label="Preview or highlight this business">i</button>
+              {releasePolicy.superSwipe && (
+                <button className="action-circle super" type="button" onClick={() => handleSwipe("super")} disabled={undoing} aria-label="Preview or highlight this business">i</button>
+              )}
               <button className="action-circle save" type="button" onClick={() => handleSwipe("right")} disabled={undoing} aria-label="Save this business">♥</button>
             </>
           )}

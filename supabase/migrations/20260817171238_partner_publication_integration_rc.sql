@@ -1113,6 +1113,26 @@ begin
       message='Partner profile list fields exceed their bounded limits.';
   end if;
 
+  if exists (
+       select 1
+       from pg_catalog.unnest(normalized_tags) tag_value
+       where pg_catalog.octet_length(tag_value)>320
+     )
+     or exists (
+       select 1
+       from pg_catalog.unnest(normalized_offerings) offering_value
+       where pg_catalog.octet_length(offering_value)>320
+     )
+     or exists (
+       select 1
+       from pg_catalog.unnest(normalized_delivery_days) delivery_day_value
+       where pg_catalog.octet_length(delivery_day_value)>32
+     ) then
+    raise exception using
+      errcode='23514',
+      message='Partner profile list items exceed their per-item byte limits.';
+  end if;
+
   if pg_catalog.octet_length(coalesce(p_neighborhood,''))>1000
      or pg_catalog.octet_length(coalesce(p_tagline,''))>1000
      or pg_catalog.octet_length(coalesce(p_bio,''))>8000
