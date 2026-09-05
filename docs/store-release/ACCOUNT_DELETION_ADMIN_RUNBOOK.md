@@ -27,20 +27,20 @@ unavailable/support message instead of claiming success.
 2. Verify account ownership using the authenticated request and, if necessary,
    a reply from the account email. Never request a password or verification code.
 3. Record legal or operational retention requirements before deletion.
-4. Rehearse the review-only `005_fulfill_account_deletion.sql` procedure
-   against a disposable account. It must refuse any partner, order, payment,
-   subscription, or contribution record requiring case-specific retention.
-5. With explicit action-time production approval for the exact request receipt,
-   run the trusted service-role procedure once. It deletes bounded personal
-   records and the Supabase Auth identity in one transaction while preserving
-   only a de-identified completion receipt. Never expose a service-role key to
-   the client.
-6. Confirm the account can no longer sign in and no unintended partner/business
-   records were removed.
-7. Mark the request complete in the trusted admin record and notify the user.
+4. Inventory every local foreign-key reference and external processor record,
+   including incomplete Stripe Checkout Sessions, before destructive work.
+5. Use a reviewed design that blocks writes from already-issued access tokens,
+   serializes retained-record creation with the deletion decision, and preserves
+   de-identified completion evidence after the live request row cascades.
+6. Rehearse the complete design against a disposable account, including stale
+   sessions, delayed webhooks, concurrent writes, retries, and retained history.
+7. Obtain explicit action-time approval for the exact production procedure and
+   request before deleting anything. Never expose a service-role key to a client.
+8. Confirm sign-in and stale-session writes fail, no unintended business records
+   were removed, the de-identified completion receipt exists, and then notify
+   the user. Do not attempt to update the cascaded request row.
 
-The live request row currently cascades with the Auth identity, so completion
-must not rely on that row. The separate receipt stores only request/timing and
-per-table counts—never email, user ID, reason, or profile content. The app
-message remains “requested” until the process is complete. Partial client-side
-deletes, role clearing, and unverified completion claims are prohibited.
+No fulfillment procedure is approved or included in the release candidate.
+The app message remains “requested” until the full process is complete. Partial
+client-side deletes, role clearing, and unverified completion claims are
+prohibited.
