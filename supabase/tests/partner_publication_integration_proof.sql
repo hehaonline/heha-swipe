@@ -584,14 +584,14 @@ from (
     'Fresh food from a supported registration',
     'A complete synthetic public profile for the supported registration proof.',
     'Mon-Fri 9-5',
-    array[]::text[],
+    array[repeat('é',160)]::text[],
     'Restaurant',
     null,
     'registration-proof@example.invalid',
     'https://registration-proof.example.invalid',
     '@registrationproof',
     'PRIVATE registration location',
-    array['Prepared meals']::text[],
+    array[repeat('é',160)]::text[],
     '[]'::jsonb,
     '🍽️',
     '#ff8a24',
@@ -999,7 +999,7 @@ from (
     'https://registration-proof.example.invalid',
     '@registrationproof',
     null,
-    array[]::text[]
+    array[repeat('é',16)]::text[]
   ) as result
 ) edit_result \gset
 
