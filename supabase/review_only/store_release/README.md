@@ -41,6 +41,14 @@ index. Before any authorized database change:
    twice as a non-admin authenticated test user. Preserve evidence that both
    calls return the same receipt without adding a duplicate row.
 
+`005_fulfill_account_deletion.sql` is a separate irreversible administrator
+packet. It is service-role-only, refuses accounts with partner/order/payment/
+subscription/contribution records requiring case review, deletes only the
+bounded personal tables plus the Auth identity, and preserves a de-identified
+idempotent completion receipt outside the request row's live `ON DELETE
+CASCADE`. It must be independently reviewed and rehearsed; request-flow
+approval does not authorize fulfillment.
+
 ## Partner data packet
 
 This is intentionally split:
