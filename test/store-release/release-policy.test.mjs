@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createReleasePolicy } from "../../src/lib/releasePolicy.js";
+
+const releasePolicySource = await readFile(
+  new URL("../../src/lib/releasePolicy.js", import.meta.url),
+  "utf8",
+);
 
 const restrictedFeatures = [
   "socialAuth",
@@ -35,4 +41,9 @@ test("ordinary web preview retains the existing web-only surfaces", () => {
   assert.equal(policy.socialAuth, true);
   assert.equal(policy.payments, true);
   assert.equal(policy.contactRequests, true);
+});
+
+test("release policy reads only the explicit release-channel build key", () => {
+  assert.match(releasePolicySource, /import\.meta\.env\?\.VITE_RELEASE_CHANNEL/);
+  assert.doesNotMatch(releasePolicySource, /(?:const|let|var)\s+\w+\s*=\s*import\.meta\.env\s*(?:\|\||;)/);
 });

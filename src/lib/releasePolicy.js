@@ -1,7 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 
 export const STORE_RELEASE_CHANNEL = "store";
-const buildEnvironment = import.meta.env || {};
 
 export function createReleasePolicy({ releaseChannel = "web", isNative = false } = {}) {
   const storeBuild = releaseChannel === STORE_RELEASE_CHANNEL || isNative === true;
@@ -24,6 +23,6 @@ export function createReleasePolicy({ releaseChannel = "web", isNative = false }
 }
 
 export const releasePolicy = createReleasePolicy({
-  releaseChannel: buildEnvironment.VITE_RELEASE_CHANNEL || "web",
+  releaseChannel: import.meta.env?.VITE_RELEASE_CHANNEL || "web",
   isNative: Capacitor.isNativePlatform(),
 });
