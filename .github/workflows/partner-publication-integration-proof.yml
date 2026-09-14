@@ -351,6 +351,7 @@ jobs:
             src/lib/hehaLocalRouting.test.js \
             src/lib/hubspotSyncAccessContract.test.js \
             src/lib/partnerBrowserWebhookBoundary.test.js \
+            src/lib/partnerClaimFlow.test.js \
             src/lib/partnerPublicationConsent.test.js \
             src/lib/partnerPublicationUiContract.test.js \
             src/lib/partnerPublicationWithdrawalBoundary.test.js \

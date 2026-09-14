@@ -23,6 +23,7 @@ import PartnerDirectoryEmbed from "./components/embed/PartnerDirectoryEmbed.jsx"
 import { supabase } from "./lib/supabase";
 import LegalPage, { isPublicInfoPath } from "./components/LegalPage.jsx";
 import { releasePolicy } from "./lib/releasePolicy";
+import PartnerClaimScreen from "./components/PartnerClaimScreen.jsx";
 
 const SIGNUP_ROLE_KEY = "heha_signup_role";
 
@@ -54,6 +55,9 @@ function Root() {
 
   if (isAdminRoute) import("./admin-dashboard.css");
   if (isAdminRoute) return <AdminSessionGate />;
+  if (window.location.pathname === "/claim-partner" && releasePolicy.partnerSelfService) {
+    return <PartnerClaimSessionGate />;
+  }
   if (embed === "partners") return <PartnerDirectoryEmbed />;
   if (embed === "become-partner") return <BecomePartnerEmbed />;
   return (
@@ -91,6 +95,49 @@ function AdminSessionGate() {
   };
 
   return <AdminApp session={session} loading={loading} onSignOut={handleSignOut} />;
+}
+
+function PartnerClaimSessionGate() {
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    let mounted = true;
+    let revision = 0;
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      revision += 1;
+      if (!mounted) return;
+      setSession(nextSession);
+      setError(null);
+      setLoading(false);
+    });
+    const initialRevision = revision;
+    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (!mounted || revision !== initialRevision) return;
+      if (sessionError) throw sessionError;
+      setSession(data?.session || null);
+      setLoading(false);
+    }).catch(() => {
+      if (!mounted || revision !== initialRevision) return;
+      setError("We could not check your account. Reload this page to try again.");
+      setLoading(false);
+    });
+    return () => {
+      mounted = false;
+      listener?.subscription?.unsubscribe?.();
+    };
+  }, []);
+  return <PartnerClaimScreen
+    key={session?.user?.id || "signed-out"}
+    session={session}
+    authLoading={loading}
+    sessionError={error}
+    onSignOut={async () => {
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) throw signOutError;
+      setSession(null);
+    }}
+  />;
 }
 
 createRoot(document.getElementById("root")).render(

@@ -12,6 +12,7 @@ import CommunityPassTab from "./components/CommunityPassTab";
 import { fetchActiveSupporterSubscription } from "./lib/supporterStatus";
 import { fetchPublicPartners } from "./lib/publicPartner";
 import { releasePolicy } from "./lib/releasePolicy";
+import { claimSessionStorage, clearClaimSuccess, consumeClaimSuccess, readClaimSuccess, removeClaimSuccessParam } from "./lib/partnerClaimUx";
 
 const TABS = [
   { id: "swipe", label: "Discover", icon: "⌕" },
@@ -86,6 +87,7 @@ export default function App() {
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [notice, setNotice] = useState(null);
   const [appError, setAppError] = useState(null);
+  const [claimSuccess, setClaimSuccess] = useState(null);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [locationLabel, setLocationLabel] = useState(null);
   const [supportReturn] = useState(() =>
@@ -197,17 +199,38 @@ export default function App() {
         ? localStorage.getItem("heha_signup_role")
         : "customer";
       let existing = null;
+      const returnedClaim = releasePolicy.partnerSelfService
+        ? readClaimSuccess(window.location.search, claimSessionStorage(window), uid)
+        : null;
       if (releasePolicy.partnerSelfService) {
-        const { data: ownedListings, error: ownedListingError } = await supabase
+        let ownedQuery = supabase
           .from("partners")
           .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner")
-          .eq("owner_id", uid)
+          .eq("owner_id", uid);
+        // The receipt is navigation only, never ownership authority. Always
+        // scope the exact claimed row to the current authenticated owner too.
+        if (returnedClaim) ownedQuery = ownedQuery.eq("id", returnedClaim.partnerId);
+        const { data: ownedListings, error: ownedListingError } = await ownedQuery
           .order("created_at", { ascending: false })
           .limit(1);
         if (ownedListingError) throw ownedListingError;
         existing = ownedListings?.[0] || null;
+        if (returnedClaim && !existing) {
+          throw new Error("Your claimed profile could not be loaded. Reload or contact HEHA support; do not create another listing.");
+        }
       }
       setMyListing(existing);
+      if (existing) {
+        // Owning an existing card is not a paid membership. It only skips the
+        // new-listing funnel that would otherwise invite a duplicate business.
+        setNeedsOnboarding(false);
+        setShowPartnerWizard(false);
+        if (returnedClaim) {
+          setClaimSuccess(consumeClaimSuccess(window.location.search, claimSessionStorage(window), uid));
+          setTab("profile");
+          window.history.replaceState(null, "", removeClaimSuccessParam(window.location));
+        }
+      }
 
       if (releasePolicy.partnerSelfService && (isPartnerProfile(nextProfile) || existing || signupIntent === "partner")) {
         if (!existing) {
@@ -382,6 +405,8 @@ export default function App() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+    clearClaimSuccess(claimSessionStorage(window));
+    setClaimSuccess(null);
     setSession(null);
   };
 
@@ -422,7 +447,7 @@ export default function App() {
     );
   }
 
-  if (needsOnboarding && !supportReturn) {
+  if (needsOnboarding && !myListing && !supportReturn && !dataLoading && !appError) {
     return (
       <OnboardingScreen
         user={session.user}
@@ -435,7 +460,7 @@ export default function App() {
     );
   }
 
-  if (releasePolicy.partnerSelfService && showPartnerWizard) {
+  if (releasePolicy.partnerSelfService && showPartnerWizard && !myListing && !dataLoading && !appError) {
     return (
       <PartnerWizard
         user={session.user}
@@ -457,12 +482,19 @@ export default function App() {
           <span className="location-pill-icon">📍</span>
           <span className="location-pill-label">{locationLabel || "Tampa Bay"}</span>
         </button>
-        {releasePolicy.partnerSelfService && (
+        {releasePolicy.partnerSelfService && !myListing && !dataLoading && !appError && (
           <button className="ghost-pill" onClick={() => setShowPartnerWizard(true)}>Get listed</button>
         )}
       </header>
 
       {notice && <div className="toast-notice">{notice}</div>}
+      {claimSuccess?.userId === session.user.id && myListing?.id === claimSuccess.partnerId && (
+        <section className="claim-success-panel" role="status" aria-live="polite">
+          <strong>{claimSuccess.partnerName} is connected to your account.</strong>
+          <p>The existing profile was claimed; nothing was published or changed publicly yet. Community Pass and Local are separate opt-ins.</p>
+          <button className="secondary-button" onClick={() => setClaimSuccess(null)} aria-label="Dismiss claim confirmation">Dismiss</button>
+        </section>
+      )}
       {appError && <div className="error-banner">{appError}</div>}
 
       {showLocationModal && (
