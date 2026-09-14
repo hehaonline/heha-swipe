@@ -50,3 +50,22 @@ Owner-policy reversion reintroduces the known valid-upload failure and is not
 an acceptable silent fallback. Staff intake can be disabled by revoking EXECUTE
 on its exact RPC signature; retain evidence/requests. Do not delete submitted
 data, make the bucket public or assign HEHA ownership as rollback.
+
+## Combined proof findings and follow-on
+
+First full-chain run 34854286840 reached the media proof after the complete
+claim migrations, then rejected its direct SQL DELETE via storage.protect_delete.
+The test now respects that real safeguard; actual byte read/delete is exercised
+through Storage API instead. No storage safeguard was removed.
+
+The existing profile editor also retained raw authenticated partners UPDATE for
+preapproval records, which final #140 permissions prohibit. All ordinary edits
+now use the already-supported private review queue; no fields or grants were
+expanded. The existing latest-request check avoids a second active submission.
+The synthetic integration baseline includes the real profile queue and exact
+current multi-category request guard.
+
+The new localhost-only API proof uses actual GoTrue verified synthetic fixtures,
+PostgREST claim/review submission, Storage byte upload/private signed read/delete,
+wrong-recipient/cross-business/duplicate denials and logout/login persistence.
+It does not prove email delivery, browser rendering, recovery or Production.
