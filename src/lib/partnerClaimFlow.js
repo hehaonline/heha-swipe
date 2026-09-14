@@ -3,6 +3,42 @@
 const TOKEN = /^[a-f0-9]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export function claimSuccessUrl(partnerId) {
+  if (!UUID.test(partnerId || "")) throw fail("HEHA_CLAIM_INVALID_RESPONSE");
+  return `/?claim=success&claimedPartner=${partnerId}&tab=profile`;
+}
+
+// A URL is navigation intent, not proof of a claim or ownership. Keep the UUID
+// after removing the one-time success banner so refresh/relogin cannot silently
+// select another, more recently created business when browser storage is absent.
+export function claimReturnTarget(search = "") {
+  const params = new URLSearchParams(search);
+  if (!params.has("claimedPartner") && !params.has("claim")) return null;
+  const ids = params.getAll("claimedPartner");
+  const states = params.getAll("claim");
+  const valid = search.length <= 8192 && ids.length === 1 && UUID.test(ids[0])
+    && (states.length === 0 || (states.length === 1 && states[0] === "success"));
+  return { partnerId: valid ? ids[0] : null };
+}
+
+export async function fetchClaimReturnPartner(client, expectedUserId, target) {
+  if (!UUID.test(expectedUserId || "") || !UUID.test(target?.partnerId || "")) {
+    throw fail("HEHA_CLAIM_INVALID_RESPONSE");
+  }
+  // Both filters are mandatory. Never fall back to another owned card on an
+  // expired/forged/missing receipt or an invalid, foreign or missing URL target.
+  const { data, error } = await client.from("partners")
+    .select("id, owner_id, name, category, status, created_at, updated_at, complete_pct, heha_partner")
+    .eq("owner_id", expectedUserId)
+    .eq("id", target.partnerId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data || data.id !== target.partnerId || data.owner_id !== expectedUserId) {
+    throw fail("HEHA_CLAIM_INVALID_RESPONSE");
+  }
+  return data;
+}
+
 function fail(details) {
   return Object.assign(new Error("Claim verification failed."), { details });
 }

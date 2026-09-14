@@ -13,6 +13,7 @@ import { fetchActiveSupporterSubscription } from "./lib/supporterStatus";
 import { fetchPublicPartners } from "./lib/publicPartner";
 import { releasePolicy } from "./lib/releasePolicy";
 import { claimSessionStorage, clearClaimSuccess, consumeClaimSuccess, readClaimSuccess, removeClaimSuccessParam } from "./lib/partnerClaimUx";
+import { claimReturnTarget, fetchClaimReturnPartner } from "./lib/partnerClaimFlow";
 
 const TABS = [
   { id: "swipe", label: "Discover", icon: "⌕" },
@@ -173,6 +174,12 @@ export default function App() {
     if (!uid) return;
     setDataLoading(true);
     setAppError(null);
+    const claimTarget = releasePolicy.partnerSelfService ? claimReturnTarget(window.location.search) : null;
+    if (claimTarget) {
+      setMyListing(null);
+      setClaimSuccess(null);
+      setShowPartnerWizard(false);
+    }
 
     try {
       const [profileResult, nextPartners, saveResult] = await Promise.all([
@@ -203,20 +210,21 @@ export default function App() {
         ? readClaimSuccess(window.location.search, claimSessionStorage(window), uid)
         : null;
       if (releasePolicy.partnerSelfService) {
-        let ownedQuery = supabase
-          .from("partners")
-          .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner")
-          .eq("owner_id", uid);
-        // The receipt is navigation only, never ownership authority. Always
-        // scope the exact claimed row to the current authenticated owner too.
-        if (returnedClaim) ownedQuery = ownedQuery.eq("id", returnedClaim.partnerId);
-        const { data: ownedListings, error: ownedListingError } = await ownedQuery
-          .order("created_at", { ascending: false })
-          .limit(1);
-        if (ownedListingError) throw ownedListingError;
-        existing = ownedListings?.[0] || null;
-        if (returnedClaim && !existing) {
-          throw new Error("Your claimed profile could not be loaded. Reload or contact HEHA support; do not create another listing.");
+        if (claimTarget) {
+          try {
+            existing = await fetchClaimReturnPartner(supabase, uid, claimTarget);
+          } catch {
+            throw new Error("The requested business could not be verified for this account. Sign in with its owner account or contact HEHA support; do not create another listing.");
+          }
+        } else {
+          const { data: ownedListings, error: ownedListingError } = await supabase
+            .from("partners")
+            .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner")
+            .eq("owner_id", uid)
+            .order("created_at", { ascending: false })
+            .limit(1);
+          if (ownedListingError) throw ownedListingError;
+          existing = ownedListings?.[0] || null;
         }
       }
       setMyListing(existing);
@@ -225,9 +233,14 @@ export default function App() {
         // new-listing funnel that would otherwise invite a duplicate business.
         setNeedsOnboarding(false);
         setShowPartnerWizard(false);
-        if (returnedClaim) {
-          setClaimSuccess(consumeClaimSuccess(window.location.search, claimSessionStorage(window), uid));
+        if (claimTarget) {
           setTab("profile");
+          if (returnedClaim?.partnerId === existing.id) {
+            const receipt = consumeClaimSuccess(window.location.search, claimSessionStorage(window), uid);
+            if (receipt) setClaimSuccess({ ...receipt, partnerName: existing.name });
+          } else {
+            clearClaimSuccess(claimSessionStorage(window));
+          }
           window.history.replaceState(null, "", removeClaimSuccessParam(window.location));
         }
       }

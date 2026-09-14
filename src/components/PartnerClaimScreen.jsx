@@ -11,6 +11,7 @@ import {
 import {
   authenticateForClaim,
   claimRedirectUrl,
+  claimSuccessUrl,
   claimTokenFromLocation,
   createPartnerClaimFlow,
 } from "../lib/partnerClaimFlow";
@@ -175,7 +176,7 @@ export default function PartnerClaimScreen({ session, authLoading = false, sessi
     return <main className="auth-screen"><section className="auth-card claim-state-card">
       <h1>{completed.partner_name} is connected to your account.</h1>
       <p role="status">The same business profile was claimed. This did not publish changes, accept a Local agreement, activate offers or ordering, or create another business.</p>
-      <a className="primary-button" href="/?claim=success&tab=profile">Review your HEHA account</a>
+      <a className="primary-button" href={claimSuccessUrl(completed.partner_id)}>Review your HEHA account</a>
     </section></main>;
   }
 

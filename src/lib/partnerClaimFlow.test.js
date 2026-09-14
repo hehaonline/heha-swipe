@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { authenticateForClaim, claimRedirectUrl, claimTokenFromLocation, createPartnerClaimFlow, isVerifiedClaimUser } from "./partnerClaimFlow.js";
-import { CLAIM_ERRORS, CLAIM_SUCCESS_KEY, claimSessionStorage, consumeClaimSuccess, friendlyClaimError, readClaimSuccess, saveClaimSuccess } from "./partnerClaimUx.js";
+import { authenticateForClaim, claimRedirectUrl, claimReturnTarget, claimSuccessUrl, claimTokenFromLocation, createPartnerClaimFlow, fetchClaimReturnPartner, isVerifiedClaimUser } from "./partnerClaimFlow.js";
+import { CLAIM_ERRORS, CLAIM_SUCCESS_KEY, claimSessionStorage, consumeClaimSuccess, friendlyClaimError, readClaimSuccess, removeClaimSuccessParam, saveClaimSuccess } from "./partnerClaimUx.js";
 
 const TOKEN = "a".repeat(64);
 const USER = "11111111-1111-4111-8111-111111111111";
@@ -233,6 +233,94 @@ test("blocked storage cannot misreport a committed one-time claim as failed", ()
   assert.equal(saveClaimSuccess(claimSessionStorage(host), "Business", false, USER, 1_000_000, PARTNER), false);
 });
 
+function ownedDirectory(rows) {
+  const calls = [];
+  return {
+    calls,
+    from(table) {
+      assert.equal(table, "partners");
+      const filters = [];
+      const query = {
+        select(columns) { calls.push(["select", columns]); return query; },
+        eq(key, value) { filters.push([key, value]); calls.push([key, value]); return query; },
+        async maybeSingle() {
+          const matches = rows.filter((row) => filters.every(([key, value]) => row[key] === value));
+          assert.ok(matches.length <= 1);
+          return { data: matches[0] || null, error: null };
+        },
+      };
+      return query;
+    },
+  };
+}
+
+const OWNED_CARD = { id: PARTNER, owner_id: USER, name: "The claimed card", created_at: "2026-01-01" };
+const NEWER_CARD = { id: OTHER, owner_id: USER, name: "Different newer card", created_at: "2026-09-14" };
+
+test("success navigation contains only exact partner identity, never the invitation token", () => {
+  const url = claimSuccessUrl(PARTNER);
+  assert.equal(url, `/?claim=success&claimedPartner=${PARTNER}&tab=profile`);
+  assert.doesNotMatch(url, /token|email|password|owner_id/i);
+  assert.deepEqual(claimReturnTarget(url.slice(1)), { partnerId: PARTNER });
+  assert.throws(() => claimSuccessUrl("not-a-uuid"));
+  const cleaned = removeClaimSuccessParam({ pathname: "/", search: url.slice(1), hash: "" });
+  assert.equal(cleaned, `/?claimedPartner=${PARTNER}&tab=profile`);
+  assert.deepEqual(claimReturnTarget(cleaned.slice(1)), { partnerId: PARTNER });
+});
+
+test("blocked storage and expired receipt still select the exact claimed card, not a newer owned card", async () => {
+  const search = new URL(claimSuccessUrl(PARTNER), "https://example.invalid").search;
+  const target = claimReturnTarget(search);
+  const blocked = { getItem() { throw new Error("blocked"); } };
+  assert.equal(readClaimSuccess(search, blocked, USER), null);
+  const old = storage();
+  saveClaimSuccess(old, OWNED_CARD.name, false, USER, 1_000_000, PARTNER);
+  assert.equal(readClaimSuccess(search, old, USER, 1_000_000 + 16 * 60_000), null);
+  for (const rows of [[NEWER_CARD, OWNED_CARD], [OWNED_CARD, NEWER_CARD]]) {
+    const db = ownedDirectory(rows);
+    assert.deepEqual(await fetchClaimReturnPartner(db, USER, target), OWNED_CARD);
+    assert.ok(db.calls.some(([key, value]) => key === "owner_id" && value === USER));
+    assert.ok(db.calls.some(([key, value]) => key === "id" && value === PARTNER));
+  }
+});
+
+test("a forged receipt does not override the explicit target or supply owner authority", async () => {
+  const search = `?claim=success&claimedPartner=${PARTNER}`;
+  const forged = storage();
+  saveClaimSuccess(forged, "Forged different-card label", false, USER, 1_000_000, OTHER);
+  assert.equal(readClaimSuccess(search, forged, USER, 1_000_001).partnerId, OTHER);
+  const db = ownedDirectory([NEWER_CARD, OWNED_CARD]);
+  assert.deepEqual(await fetchClaimReturnPartner(db, USER, claimReturnTarget(search)), OWNED_CARD);
+  // A copied link in another account must not fall back to any of its cards.
+  await assert.rejects(fetchClaimReturnPartner(ownedDirectory([NEWER_CARD, OWNED_CARD]), OTHER, claimReturnTarget(search)));
+});
+
+test("missing, malformed, duplicate or foreign target fails closed without newest-card fallback", async () => {
+  assert.equal(claimReturnTarget("?tab=profile"), null);
+  const searches = ["?claim=success", "?claimedPartner=", "?claimedPartner=not-a-uuid", `?claimedPartner=${PARTNER}&claimedPartner=${OTHER}`, `?claim=success&claim=success&claimedPartner=${PARTNER}`, `?claim=other&claimedPartner=${PARTNER}`];
+  for (const search of searches) {
+    const db = ownedDirectory([NEWER_CARD, OWNED_CARD]);
+    assert.deepEqual(claimReturnTarget(search), { partnerId: null });
+    await assert.rejects(fetchClaimReturnPartner(db, USER, claimReturnTarget(search)));
+    assert.equal(db.calls.length, 0);
+  }
+  const db = ownedDirectory([NEWER_CARD, { ...OWNED_CARD, owner_id: OTHER }]);
+  await assert.rejects(fetchClaimReturnPartner(db, USER, { partnerId: PARTNER }));
+  assert.ok(db.calls.some(([key]) => key === "id"));
+});
+
+test("ownership lookup errors and mismatched response rows never select a claimed target", async () => {
+  for (const result of [
+    { data: NEWER_CARD, error: null },
+    { data: { ...OWNED_CARD, owner_id: OTHER }, error: null },
+    { data: null, error: new Error("lookup failed") },
+    { data: null, error: null },
+  ]) {
+    const query = { select() { return query; }, eq() { return query; }, maybeSingle: async () => result };
+    await assert.rejects(fetchClaimReturnPartner({ from: () => query }, USER, { partnerId: PARTNER }));
+  }
+});
+
 test("render integration preserves release gates, exact-profile ownership query, and failure retry controls", async () => {
   const [main, app, screen, html] = await Promise.all([
     readFile(new URL("../main.jsx", import.meta.url), "utf8"),
@@ -244,7 +332,11 @@ test("render integration preserves release gates, exact-profile ownership query,
   assert.match(main, /revision !== initialRevision/);
   assert.match(main, /if \(signOutError\) throw signOutError/);
   assert.match(app, /\.eq\("owner_id", uid\)/);
-  assert.match(app, /ownedQuery = ownedQuery\.eq\("id", returnedClaim\.partnerId\)/);
+  assert.match(app, /existing = await fetchClaimReturnPartner\(supabase, uid, claimTarget\)/);
+  assert.match(app, /if \(claimTarget\) \{\s*setMyListing\(null\);\s*setClaimSuccess\(null\);\s*setShowPartnerWizard\(false\)/);
+  assert.match(app, /returnedClaim\?\.partnerId === existing\.id/);
+  assert.match(app, /partnerName: existing\.name/);
+  assert.match(screen, /href=\{claimSuccessUrl\(completed\.partner_id\)\}/);
   assert.match(app, /showPartnerWizard && !myListing && !dataLoading && !appError/);
   assert.match(app, /needsOnboarding && !myListing/);
   assert.match(screen, /if \(authPending\.current\) return/);
