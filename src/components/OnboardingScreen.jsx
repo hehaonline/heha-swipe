@@ -1,11 +1,18 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
 import { startSupporterCheckout as startSupporterCheckoutFlow } from "../lib/supporterCheckout";
+import { releasePolicy } from "../lib/releasePolicy";
 
 const HEHA_INSTAGRAM_URL = import.meta.env.VITE_HEHA_INSTAGRAM_URL || "https://www.instagram.com/heha.online/";
 
 function getInitialRole() {
+  if (!releasePolicy.partnerSelfService) return "customer";
   return localStorage.getItem("heha_signup_role") || null;
+}
+
+function getAllowedRole(nextRole) {
+  if (!releasePolicy.partnerSelfService) return "customer";
+  return nextRole === "partner" ? "partner" : "customer";
 }
 
 export default function OnboardingScreen({ user, onComplete }) {
@@ -18,13 +25,14 @@ export default function OnboardingScreen({ user, onComplete }) {
   const [error, setError] = useState(null);
 
   const chooseRole = (nextRole) => {
-    localStorage.setItem("heha_signup_role", nextRole);
-    setRole(nextRole);
+    const allowedRole = getAllowedRole(nextRole);
+    localStorage.setItem("heha_signup_role", allowedRole);
+    setRole(allowedRole);
     setStep("access");
   };
 
 const saveProfile = async () => {
-  const isPartner = role === "partner";
+  const isPartner = getAllowedRole(role) === "partner";
   const subscriptionType = isPartner ? "partner_free" : "customer_free";
 
     // Safe update-first flow: never blindly upsert into the profiles table.
@@ -90,7 +98,7 @@ const saveProfile = async () => {
     try {
       if (forceFree) setAccess("free");
       await saveProfile();
-      onComplete?.(role || "customer");
+      onComplete?.(getAllowedRole(role));
     } catch (completeError) {
       setError(completeError.message || "Could not finish setup yet.");
     } finally {
@@ -132,24 +140,28 @@ const saveProfile = async () => {
             <h2>I’m a customer</h2>
             <p>Find healthy restaurants, markets, wellness partners, coaches, and offers around Tampa Bay.</p>
           </button>
-          <button className="choice-card featured" onClick={() => chooseRole("partner")} disabled={loading}>
-            <span>🏪</span>
-            <h2>I’m a business</h2>
-            <p>List your healthy business, get discovered, and join HEHA’s growing local partner network.</p>
-          </button>
+          {releasePolicy.partnerSelfService && (
+            <button className="choice-card featured" onClick={() => chooseRole("partner")} disabled={loading}>
+              <span>🏪</span>
+              <h2>I’m a business</h2>
+              <p>List your healthy business, get discovered, and join HEHA’s growing local partner network.</p>
+            </button>
+          )}
         </section>
         {error && <div className="error-banner">{error}</div>}
       </main>
     );
   }
 
-  const isPartner = role === "partner";
-  const freeCustomerNeedsInstagram = !isPartner && access === "free";
+  const isPartner = getAllowedRole(role) === "partner";
+  const freeCustomerNeedsInstagram = releasePolicy.instagram && !isPartner && access === "free";
 
   return (
     <main className="onboarding-screen">
       <section className="join-card card-like">
-        <button className="text-button" onClick={() => setStep("role")}>← Change path</button>
+        {releasePolicy.partnerSelfService && (
+          <button className="text-button" onClick={() => setStep("role")}>← Change path</button>
+        )}
         <p className="eyebrow">Community access</p>
         <h1>{isPartner ? "Choose how your business joins." : "Choose your HEHA Swipe access."}</h1>
         <p>Start free today or become a monthly supporter to help HEHA Swipe grow.</p>
@@ -164,16 +176,24 @@ const saveProfile = async () => {
           >
             <span>🌱</span>
             <h2>Free</h2>
-            <p>{isPartner ? "Create a starter listing without paying today." : "Follow HEHA on Instagram, then explore and save local businesses for free."}</p>
+            <p>
+              {isPartner
+                ? "Create a starter listing without paying today."
+                : releasePolicy.instagram
+                ? "Follow HEHA on Instagram, then explore and save local businesses for free."
+                : "Explore and save local businesses for free."}
+            </p>
           </button>
-          <button className={access === "supporter" ? "choice-card featured active-plan" : "choice-card featured"} onClick={() => setAccess("supporter")}>
-            <span>✦</span>
-            <h2>Supporter</h2>
-            <p>Support HEHA Swipe monthly and keep the local discovery network growing.</p>
-          </button>
+          {releasePolicy.payments && (
+            <button className={access === "supporter" ? "choice-card featured active-plan" : "choice-card featured"} onClick={() => setAccess("supporter")}>
+              <span>✦</span>
+              <h2>Supporter</h2>
+              <p>Support HEHA Swipe monthly and keep the local discovery network growing.</p>
+            </button>
+          )}
         </div>
 
-        {access === "supporter" && (
+        {releasePolicy.payments && access === "supporter" && (
           <div className="slider-card">
             <p className="eyebrow">Support HEHA Swipe monthly</p>
             <div className="slider-header">
@@ -207,7 +227,7 @@ const saveProfile = async () => {
           </div>
         )}
 
-        {access === "supporter" ? (
+        {releasePolicy.payments && access === "supporter" ? (
           <>
             <button className="primary-button" onClick={startSupporterCheckout} disabled={loading}>
               {loading ? "Opening checkout..." : "Start monthly support"}

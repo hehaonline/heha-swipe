@@ -114,6 +114,13 @@ a { color: inherit; }
 .text-button { border: 0; background: transparent; color: var(--heha-muted); font-weight: 800; cursor: pointer; }
 .text-button.center { text-align: center; width: 100%; padding: 10px; }
 .instagram-button { display: block; margin: 18px 0 14px; background: #111; color: #fff; }
+
+.public-info-page { align-items: flex-start; }
+.public-info-section { margin: 24px 0; }
+.public-info-section h2 { font-size: 1.05rem; margin-bottom: 8px; }
+.public-info-link { display: block; box-sizing: border-box; margin-top: 14px; text-align: center; text-decoration: none; }
+.profile-legal-links, .auth-legal-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 18px 0 4px; }
+.profile-legal-links a, .auth-legal-links a { color: var(--green, #1e4d1e); font-weight: 700; }
 .success-banner, .error-banner, .toast-notice, .soft-note, .inline-loader, .floating-status { border-radius: 16px; padding: 12px 14px; font-size: 13px; line-height: 1.45; }
 .success-banner { background: var(--heha-green-soft); color: var(--heha-green-dark); margin-top: 12px; }
 .error-banner { background: #fff0e8; color: #b84d1c; border: 1px solid #ffd9c9; }

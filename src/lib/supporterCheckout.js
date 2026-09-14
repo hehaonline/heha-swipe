@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { releasePolicy } from "./releasePolicy";
 
 // Single canonical entry point for HEHA Swipe supporter checkout.
 // Wraps the already-deployed `create-supporter-checkout` Edge Function (PR #26)
@@ -10,6 +11,9 @@ import { supabase } from "./supabase";
 // On success this redirects the browser to Stripe Checkout. Throws on failure
 // so callers can surface a safe message.
 export async function startSupporterCheckout(amount) {
+  if (!releasePolicy.payments) {
+    throw new Error("Payments are not included in this release.");
+  }
   const quantity = Number(amount);
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
     throw new Error("Supporter checkout is not available yet. Please try again later.");

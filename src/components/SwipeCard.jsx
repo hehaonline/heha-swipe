@@ -95,7 +95,7 @@ function itemUrl(item) {
   return item?.url || item?.product_url || item?.link || null;
 }
 
-export default function SwipeCard({ partner, onSwipe }) {
+export default function SwipeCard({ partner, onSwipe, allowSuperSwipe = true }) {
   const [dragStart, setDragStart] = useState(null);
   const [drag, setDrag] = useState({ x: 0, y: 0 });
   const [showShare, setShowShare] = useState(false);
@@ -109,7 +109,7 @@ export default function SwipeCard({ partner, onSwipe }) {
   const categoryGroup = getCategoryGroup(partner);
   const images = galleryImages(partner);
   const showingStockImage = isStockPlaceholder(partner, imageUrl);
-  const isSuperIntent = drag.y < -62 && Math.abs(drag.x) < 95;
+  const isSuperIntent = allowSuperSwipe && drag.y < -62 && Math.abs(drag.x) < 95;
   const isSaveIntent = drag.x > 62;
   const isPassIntent = drag.x < -62;
 
@@ -128,8 +128,8 @@ export default function SwipeCard({ partner, onSwipe }) {
   const endDrag = () => {
     if (!dragStart) return;
 
-    const wasSwipe = Math.abs(drag.x) > dragThreshold || drag.y < -dragThreshold;
-    if (drag.y < -dragThreshold && Math.abs(drag.x) < dragThreshold * 1.2) onSwipe?.("super");
+    const wasSwipe = Math.abs(drag.x) > dragThreshold || (allowSuperSwipe && drag.y < -dragThreshold);
+    if (allowSuperSwipe && drag.y < -dragThreshold && Math.abs(drag.x) < dragThreshold * 1.2) onSwipe?.("super");
     else if (drag.x > dragThreshold) onSwipe?.("right");
     else if (drag.x < -dragThreshold) onSwipe?.("left");
 
@@ -176,7 +176,7 @@ export default function SwipeCard({ partner, onSwipe }) {
       >
         <div className={`swipe-intent save ${isSaveIntent ? "visible" : ""}`}>SAVE</div>
         <div className={`swipe-intent pass ${isPassIntent ? "visible" : ""}`}>PASS</div>
-        <div className={`swipe-intent super ${isSuperIntent ? "visible" : ""}`}>SUPER</div>
+        {allowSuperSwipe && <div className={`swipe-intent super ${isSuperIntent ? "visible" : ""}`}>SUPER</div>}
 
         <div className="card-category-strip">
           <div className="strip-image-card">

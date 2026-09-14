@@ -3,6 +3,7 @@ import { filterPublicTags } from "../lib/partnerTags";
 import { publicDescription, TWO_LINE_CLAMP } from "../lib/cardCopy";
 import {
   isHehaLocalPartner,
+  partnerLocalRequestCopy,
   partnerOrderLabel,
   partnerOrderUrl,
 } from "../lib/hehaLocalRouting";
@@ -32,7 +33,13 @@ function hasRealWebsite(url) {
   return clean.startsWith("http") && !clean.includes("example.com") && clean !== "https://heha.online";
 }
 
-export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscountCheck }) {
+export default function FavesTab({
+  partners = [],
+  saves = [],
+  onUnsave,
+  onDiscountCheck,
+  allowContactRequests = true,
+}) {
   const [selectedPartner, setSelectedPartner] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
   const [galleryIndex, setGalleryIndex] = useState(0);
@@ -87,7 +94,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
   };
 
   const submitDiscountForm = () => {
-    if (!selectedPartner) return;
+    if (!allowContactRequests || !selectedPartner) return;
     onDiscountCheck?.(selectedPartner, discountForm);
     setShowDiscountForm(false);
   };
@@ -101,6 +108,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
     const currentImage = images[galleryIndex] || fallbackImage(selectedPartner);
     const isOfficialPartner = Boolean(selectedPartner.heha_partner);
     const isLocalPartner = isHehaLocalPartner(selectedPartner);
+    const localRequestCopy = partnerLocalRequestCopy(selectedPartner);
     const website = hasRealWebsite(selectedPartner.website) ? selectedPartner.website : null;
     const canSubmitDiscount = discountForm.user_phone.trim().length >= 7 && discountForm.consent_to_contact;
 
@@ -144,8 +152,18 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
 
         <section className="detail-section card-like">
           <div className="detail-section-heading">
-            <p className="eyebrow">{items.length ? "Select items" : isOfficialPartner ? "Ordering" : "Community interest"}</p>
-            <h3>{items.length ? "Choose what you want to view or order" : isOfficialPartner ? "Ordering coming soon" : "Want HEHA member discounts here?"}</h3>
+            <p className="eyebrow">
+              {items.length
+                ? "Select items"
+                : localRequestCopy?.eyebrow
+                  || (isOfficialPartner ? "Ordering" : allowContactRequests ? "Community interest" : "Business details")}
+            </p>
+            <h3>
+              {items.length
+                ? "Choose what you want to view or order"
+                : localRequestCopy?.heading
+                  || (isOfficialPartner ? "Ordering coming soon" : allowContactRequests ? "Want HEHA member discounts here?" : "Explore this local business")}
+            </h3>
           </div>
 
           {items.length ? (
@@ -169,9 +187,13 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
             </div>
           ) : (
             <p className="detail-bio">
-              {isOfficialPartner
+              {localRequestCopy
+                ? localRequestCopy.body
+                : isOfficialPartner
                 ? "This partner does not have orderable items listed yet. You can still contact them or HEHA."
-                : "This business is listed for discovery, but it is not yet an official HEHA partner. HEHA can check whether a member discount, daily deal, or partnership offer is available."}
+                : allowContactRequests
+                  ? "This business is listed for discovery, but it is not yet an official HEHA partner. HEHA can check whether a member discount, daily deal, or partnership offer is available."
+                  : "This business is listed for discovery, but it is not yet an official HEHA partner."}
             </p>
           )}
 
@@ -184,11 +206,11 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
               <button className="primary-button" disabled>
                 {hasSelectedItems ? "HEHA product link coming soon" : "Select an item to order"}
               </button>
-            ) : !showDiscountForm ? (
+            ) : allowContactRequests && !showDiscountForm ? (
               <button className="discount-button" type="button" onClick={() => setShowDiscountForm(true)}>
                 Call/Text me about discounts
               </button>
-            ) : (
+            ) : allowContactRequests ? (
               <div className="discount-contact-form">
                 <label className="field-block">
                   <span>Phone number</span>
@@ -231,8 +253,8 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
                   Ask HEHA to check
                 </button>
               </div>
-            )}
-            {!isOfficialPartner && !showDiscountForm && (
+            ) : null}
+            {allowContactRequests && !isOfficialPartner && !showDiscountForm && (
               <p className="discount-note">HEHA can use this interest to approach the business and ask for member discounts.</p>
             )}
             {ig && <a className="secondary-button" href={ig} target="_blank" rel="noreferrer">Open Instagram</a>}
@@ -261,7 +283,11 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
       <div className="section-hero compact">
         <p className="eyebrow">Your saved map</p>
         <h2>{saved.length} healthy business{saved.length === 1 ? "" : "es"} saved</h2>
-        <p>Tap a saved business to view details, learn more, order through HEHA, or request member discounts.</p>
+        <p>
+          {allowContactRequests
+            ? "Tap a saved business to view details, learn more, order through HEHA, or request member discounts."
+            : "Tap a saved business to view details, learn more, or order through HEHA."}
+        </p>
       </div>
 
       <div className="saved-list">
@@ -280,7 +306,7 @@ export default function FavesTab({ partners = [], saves = [], onUnsave, onDiscou
               {!partner.price_range && publicDescription(partner) && <small>{publicDescription(partner)}</small>}
               <div className="saved-actions">
                 <button type="button" onClick={(event) => { event.stopPropagation(); openDetails(partner); }}>View details</button>
-                {!partner.heha_partner && <button type="button" onClick={(event) => { event.stopPropagation(); openDetails(partner); setShowDiscountForm(true); }}>Check discounts</button>}
+                {allowContactRequests && !partner.heha_partner && <button type="button" onClick={(event) => { event.stopPropagation(); openDetails(partner); setShowDiscountForm(true); }}>Check discounts</button>}
                 {isHehaLocalPartner(partner) && (
                   <a onClick={(event) => event.stopPropagation()} href={partnerOrderUrl(partner)} target="_blank" rel="noreferrer">HEHA Local</a>
                 )}
