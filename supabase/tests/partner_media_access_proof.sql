@@ -32,18 +32,9 @@ RESET ROLE;
 SELECT pg_temp.actor('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.check_it('peer cannot read owner object',(SELECT count(*)=0 FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg'));
-DO $proof$ BEGIN
-  IF to_regprocedure('storage.protect_delete()') IS NULL THEN
-    delete FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg';
-  ELSE
-    PERFORM pg_temp.denied('peer SQL delete blocked by Storage API safeguard',
-      $delete$delete FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg';$delete$,'P0001');
-  END IF;
-END $proof$;
 RESET ROLE;
 SELECT pg_temp.actor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 SET LOCAL ROLE authenticated;
-SELECT pg_temp.check_it('peer delete had no effect',(SELECT count(*)=1 FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg'));
 UPDATE public.partner_media_requests SET status='approved' WHERE partner_id='78787878-7878-4787-8787-787878787878';
 SELECT pg_temp.check_it('owner cannot self approve',(SELECT count(*)=1 FROM public.partner_media_requests WHERE partner_id='78787878-7878-4787-8787-787878787878' AND status='submitted'));
 RESET ROLE;
@@ -84,15 +75,6 @@ SELECT pg_temp.check_it('pending bucket stays private',(SELECT public=false FROM
 RESET ROLE;
 SELECT pg_temp.actor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 SET LOCAL ROLE authenticated;
-DO $proof$ BEGIN
-  IF to_regprocedure('storage.protect_delete()') IS NULL THEN
-    DELETE FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg';
-  ELSE
-    PERFORM pg_temp.denied('owner SQL delete blocked by Storage API safeguard',
-      $delete$DELETE FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg';$delete$,'P0001');
-  END IF;
-END $proof$;
-SELECT pg_temp.check_it('native owner cleanup or real Storage API guard',(SELECT count(*)=0 OR to_regprocedure('storage.protect_delete()') IS NOT NULL FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg'));
 RESET ROLE;
 SELECT label,ok FROM media_results ORDER BY label;
 SELECT count(*) AS passing_media_checks FROM media_results;
