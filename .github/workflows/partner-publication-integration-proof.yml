@@ -16,6 +16,13 @@ on:
       - supabase/migrations/20260817154529_hybrid_partner_security_reconciliation.sql
       - supabase/migrations/20260817154927_hybrid_partner_claim_recipient_contract.sql
       - supabase/migrations/20260817171238_partner_publication_integration_rc.sql
+      - supabase/migrations/20260706143000_partner_media_manager.sql
+      - supabase/migrations/20260914140000_partner_media_owner_path_repair.sql
+      - supabase/migrations/20260914140100_partner_media_assisted_intake.sql
+      - supabase/tests/partner_media_access_proof.sql
+      - scripts/partner_media_api_proof.mjs
+      - supabase/migrations/20260706122000_partner_profile_change_requests.sql
+      - supabase/migrations/20260720093000_partner_multi_categories.sql
       - supabase/functions/hubspot-sync/index.ts
       - supabase/tests/fixtures/partner_publication_integration_baseline.sql
       - supabase/tests/partner_publication_consent_proof.sql
@@ -95,6 +102,14 @@ jobs:
           mkdir -p supabase/migrations
           cp ../../supabase/tests/fixtures/partner_publication_integration_baseline.sql \
             supabase/migrations/20260810070000_partner_publication_integration_baseline.sql
+          cat ../../supabase/migrations/20260706122000_partner_profile_change_requests.sql \
+            >> supabase/migrations/20260810070000_partner_publication_integration_baseline.sql
+          sed -n '/^create or replace function app_private.guard_partner_profile_change_request()/,/^  from public, anon, authenticated;/p' \
+            ../../supabase/migrations/20260720093000_partner_multi_categories.sql \
+            >> supabase/migrations/20260810070000_partner_publication_integration_baseline.sql
+          # Include the retained real media foundation in the synthetic baseline.
+          cat ../../supabase/migrations/20260706143000_partner_media_manager.sql \
+            >> supabase/migrations/20260810070000_partner_publication_integration_baseline.sql
           cp ../../supabase/migrations/20260810072829_wave1_partner_publication_consent.sql \
             supabase/migrations/
 
@@ -279,6 +294,18 @@ jobs:
             -f supabase/migrations/20260817171238_partner_publication_integration_rc.sql \
             2>&1 | tee -a artifacts/partner-publication-integration-proof/lexical-apply.txt
 
+      - name: Apply and prove private owner media plus assisted intake
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260914140000_partner_media_owner_path_repair.sql
+          psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260914140000_partner_media_owner_path_repair.sql
+          psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260914140100_partner_media_assisted_intake.sql
+          psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/partner_media_access_proof.sql \
+            2>&1 | tee artifacts/partner-publication-integration-proof/media-access-proof.txt
+
       - name: Execute the consent-specific post-final proof
         shell: bash
         env:
@@ -399,6 +426,14 @@ jobs:
             -c 'revoke select on table public.partners from anon'
           grep -q 'anon must not have raw SELECT on public.partners' "${negative_log}"
           echo 'raw_anon_negative_control=pass' >> "${negative_log}"
+
+      - name: Prove actual private Storage API and Auth session persistence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd .ci/partner-publication-integration
+          supabase status --output json | node ../../scripts/partner_media_api_proof.mjs \
+            > ../../artifacts/partner-publication-integration-proof/media-api-proof.json
 
       - name: Scan sanitized evidence
         shell: bash

@@ -12,7 +12,7 @@ Account for every committed live-ledger row and every current executable migrati
 This packet compares:
 
 - the committed **96-row** live ledger;
-- the current **46-file / 42-version** `supabase/migrations` tree;
+- the current **48-file / 44-version** `supabase/migrations` tree;
 - the byte-preserved historical supporter source outside the executable chain.
 
 It does not rewrite history, infer missing SQL bodies, or authorize a baseline, migration, paid branch, Production action, Community Pass merge, Stripe action, entitlement, benefit, or launch.
@@ -27,11 +27,11 @@ It does not rewrite history, infer missing SQL bodies, or authorize a baseline, 
 | `B` | 15 | No current executable source candidate was identified. Reconstruct from sanitized current definitions while preserving the ledger row as history. |
 | `D` | 2 | Two live versions share one name. Recover and compare both original SQL bodies before deciding equivalence or supersession. |
 
-## Repository-file class codes — 46 files
+## Repository-file class codes — 48 files
 
 | Code | Files | Canonical disposition |
 |---|---:|---|
-| `BC` | 37 | Candidate component only after deep metadata, normalized-effect, dependency, and security review. |
+| `BC` | 39 | Candidate component only after deep metadata, normalized-effect, dependency, and security review. |
 | `BS` | 6 | Useful behavior may be retained, but same-version collisions require uniquely identified canonical sections. |
 | `AN` | 1 | Historical explanation, not executable reconstruction. |
 | `AR` | 1 | Preserve for incident history; exclude from the future zero-build executable chain. |
@@ -39,7 +39,7 @@ It does not rewrite history, infer missing SQL bodies, or authorize a baseline, 
 
 ## Critical conclusion
 
-There are **zero exact version matches** between the 96 live versions and the 42 unique versions in the current executable migration tree.
+There are **zero exact version matches** between the 96 live versions and the 44 unique versions in the current executable migration tree.
 
 Therefore:
 
@@ -53,7 +53,7 @@ Therefore:
 ## Packet
 
 - `live-ledger-compatibility-map-2026-08-24.csv` — all 96 live versions.
-- `repository-migration-disposition-map-2026-08-24.csv` — all 46 current executable files.
+- `repository-migration-disposition-map-2026-08-24.csv` — all 48 current executable files.
 - `deep-metadata-capture-plan-2026-08-24.md` — staged next-evidence plan.
 - `queries/deep-structure-manifest-capture.sql` — prepared, unexecuted, metadata-only first-tranche query.
 - `verify-repository-ledger-map.mjs` — fail-closed verifier.
@@ -74,3 +74,7 @@ After a separate approval, run the prepared metadata-only deep-structure capture
 The HEHA Business Model 2026 slides are historical context only. Newest founder decisions, current operating economics, exact technical/provider evidence, current partner terms, and current legal/accounting/insurance decisions control whenever they differ.
 
 Production impact: **NONE**.
+
+## September 14 media repair extension
+
+PR #141 adds two repository-proven forward candidates (RP/BC), with no live-ledger candidate edges. The 48-file/44-version inventory preserves all historical ledger evidence. The two new hash-bound expectation rows record proposed bytes and classification only; their independent security review and separate hosted release approval remain pending. Prior independently reviewed entries retain their evidence status. No live ledger or Production schema was changed.
