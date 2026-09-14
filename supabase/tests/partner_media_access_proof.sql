@@ -1,0 +1,85 @@
+-- Synthetic data only; run after the full publication/claim chain and both media repairs.
+\set ON_ERROR_STOP on
+BEGIN;
+CREATE TEMP TABLE media_results(label text PRIMARY KEY, ok boolean NOT NULL);
+GRANT SELECT,INSERT ON media_results TO authenticated,anon;
+CREATE FUNCTION pg_temp.check_it(label text, ok boolean) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN IF ok IS NOT TRUE THEN RAISE EXCEPTION 'FAIL: %',label; END IF;
+INSERT INTO media_results VALUES(label,true); END $$;
+CREATE FUNCTION pg_temp.denied(label text, stmt text, wanted text DEFAULT '42501')
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN EXECUTE stmt; RAISE EXCEPTION 'Unexpected success: %',label;
+EXCEPTION WHEN OTHERS THEN IF SQLSTATE <> wanted THEN RAISE; END IF;
+INSERT INTO media_results VALUES(label,true); END $$;
+CREATE FUNCTION pg_temp.actor(id uuid) RETURNS void LANGUAGE sql AS $$
+SELECT set_config('request.jwt.claims',jsonb_build_object('sub',id,'role','authenticated')::text,true);
+SELECT set_config('request.jwt.claim.sub',id::text,true); $$;
+CREATE TEMP TABLE media_before AS SELECT id,owner_id,image_url,gallery_urls,status FROM public.partners;
+
+RESET ROLE;
+SELECT pg_temp.actor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+SET LOCAL ROLE authenticated;
+INSERT INTO storage.objects(bucket_id,name) VALUES('partner-media-pending','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg');
+SELECT pg_temp.check_it('owner can read own private object',(SELECT count(*)=1 FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg'));
+SELECT pg_temp.denied('wrong actor prefix',$query$INSERT INTO storage.objects(bucket_id,name) VALUES('partner-media-pending','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/78787878-7878-4787-8787-787878787878/wrong-actor.jpg')$query$,'42501');
+SELECT pg_temp.denied('foreign business',$query$INSERT INTO storage.objects(bucket_id,name) VALUES('partner-media-pending','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/33333333-3333-4333-8333-333333333333/foreign.jpg')$query$,'42501');
+SELECT pg_temp.denied('unclaimed business',$query$INSERT INTO storage.objects(bucket_id,name) VALUES('partner-media-pending','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111/unclaimed.jpg')$query$,'42501');
+SELECT pg_temp.denied('missing business segment',$query$INSERT INTO storage.objects(bucket_id,name) VALUES('partner-media-pending','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/missing.jpg')$query$,'42501');
+INSERT INTO public.partner_media_requests(partner_id,owner_id,media_type,storage_path) VALUES('78787878-7878-4787-8787-787878787878','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','gallery','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg');
+SELECT pg_temp.check_it('owner request stays submitted',(SELECT count(*)=1 FROM public.partner_media_requests WHERE partner_id='78787878-7878-4787-8787-787878787878' AND status='submitted'));
+SELECT pg_temp.denied('owner cannot use staff intake',$query$SELECT public.submit_assisted_partner_media('91919191-9191-4191-8191-919191919191','11111111-1111-4111-8111-111111111111','12121212-1212-4212-8212-121212121212/11111111-1111-4111-8111-111111111111/assisted.jpg','cover','assisted.jpg','image/jpeg',64,'gmail:synthetic-source','gmail:synthetic-rights')$query$,'42501');
+RESET ROLE;
+SELECT pg_temp.actor('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.check_it('peer cannot read owner object',(SELECT count(*)=0 FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg'));
+DELETE FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg';
+RESET ROLE;
+SELECT pg_temp.actor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.check_it('peer delete had no effect',(SELECT count(*)=1 FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg'));
+UPDATE public.partner_media_requests SET status='approved' WHERE partner_id='78787878-7878-4787-8787-787878787878';
+SELECT pg_temp.check_it('owner cannot self approve',(SELECT count(*)=1 FROM public.partner_media_requests WHERE partner_id='78787878-7878-4787-8787-787878787878' AND status='submitted'));
+RESET ROLE;
+SELECT pg_temp.actor('12121212-1212-4212-8212-121212121212');
+SET LOCAL ROLE authenticated;
+INSERT INTO storage.objects(bucket_id,name) VALUES('partner-media-pending','12121212-1212-4212-8212-121212121212/11111111-1111-4111-8111-111111111111/assisted.jpg');
+SELECT pg_temp.denied('rights receipt required',$query$SELECT public.submit_assisted_partner_media('91919191-9191-4191-8191-919191919191','11111111-1111-4111-8111-111111111111','12121212-1212-4212-8212-121212121212/11111111-1111-4111-8111-111111111111/assisted.jpg','cover','assisted.jpg','image/jpeg',64,'gmail:synthetic-source','')$query$,'22023');
+SELECT pg_temp.denied('source receipt required',$query$SELECT public.submit_assisted_partner_media('91919191-9191-4191-8191-919191919191','11111111-1111-4111-8111-111111111111','12121212-1212-4212-8212-121212121212/11111111-1111-4111-8111-111111111111/assisted.jpg','cover','assisted.jpg','image/jpeg',64,'','gmail:synthetic-rights')$query$,'22023');
+SELECT pg_temp.denied('staff cannot bind different actor file',$query$SELECT public.submit_assisted_partner_media('91919191-9191-4191-8191-919191919191','78787878-7878-4787-8787-787878787878','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg','cover','assisted.jpg','image/jpeg',64,'gmail:synthetic-source','gmail:synthetic-rights')$query$,'42501');
+SELECT pg_temp.denied('staff cannot submit missing file',$query$SELECT public.submit_assisted_partner_media('91919191-9191-4191-8191-919191919191','11111111-1111-4111-8111-111111111111','12121212-1212-4212-8212-121212121212/11111111-1111-4111-8111-111111111111/missing.jpg','cover','assisted.jpg','image/jpeg',64,'gmail:synthetic-source','gmail:synthetic-rights')$query$,'42501');
+SELECT public.submit_assisted_partner_media('91919191-9191-4191-8191-919191919191','11111111-1111-4111-8111-111111111111','12121212-1212-4212-8212-121212121212/11111111-1111-4111-8111-111111111111/assisted.jpg','cover','assisted.jpg','image/jpeg',64,'gmail:synthetic-source','gmail:synthetic-rights');
+SELECT public.submit_assisted_partner_media('91919191-9191-4191-8191-919191919191','11111111-1111-4111-8111-111111111111','12121212-1212-4212-8212-121212121212/11111111-1111-4111-8111-111111111111/assisted.jpg','cover','assisted.jpg','image/jpeg',64,'gmail:synthetic-source','gmail:synthetic-rights');
+SELECT pg_temp.check_it('retry returns one queue item',(SELECT count(*)=1 FROM public.partner_media_requests WHERE id='91919191-9191-4191-8191-919191919191'));
+SELECT pg_temp.check_it('staff request private pending',(SELECT status='submitted' AND reviewed_at IS NULL AND reviewed_by IS NULL FROM public.partner_media_requests WHERE id='91919191-9191-4191-8191-919191919191'));
+SELECT pg_temp.check_it('staff rights receipt retained',(SELECT count(*)=1 FROM public.partner_media_intake_evidence WHERE request_id='91919191-9191-4191-8191-919191919191' AND submitted_by='12121212-1212-4212-8212-121212121212' AND rights_reference='gmail:synthetic-rights'));
+SELECT pg_temp.denied('retry mismatch held',$query$SELECT public.submit_assisted_partner_media('91919191-9191-4191-8191-919191919191','11111111-1111-4111-8111-111111111111','12121212-1212-4212-8212-121212121212/11111111-1111-4111-8111-111111111111/assisted.jpg','cover','assisted.jpg','image/jpeg',64,'different-source','gmail:synthetic-rights')$query$,'22023');
+SELECT pg_temp.denied('same image duplicate held',$query$SELECT public.submit_assisted_partner_media('92929292-9292-4292-8292-929292929292','11111111-1111-4111-8111-111111111111','12121212-1212-4212-8212-121212121212/11111111-1111-4111-8111-111111111111/assisted.jpg','cover','assisted.jpg','image/jpeg',64,'gmail:synthetic-source','gmail:synthetic-rights')$query$,'23505');
+RESET ROLE;
+SELECT pg_temp.actor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.check_it('owner cannot read staff rights receipt',(SELECT count(*)=0 FROM public.partner_media_intake_evidence));
+SELECT pg_temp.denied('owner cannot fabricate staff receipt',$query$INSERT INTO public.partner_media_intake_evidence VALUES('91919191-9191-4191-8191-919191919191','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','false','false',now())$query$,'42501');
+RESET ROLE;
+UPDATE auth.users SET email_confirmed_at=NULL WHERE id='12121212-1212-4212-8212-121212121212';
+RESET ROLE;
+SELECT pg_temp.actor('12121212-1212-4212-8212-121212121212');
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.denied('unverified internal account denied',$query$SELECT public.submit_assisted_partner_media('91919191-9191-4191-8191-919191919191','11111111-1111-4111-8111-111111111111','12121212-1212-4212-8212-121212121212/11111111-1111-4111-8111-111111111111/assisted.jpg','cover','assisted.jpg','image/jpeg',64,'gmail:synthetic-source','gmail:synthetic-rights')$query$,'42501');
+RESET ROLE;
+UPDATE auth.users SET email_confirmed_at=now() WHERE id='12121212-1212-4212-8212-121212121212';
+SELECT set_config('request.jwt.claims','{}',true);
+SELECT set_config('request.jwt.claim.sub','',true);
+SET LOCAL ROLE anon;
+SELECT pg_temp.denied('anonymous staff intake denied',$query$SELECT public.submit_assisted_partner_media('91919191-9191-4191-8191-919191919191','11111111-1111-4111-8111-111111111111','12121212-1212-4212-8212-121212121212/11111111-1111-4111-8111-111111111111/assisted.jpg','cover','assisted.jpg','image/jpeg',64,'gmail:synthetic-source','gmail:synthetic-rights')$query$,'42501');
+RESET ROLE;
+SELECT pg_temp.check_it('no business ownership or public media changes',((SELECT count(*) FROM ((SELECT id,owner_id,image_url,gallery_urls,status FROM public.partners EXCEPT SELECT * FROM media_before) UNION ALL (SELECT * FROM media_before EXCEPT SELECT id,owner_id,image_url,gallery_urls,status FROM public.partners)) AS delta)=0));
+SELECT pg_temp.check_it('pending bucket stays private',(SELECT public=false FROM storage.buckets WHERE id='partner-media-pending'));
+RESET ROLE;
+SELECT pg_temp.actor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+SET LOCAL ROLE authenticated;
+DELETE FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg';
+SELECT pg_temp.check_it('owner cleanup works',(SELECT count(*)=0 FROM storage.objects WHERE name='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/78787878-7878-4787-8787-787878787878/owner.jpg'));
+RESET ROLE;
+SELECT label,ok FROM media_results ORDER BY label;
+SELECT count(*) AS passing_media_checks FROM media_results;
+ROLLBACK;
