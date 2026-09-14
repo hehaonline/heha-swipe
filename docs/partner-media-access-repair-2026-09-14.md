@@ -69,3 +69,27 @@ The new localhost-only API proof uses actual GoTrue verified synthetic fixtures,
 PostgREST claim/review submission, Storage byte upload/private signed read/delete,
 wrong-recipient/cross-business/duplicate denials and logout/login persistence.
 It does not prove email delivery, browser rendering, recovery or Production.
+
+## Verified results
+
+- Full isolated Supabase workflow 34856440940 succeeded at runtime/test commit
+  2cbfe3368f08e754392f933a20c9bac85f9d3e3b, including the complete lifecycle and
+  publication chain, its concurrency/negative controls, and 24 media SQL checks.
+- Actual localhost Auth/PostgREST/Storage API proof: 14/14. Correct same-card claim,
+  wrong recipient and reused claim denied, profile changes persisted, byte upload,
+  exact private signed read, cross-business/duplicate denials, logout/login,
+  real Storage API deletion, and unchanged public images.
+- Desktop 1440x1000 and mobile 390x844: actual editor rendered with production CSS;
+  changing a pending profile created exactly one mocked review request and
+  prevented a second submission. No horizontal overflow. Screenshots and the
+  clearly scoped UI/API receipts are under review-evidence/partner-media-20260914.
+- Node 22.22.0 focused claim tests: 35/35; application build passed.
+- Added the two forward migration entries and byte hashes to the existing
+  repository compatibility packet; preserved historical ledger rows and all
+  negative-control checks. They are review candidates, not live equivalence or
+  independently approved migrations. Map/evidence/semantic-negative checks pass
+  locally; Linux descriptor-containment verification requires the existing CI.
+
+The two unsuccessful earlier CI attempts are retained as test-development
+evidence. Both respected the provider's direct-delete protection; final deletion
+checks use Storage API, without disabling the protection.

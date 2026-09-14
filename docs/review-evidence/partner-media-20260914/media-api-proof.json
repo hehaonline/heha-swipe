@@ -1,0 +1,20 @@
+{
+  "scope": "isolated actual Auth, PostgREST and Storage API; verified synthetic accounts, no SMTP/browser claim",
+  "passed": 14,
+  "checks": [
+    "wrong recipient denied",
+    "claim binds same card",
+    "consumed claim denied",
+    "profile edit submitted through review queue",
+    "Storage API byte upload",
+    "Storage API cross-business upload denied",
+    "duplicate object overwrite denied",
+    "private signed read returns exact bytes",
+    "peer signed read denied",
+    "peer delete leaves file intact",
+    "edit persists after logout/login",
+    "photo persists after logout/login",
+    "owner Storage API delete succeeds",
+    "no public image activation"
+  ]
+}
