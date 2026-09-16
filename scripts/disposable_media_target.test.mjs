@@ -73,10 +73,10 @@ const invalidUrls = [
   databaseUrl.replace('postgres:postgres@', 'postgres:%zz@'),
   databaseUrl.replace('postgres:postgres@', 'postgres:p%40ss@'),
   databaseUrl.replace('postgresql:', 'postgres:'), databaseUrl.replace('postgresql:', 'POSTGRESQL:'),
-  databaseUrl.replace('/postgres', '/other'), databaseUrl.replace('/postgres', '/postgre%73'),
-  databaseUrl.replace('/postgres', '/'), databaseUrl + '/', databaseUrl + '/other',
-  databaseUrl.replace('/postgres', '/a/../postgres'), databaseUrl.replace('/postgres', '/%2fpostgres'),
-  databaseUrl.replace('/postgres', '/host=proof-target.invalid'),
+  databaseUrl.replace(/\/postgres$/, '/other'), databaseUrl.replace(/\/postgres$/, '/postgre%73'),
+  databaseUrl.replace(/\/postgres$/, '/'), databaseUrl + '/', databaseUrl + '/other',
+  databaseUrl.replace(/\/postgres$/, '/a/../postgres'), databaseUrl.replace(/\/postgres$/, '/%2fpostgres'),
+  databaseUrl.replace(/\/postgres$/, '/host=proof-target.invalid'),
   ' ' + databaseUrl, databaseUrl + '\n', databaseUrl + '\0', databaseUrl.replace('@', '\\@'),
 ];
 for (const script of scripts) {
