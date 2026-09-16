@@ -2,7 +2,7 @@ name: Partner Publication Integration Proof
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, codex/partner-publication-current-main-rpc-boundary-v1]
     paths:
       - .github/workflows/partner-publication-integration-proof.yml
       - supabase/migrations/20260810072829_wave1_partner_publication_consent.sql
@@ -19,6 +19,10 @@ on:
       - supabase/migrations/20260706143000_partner_media_manager.sql
       - supabase/migrations/20260914140000_partner_media_owner_path_repair.sql
       - supabase/migrations/20260914140100_partner_media_assisted_intake.sql
+      - supabase/migrations/20260916120000_partner_media_shared_boundary.sql
+      - supabase/tests/partner_media_shared_boundary_proof.sql
+      - scripts/partner_media_concurrency_proof.mjs
+      - scripts/partner_media_migration_preflight.mjs
       - supabase/tests/partner_media_access_proof.sql
       - scripts/partner_media_api_proof.mjs
       - supabase/migrations/20260706122000_partner_profile_change_requests.sql
@@ -89,6 +93,8 @@ jobs:
           fi
           bash -n scripts/partner_publication_integration_concurrency_proof.sh
           bash -n scripts/hybrid_partner_concurrency_proof.sh
+          node --check scripts/partner_media_concurrency_proof.mjs
+          node --check scripts/partner_media_migration_preflight.mjs
           git diff --check
 
       - name: Prepare disposable synthetic Supabase project
@@ -303,8 +309,15 @@ jobs:
           psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260914140000_partner_media_owner_path_repair.sql
           psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260914140000_partner_media_owner_path_repair.sql
           psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260914140100_partner_media_assisted_intake.sql
+          node scripts/partner_media_migration_preflight.mjs \
+            2>&1 | tee artifacts/partner-publication-integration-proof/media-migration-preflight.txt
+          psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260916120000_partner_media_shared_boundary.sql
           psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/partner_media_access_proof.sql \
             2>&1 | tee artifacts/partner-publication-integration-proof/media-access-proof.txt
+          psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/partner_media_shared_boundary_proof.sql \
+            2>&1 | tee artifacts/partner-publication-integration-proof/media-shared-boundary-proof.txt
+          node scripts/partner_media_concurrency_proof.mjs \
+            2>&1 | tee artifacts/partner-publication-integration-proof/media-concurrency-proof.txt
 
       - name: Execute the consent-specific post-final proof
         shell: bash
@@ -379,6 +392,7 @@ jobs:
             src/lib/hubspotSyncAccessContract.test.js \
             src/lib/partnerBrowserWebhookBoundary.test.js \
             src/lib/partnerClaimFlow.test.js \
+            src/lib/selectedOwnedPartner.test.js \
             src/lib/partnerPublicationConsent.test.js \
             src/lib/partnerPublicationUiContract.test.js \
             src/lib/partnerPublicationWithdrawalBoundary.test.js \

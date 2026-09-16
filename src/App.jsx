@@ -543,13 +543,16 @@ export default function App() {
         )}
         {releasePolicy.payments && tab === "deals" && (
           <CommunityPassTab
+            key={`${session.user.id}:${myListing?.id}`}
             user={session.user}
             profile={profile}
+            listing={myListing}
             onListBusiness={() => setShowPartnerWizard(true)}
           />
         )}
         {tab === "profile" && (
           <ProfileTab
+            key={`${session.user.id}:${myListing?.id}`}
             user={session.user}
             profile={profile}
             partners={partners}

@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { fetchSelectedOwnedPartner, selectedOwnedPartner } from "../lib/selectedOwnedPartner";
 import {
   PARTNER_DESTINATIONS,
   availablePartnerDestinations,
@@ -69,7 +70,7 @@ export default function ProfileTab({
   const [profileError, setProfileError] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
-  const [ownedListing, setOwnedListing] = useState(listing);
+  const [ownedListing, setOwnedListing] = useState(null);
   const [publicationStatus, setPublicationStatus] = useState(null);
   const [publicationStatusLoading, setPublicationStatusLoading] = useState(false);
   const [publicationStatusError, setPublicationStatusError] = useState(null);
@@ -129,37 +130,27 @@ export default function ProfileTab({
   }, [user?.id]);
 
   useEffect(() => {
-    setOwnedListing(listing || null);
-  }, [listing]);
-
-  useEffect(() => {
-    if (!isBusiness || !user?.id) return;
+    setOwnedListing(null);
+    if (!isBusiness || !user?.id || !listing?.id) return;
 
     let cancelled = false;
     const loadOwnedListing = async () => {
-      const { data, error } = await supabase
-        .from("partners")
-        .select("id, name, category, categories, status, created_at, updated_at, complete_pct, heha_partner, swipe_eligible, local_eligible, local_lane, primary_cta_destination, primary_cta_path")
-        .eq("owner_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (cancelled) return;
-      if (error) {
-        setProfileError(error.message || "Could not load your business listing details.");
-        return;
+      try {
+        const data = await fetchSelectedOwnedPartner(supabase, user.id, listing.id,
+          "id, name, category, categories, status, created_at, updated_at, complete_pct, heha_partner, swipe_eligible, local_eligible, local_lane, primary_cta_destination, primary_cta_path");
+        if (!cancelled) setOwnedListing(data);
+      } catch (error) {
+        if (!cancelled) setProfileError(error.message || "Could not load your business listing details.");
       }
-      setOwnedListing(data || null);
     };
 
     loadOwnedListing();
     return () => {
       cancelled = true;
     };
-  }, [isBusiness, user?.id]);
+  }, [isBusiness, user?.id, listing?.id, listing?.updated_at]);
 
-  const activeListing = ownedListing || listing;
+  const activeListing = selectedOwnedPartner(ownedListing, user?.id, listing?.id);
   const activeListingCategories = useMemo(
     () => Array.isArray(activeListing?.categories) && activeListing.categories.length
       ? activeListing.categories
