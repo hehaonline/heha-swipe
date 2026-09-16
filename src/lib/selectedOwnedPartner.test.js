@@ -78,6 +78,9 @@ test("missing selection, missing row and owner switch fail closed without fallba
   assert.doesNotMatch(profile, /ownedListing\s*\|\|\s*listing/);
   assert.doesNotMatch(hub.slice(hub.indexOf("export default function CommunityPassTab")), /\.order\("created_at"/);
   assert.match(hub, /request === listingRequest\.current/);
+  // A same-card media refresh must not unmount the open manager while fetching.
+  // Changed owner/card props are already fail-closed through selectedOwnedPartner.
+  assert.doesNotMatch(hub, /const request = \+\+listingRequest\.current;\s*setOwnerListing\(null\)/);
   assert.match(hub, /key=\{`\$\{user\?\.id\}:\$\{listing\?\.id\}`\}/);
 });
 

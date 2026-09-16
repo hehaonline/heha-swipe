@@ -405,8 +405,8 @@ export default function CommunityPassTab({ user, profile, listing = null, onList
 
   const fetchOwnerListing = useCallback(async () => {
     const request = ++listingRequest.current;
-    setOwnerListing(null);
     if (!user?.id || !listing?.id) {
+      setOwnerListing(null);
       setListingLoading(false);
       return;
     }
@@ -418,7 +418,10 @@ export default function CommunityPassTab({ user, profile, listing = null, onList
         "id, name, category, categories, status, created_at, updated_at, complete_pct, heha_partner, logo_url, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours, contact, business_type, phone, delivery_days, pricing_notes");
       if (request === listingRequest.current) setOwnerListing(data);
     } catch (e) {
-      if (request === listingRequest.current) setListingError(e);
+      if (request === listingRequest.current) {
+        setOwnerListing(null);
+        setListingError(e);
+      }
     } finally {
       if (request === listingRequest.current) setListingLoading(false);
     }
