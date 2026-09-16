@@ -23,6 +23,11 @@ on:
       - supabase/tests/partner_media_shared_boundary_proof.sql
       - scripts/partner_media_concurrency_proof.mjs
       - scripts/partner_media_migration_preflight.mjs
+      - scripts/disposable_media_target.mjs
+      - scripts/disposable_media_target.test.mjs
+      - scripts/partner_media_sql.mjs
+      - scripts/partner_media_target_proof.mjs
+      - supabase/tests/fixtures/media_proof_identity.sql
       - supabase/tests/partner_media_access_proof.sql
       - scripts/partner_media_api_proof.mjs
       - supabase/migrations/20260706122000_partner_profile_change_requests.sql
@@ -95,6 +100,10 @@ jobs:
           bash -n scripts/hybrid_partner_concurrency_proof.sh
           node --check scripts/partner_media_concurrency_proof.mjs
           node --check scripts/partner_media_migration_preflight.mjs
+          node --check scripts/partner_media_api_proof.mjs
+          node --check scripts/partner_media_sql.mjs
+          node --check scripts/partner_media_target_proof.mjs
+          node --test scripts/disposable_media_target.test.mjs
           git diff --check
 
       - name: Prepare disposable synthetic Supabase project
@@ -115,6 +124,11 @@ jobs:
             >> supabase/migrations/20260810070000_partner_publication_integration_baseline.sql
           # Include the retained real media foundation in the synthetic baseline.
           cat ../../supabase/migrations/20260706143000_partner_media_manager.sql \
+            >> supabase/migrations/20260810070000_partner_publication_integration_baseline.sql
+          # Bind both SQL and API proofs to this freshly-created disposable stack.
+          nonce="$(node -e "process.stdout.write(require('node:crypto').randomBytes(16).toString('hex'))")"
+          echo "HEHA_MEDIA_PROOF_NONCE=${nonce}" >> "$GITHUB_ENV"
+          sed "s/HEHA_MEDIA_PROOF_NONCE/${nonce}/g" ../../supabase/tests/fixtures/media_proof_identity.sql \
             >> supabase/migrations/20260810070000_partner_publication_integration_baseline.sql
           cp ../../supabase/migrations/20260810072829_wave1_partner_publication_consent.sql \
             supabase/migrations/
@@ -306,15 +320,17 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: |
           set -euo pipefail
-          psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260914140000_partner_media_owner_path_repair.sql
-          psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260914140000_partner_media_owner_path_repair.sql
-          psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260914140100_partner_media_assisted_intake.sql
+          node scripts/partner_media_target_proof.mjs \
+            2>&1 | tee artifacts/partner-publication-integration-proof/media-target-proof.txt
+          node scripts/partner_media_sql.mjs supabase/migrations/20260914140000_partner_media_owner_path_repair.sql
+          node scripts/partner_media_sql.mjs supabase/migrations/20260914140000_partner_media_owner_path_repair.sql
+          node scripts/partner_media_sql.mjs supabase/migrations/20260914140100_partner_media_assisted_intake.sql
           node scripts/partner_media_migration_preflight.mjs \
             2>&1 | tee artifacts/partner-publication-integration-proof/media-migration-preflight.txt
-          psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260916120000_partner_media_shared_boundary.sql
-          psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/partner_media_access_proof.sql \
+          node scripts/partner_media_sql.mjs supabase/migrations/20260916120000_partner_media_shared_boundary.sql
+          node scripts/partner_media_sql.mjs supabase/tests/partner_media_access_proof.sql \
             2>&1 | tee artifacts/partner-publication-integration-proof/media-access-proof.txt
-          psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/partner_media_shared_boundary_proof.sql \
+          node scripts/partner_media_sql.mjs supabase/tests/partner_media_shared_boundary_proof.sql \
             2>&1 | tee artifacts/partner-publication-integration-proof/media-shared-boundary-proof.txt
           node scripts/partner_media_concurrency_proof.mjs \
             2>&1 | tee artifacts/partner-publication-integration-proof/media-concurrency-proof.txt

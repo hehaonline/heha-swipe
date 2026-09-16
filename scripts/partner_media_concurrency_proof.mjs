@@ -1,11 +1,9 @@
 // Real overlapping psql sessions against the disposable CI Supabase only.
 import assert from "node:assert/strict";
-import { spawn, execFileSync } from "node:child_process";
+import { createDisposableMediaPsql } from "./disposable_media_target.mjs";
 
-const url = process.env.DATABASE_URL;
-assert.ok(url && new URL(url).hostname === "127.0.0.1" && new URL(url).port === "54322", "Disposable local database required");
-const args = ["-X", url, "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=verbose", "-qAt"];
-const sql = (input) => execFileSync("psql", args, { input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+const database = createDisposableMediaPsql(process.env.DATABASE_URL);
+const sql = (input) => database.sql(input).trim();
 const owner = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const staff = "12121212-1212-4212-8212-121212121212";
 const partner = "78787878-7878-4787-8787-787878787878";
@@ -15,7 +13,7 @@ const pause = () => new Promise((resolve) => setTimeout(resolve, 100));
 const sessions = new Set();
 
 function session(name, isolation = "READ COMMITTED") {
-  const child = spawn("psql", args, { stdio: ["pipe", "pipe", "pipe"] });
+  const child = database.session();
   sessions.add(child);
   let output = "";
   child.stdout.on("data", (data) => { output += data; });

@@ -1,18 +1,20 @@
 // Disposable localhost Supabase only. Verified Auth fixtures, not email delivery proof.
 import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { randomBytes, randomUUID, createHash } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { createDisposableMediaPsql, requireDisposableMediaApiTarget, verifyDisposableMediaApi } from './disposable_media_target.mjs';
 import assert from 'node:assert/strict';
 const cfg=JSON.parse(readFileSync(0,'utf8'));
 const url=cfg.API_URL, key=cfg.ANON_KEY, service=cfg.SERVICE_ROLE_KEY, db=cfg.DB_URL;
-assert.match(url,/^http:\/\/127\.0\.0\.1:\d+$/);
-assert.match(db,/^postgresql:\/\/[^@]+@127\.0\.0\.1:\d+\//);
+requireDisposableMediaApiTarget(url);
+const database=createDisposableMediaPsql(db,process.env,url);
 assert.ok(key && service);
+database.verify();
+await verifyDisposableMediaApi(url,key,service,database.nonce);
 const checks=[];
 function ok(label,value){assert.ok(value,label); checks.push(label);}
-function sql(statement){return execFileSync('psql',['-X',db,'-v','ON_ERROR_STOP=1','-Atc',statement],{encoding:'utf8',stdio:['ignore','pipe','pipe']});}
+function sql(statement){return database.sql(statement);}
 async function api(path,token=key,method='GET',body,raw=false){
- const response=await fetch(url+path,{method,headers:{apikey:key,Authorization:'Bearer '+token,'Content-Type':raw?'image/png':'application/json',Prefer:'return=representation'},body:body===undefined?undefined:raw?body:JSON.stringify(body)});
+ const response=await fetch(url+path,{method,redirect:'error',headers:{apikey:key,Authorization:'Bearer '+token,'Content-Type':raw?'image/png':'application/json',Prefer:'return=representation'},body:body===undefined?undefined:raw?body:JSON.stringify(body)});
  const text=await response.text(); let data;
  try{data=JSON.parse(text)}catch{data=null}
  return {ok:response.ok,status:response.status,data};
@@ -59,7 +61,8 @@ ok('duplicate object overwrite denied',!retry.ok);
 await must('/rest/v1/partner_media_requests',owner.token,'POST',{partner_id:partner,owner_id:owner.id,media_type:'gallery',storage_path:path,mime_type:'image/png',file_size_bytes:png.length,original_filename:'fixture.png'});
 async function readBytes(token){
  const signed=await must('/storage/v1/object/sign/'+bucket+'/'+path,token,'POST',{expiresIn:60});
- const response=await fetch(url+'/storage/v1'+signed.signedURL);
+ assert.ok(typeof signed.signedURL==='string' && signed.signedURL.startsWith('/object/sign/') && !signed.signedURL.includes('\\'));
+ const response=await fetch(url+'/storage/v1'+signed.signedURL,{redirect:'error'});
  assert.ok(response.ok);
  return Buffer.from(await response.arrayBuffer());
 }
