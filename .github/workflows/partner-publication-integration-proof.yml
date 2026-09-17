@@ -30,6 +30,8 @@ on:
       - supabase/tests/fixtures/media_proof_identity.sql
       - supabase/tests/partner_media_access_proof.sql
       - scripts/partner_media_api_proof.mjs
+      - scripts/partner_journey_browser_proof.mjs
+      - test/browser/**
       - supabase/migrations/20260706122000_partner_profile_change_requests.sql
       - supabase/migrations/20260720093000_partner_multi_categories.sql
       - supabase/functions/hubspot-sync/index.ts
@@ -53,6 +55,33 @@ permissions:
   contents: read
 
 jobs:
+  rendered-partner-journey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Install existing locked application dependencies
+        run: npm ci
+      - name: Render same-card desktop and mobile journey with preinstalled Chrome
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "${PR_HEAD_SHA}" || test "$(git rev-parse HEAD)" = "${PR_HEAD_SHA}"
+          node --check scripts/partner_journey_browser_proof.mjs
+          env -i PATH="$PATH" HOME="$HOME" CI=1 node scripts/partner_journey_browser_proof.mjs
+          env -i PATH="$PATH" HOME="$HOME" CI=1 node scripts/partner_journey_browser_proof.mjs --negative-control=missing-dialog-focus
+      - name: Retain exact-head rendered receipt and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: partner-journey-browser-proof-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/partner-journey-browser-proof
+          if-no-files-found: error
+
   integration-proof:
     runs-on: ubuntu-latest
     timeout-minutes: 45

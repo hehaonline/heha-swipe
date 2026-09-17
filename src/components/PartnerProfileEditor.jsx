@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { usePartnerDialogFocus } from "../lib/usePartnerDialogFocus";
 
 const CATEGORIES = [
   { value: "Restaurant", label: "Restaurants", emoji: "🥗" },
@@ -121,6 +122,7 @@ function formatStatus(value) {
 }
 
 export default function PartnerProfileEditor({ user, listing, onClose, onSaved }) {
+  const dialogRef = usePartnerDialogFocus(onClose);
   const [form, setForm] = useState(() => initialForm(listing));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -217,6 +219,8 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
 
   return (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       className="preview-backdrop"
       role="dialog"
       aria-modal="true"
@@ -245,7 +249,7 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
               <input value={form.name} onChange={(event) => set("name", event.target.value)} />
             </Field>
 
-            <Field label="Categories" hint="choose one or more; first selected is primary">
+            <Field label="Categories" hint="choose one or more; first selected is primary" group>
               <div className="wizard-chip-grid">
                 {CATEGORIES.map((category) => (
                   <button
@@ -352,7 +356,13 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
   );
 }
 
-function Field({ label, hint, children }) {
+function Field({ label, hint, children, group = false }) {
+  if (group) return (
+    <fieldset className="field-block partner-editor-categories">
+      <legend>{label}{hint ? ` · ${hint}` : ""}</legend>
+      {children}
+    </fieldset>
+  );
   return (
     <label className="field-block">
       <span>{label}{hint ? ` · ${hint}` : ""}</span>
