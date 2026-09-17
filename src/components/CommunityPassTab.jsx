@@ -12,7 +12,7 @@ import PartnerCommunityOfferBuilder from "./PartnerCommunityOfferBuilder";
 // checkout content. Admin-controlled partner fields stay display-only here.
 
 const REMINDER_COPY =
-  "HEHA Swipe grows through the people using it. If this community helps you discover better local options, even $1/month helps us keep building.";
+  "HEHA Swipe grows through the people using it. If this community helps you discover better local options, even $2/month helps us keep building.";
 
 const BENEFITS = [
   { icon: "✨", title: "Early access to HEHA Swipe features" },
@@ -81,12 +81,12 @@ function ManageSupportModal({ portalUrl, onClose }) {
         <h2>Before you cancel…</h2>
         <p className="cp-modal-copy">
           Your support helps HEHA Swipe grow the local healthy discovery network, highlight small
-          businesses, and keep early-access features moving forward. Even $1/month helps.
+          businesses, and keep early-access features moving forward. Even $2/month helps.
         </p>
 
         <div className="cp-modal-actions">
           <button className="primary-button" type="button" onClick={onClose}>Keep my support</button>
-          <button className="secondary-button" type="button" disabled title="Coming soon">Lower to $1/month · Coming soon</button>
+          <button className="secondary-button" type="button" disabled title="Coming soon">Lower to $2/month · Coming soon</button>
           <button className="secondary-button" type="button" onClick={goToBilling}>Pause support</button>
           <button className="text-button center" type="button" onClick={goToBilling}>Continue to billing</button>
         </div>
@@ -99,7 +99,7 @@ function ManageSupportModal({ portalUrl, onClose }) {
 
 function CustomerCommunityPass({ user, profile }) {
   const [showManage, setShowManage] = useState(false);
-  const [amount, setAmount] = useState(5);
+  const [amount, setAmount] = useState(2);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [subRow, setSubRow] = useState(null);
@@ -215,16 +215,16 @@ function CustomerCommunityPass({ user, profile }) {
             <div className="cp-amount-row">
               <div>
                 <span className="cp-status-label">Choose your monthly support</span>
-                <span className="cp-amount-hint">$1 to $100/month</span>
+                <span className="cp-amount-hint">$2 to $100/month</span>
               </div>
               <strong className="cp-status-value">${amount}/month</strong>
             </div>
-            <input type="range" min="1" max="100" step="1" value={amount} onChange={(e) => setAmount(Number(e.target.value))} aria-label="Monthly support amount" disabled={busy} />
+            <input type="range" min="2" max="100" step="1" value={amount} onChange={(e) => setAmount(Number(e.target.value))} aria-label="Monthly support amount" aria-valuetext={`$${amount} per month`} disabled={busy} />
 
             <button className="primary-button" type="button" onClick={() => goToCheckout(amount)} disabled={busy}>
               {busy ? "Opening checkout…" : `Become a Supporter · $${amount}/month`}
             </button>
-            <button className="secondary-button" type="button" onClick={() => goToCheckout(1)} disabled={busy}>Start at $1/month</button>
+            <button className="secondary-button" type="button" onClick={() => goToCheckout(2)} disabled={busy}>Start at $2/month</button>
 
             {error && <div className="cp-billing-note">{error}</div>}
             <p className="cp-reminder">{REMINDER_COPY}</p>
