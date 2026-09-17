@@ -11,7 +11,7 @@ import { supabase } from "./supabase";
 // so callers can surface a safe message.
 export async function startSupporterCheckout(amount) {
   const quantity = Number(amount);
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+  if (!Number.isInteger(quantity) || quantity < 2 || quantity > 100) {
     throw new Error("Supporter checkout is not available yet. Please try again later.");
   }
 

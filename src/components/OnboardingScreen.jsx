@@ -12,7 +12,7 @@ export default function OnboardingScreen({ user, onComplete }) {
   const [role, setRole] = useState(getInitialRole);
   const [step, setStep] = useState(role ? "access" : "role");
   const [access, setAccess] = useState("free");
-  const [supportAmount, setSupportAmount] = useState(10);
+  const [supportAmount, setSupportAmount] = useState(2);
   const [instagramStepDone, setInstagramStepDone] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -179,18 +179,19 @@ const saveProfile = async () => {
             <div className="slider-header">
               <div>
                 <h3>Choose your monthly support amount</h3>
-                <span>$1 to $100/month</span>
+                <span>$2 to $100/month</span>
               </div>
               <strong>${supportAmount}/month</strong>
             </div>
             <input
               type="range"
-              min="1"
+              min="2"
               max="100"
               step="1"
               value={supportAmount}
               onChange={(event) => setSupportAmount(Number(event.target.value))}
               aria-label="Monthly support amount"
+              aria-valuetext={`$${supportAmount} per month`}
             />
           </div>
         )}
