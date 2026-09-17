@@ -72,6 +72,7 @@ jobs:
           set -euo pipefail
           test -z "${PR_HEAD_SHA}" || test "$(git rev-parse HEAD)" = "${PR_HEAD_SHA}"
           node --check scripts/partner_journey_browser_proof.mjs
+          node --test test/browser/partner-journey-boundary.test.mjs
           env -i PATH="$PATH" HOME="$HOME" CI=1 node scripts/partner_journey_browser_proof.mjs
           env -i PATH="$PATH" HOME="$HOME" CI=1 node scripts/partner_journey_browser_proof.mjs --negative-control=missing-dialog-focus
       - name: Retain exact-head rendered receipt and screenshots

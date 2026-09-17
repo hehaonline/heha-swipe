@@ -107,6 +107,8 @@ const input = (label) => `[...document.querySelectorAll('input,textarea')].find(
 const dialog = "document.querySelector('[role=dialog]')";
 let chrome;
 let server;
+const network = [];
+const runtimeErrors = [];
 try {
   // Fixed known locations only: no environment-selected binary or downloaded cache.
   let executable;
@@ -119,8 +121,11 @@ try {
     root, configFile: false, envDir: temporary, publicDir: false,
     plugins: [
       { name: "isolated-synthetic-partner-transport", enforce: "pre",
-        resolveId(source) {
-          if (/\/lib\/supabase(?:\.js)?$/.test(source)) return resolve(root, "test/browser/synthetic-supabase.js");
+        resolveId(source, importer) {
+          const target = importer && source.startsWith(".")
+            ? resolve(dirname(importer.split("?")[0]), source).replace(/\.js$/, "")
+            : null;
+          if (target === resolve(root, "src/lib/supabase")) return resolve(root, "test/browser/synthetic-supabase.js");
         },
         transform(code, id) {
           if (id === resolve(root, "src/index.css")) return code.replace(/^@import url\('https:\/\/fonts\.googleapis\.com[^\n]+\n/, "");
@@ -142,8 +147,6 @@ try {
   await writeFile(imagePath, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jE9sAAAAASUVORK5CYII=", "base64"));
   chrome = new ChromePipe(executable);
   receipt.browserVersion = await chrome.send("Browser.getVersion");
-  const network = [];
-  const runtimeErrors = [];
   chrome.on("Network.requestWillBeSent", ({ request }) => network.push(request.url));
   chrome.on("Runtime.exceptionThrown", ({ exceptionDetails }) => runtimeErrors.push(exceptionDetails.text));
   for (const viewport of [{ name: "desktop", width: 1280, height: 900, mobile: false }, { name: "mobile", width: 390, height: 844, mobile: true }]) {
@@ -286,6 +289,15 @@ try {
   const expectedFailure = negativeControl && error.message === "Rendered assertion timed out: editor takes keyboard focus";
   receipt.status = expectedFailure ? "expected-negative-failure" : "fail";
   receipt.error = error.message;
+  receipt.runtimeErrors = runtimeErrors;
+  receipt.nonLoopbackRequests = network.filter(url => !/^http:\/\/127\.0\.0\.1:\d+\//.test(url) && !url.startsWith("data:"));
+  if (chrome?.session) {
+    try {
+      receipt.failurePage = await chrome.evaluate("({ title: document.title, body: document.body.innerText.slice(0,5000), url: location.pathname })");
+      const { data } = await chrome.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+      await writeFile(resolve(artifacts, "failure.png"), Buffer.from(data, "base64"));
+    } catch { /* retain the controlling failure even if the page closed */ }
+  }
   if (!expectedFailure) process.exitCode = 1;
 } finally {
   if (chrome) {
