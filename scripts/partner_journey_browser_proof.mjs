@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
+import { keyEventPayloads } from "../test/browser/cdp-keyboard.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const negativeControl = process.argv[2] === "--negative-control=missing-dialog-focus";
@@ -88,9 +89,9 @@ class ChromePipe extends EventEmitter {
     throw new Error(`Rendered assertion timed out: ${label}`);
   }
   async key(key, modifiers = 0) {
-    const code = { Tab: 9, Enter: 13, Escape: 27, a: 65 }[key];
-    await this.send("Input.dispatchKeyEvent", { type: "keyDown", key, modifiers, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code });
-    await this.send("Input.dispatchKeyEvent", { type: "keyUp", key, modifiers, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code });
+    for (const payload of keyEventPayloads(key, modifiers)) {
+      await this.send("Input.dispatchKeyEvent", payload);
+    }
   }
   async keyboardFocus(target) {
     for (let tries = 0; tries < 100; tries += 1) {
