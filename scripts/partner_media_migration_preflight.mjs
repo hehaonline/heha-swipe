@@ -12,7 +12,7 @@ for (const [label, setup, expected] of [
   ["guard security invoker", "ALTER FUNCTION app_private.guard_partner_media_request() SECURITY INVOKER;", boundaryError],
   ["guard function ACL widened", "GRANT EXECUTE ON FUNCTION app_private.guard_partner_media_request() TO authenticated;", boundaryError],
   ["assisted function ACL widened", `GRANT EXECUTE ON FUNCTION public.submit_assisted_partner_media(uuid,uuid,text,text,text,text,bigint,text,text) TO service_role;`, boundaryError],
-  ["role helper body changed", `CREATE OR REPLACE FUNCTION app_private.has_internal_role(text[])
+  ["role helper body changed", `CREATE OR REPLACE FUNCTION app_private.has_internal_role(required_roles text[])
     RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path=pg_catalog,public,pg_temp AS $$ SELECT true $$;`, boundaryError],
   ["role helper ACL narrowed", "REVOKE EXECUTE ON FUNCTION app_private.has_internal_role(text[]) FROM authenticated;", boundaryError],
