@@ -21,7 +21,9 @@ for (const [label, setup, expected] of [
   ["media table RLS disabled", "ALTER TABLE public.partner_media_requests DISABLE ROW LEVEL SECURITY;", boundaryError],
   ["media table ACL widened", "GRANT DELETE ON public.partner_media_requests TO authenticated;", boundaryError],
   ["intake evidence ACL widened", "GRANT INSERT ON public.partner_media_intake_evidence TO authenticated;", boundaryError],
-  ["authenticated role bypasses RLS", "ALTER ROLE authenticated BYPASSRLS;", boundaryError],
+  // Supabase's reserved-role hook rejects this real mutation before the
+  // migration can observe it. Keep the migration-side rolbypassrls guard too.
+  ["authenticated role bypass drift blocked by provider", "ALTER ROLE authenticated BYPASSRLS;", /reserved role, only superusers can modify it/],
   ["disabled guard", "ALTER TABLE public.partner_media_requests DISABLE TRIGGER partner_media_request_guard;", boundaryError],
   ["extra media trigger", `CREATE TRIGGER a_partner_media_extra BEFORE INSERT ON public.partner_media_requests
     FOR EACH ROW EXECUTE FUNCTION app_private.guard_partner_media_request();`, boundaryError],
