@@ -8,30 +8,147 @@ SET LOCAL lock_timeout = '2s';
 -- Hold writers out while checking historical definitions and existing active rows.
 LOCK TABLE public.partner_media_requests IN ACCESS EXCLUSIVE MODE;
 DO $guard$
+DECLARE
+  guard_function oid := to_regprocedure('app_private.guard_partner_media_request()');
+  assisted_function oid := to_regprocedure(
+    'public.submit_assisted_partner_media(uuid,uuid,text,text,text,text,bigint,text,text)'
+  );
+  role_helper oid := to_regprocedure('app_private.has_internal_role(text[])');
+  email_helper oid := to_regprocedure('app_private.verified_permanent_claim_email(uuid)');
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_proc
-    WHERE oid='app_private.guard_partner_media_request()'::regprocedure
-      AND prosecdef AND provolatile='v'
-      AND proconfig=ARRAY['search_path=pg_catalog, public, app_private, auth, pg_temp']
-      AND md5(prosrc)='ff6a09e7cd7be3aa64544af7e79724e7'
-  ) OR NOT EXISTS (
-    SELECT 1 FROM pg_proc
-    WHERE oid='public.submit_assisted_partner_media(uuid,uuid,text,text,text,text,bigint,text,text)'::regprocedure
-      AND prosecdef AND provolatile='v'
-      AND proconfig=ARRAY['search_path=pg_catalog, public, app_private, auth, storage, pg_temp']
-      AND md5(prosrc)='f2c9bd89a3ee047d9d33ba8add506503'
-  ) OR (SELECT count(*) FROM pg_trigger
+  -- The two accepted guard digests are the exact repository predecessor and
+  -- the exact deployed formatting variant captured read-only on 2026-09-17.
+  -- Every other property is independently pinned; this is not whitespace
+  -- normalization and an arbitrary third body still fails closed.
+  IF guard_function IS NULL OR assisted_function IS NULL
+    OR role_helper IS NULL OR email_helper IS NULL
+    OR NOT EXISTS (
+      SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang
+      WHERE p.oid=guard_function
+        AND pg_get_userbyid(p.proowner)='postgres' AND l.lanname='plpgsql'
+        AND p.prosecdef AND p.provolatile='v' AND NOT p.proisstrict
+        AND NOT p.proleakproof AND p.proparallel='u' AND p.prokind='f'
+        AND p.prorettype='trigger'::regtype
+        AND p.proconfig=ARRAY['search_path=pg_catalog, public, app_private, auth, pg_temp']
+        AND p.proacl::text='{postgres=X/postgres}'
+        AND md5(p.prosrc) IN (
+          'ff6a09e7cd7be3aa64544af7e79724e7',
+          'ee900bcda5fdabd3e5400358ed09158d'
+        )
+    ) OR NOT EXISTS (
+      SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang
+      WHERE p.oid=assisted_function
+        AND pg_get_userbyid(p.proowner)='postgres' AND l.lanname='plpgsql'
+        AND p.prosecdef AND p.provolatile='v' AND NOT p.proisstrict
+        AND NOT p.proleakproof AND p.proparallel='u' AND p.prokind='f'
+        AND p.prorettype='uuid'::regtype
+        AND p.proconfig=ARRAY['search_path=pg_catalog, public, app_private, auth, storage, pg_temp']
+        AND md5(p.prosrc)='f2c9bd89a3ee047d9d33ba8add506503'
+        AND has_function_privilege('authenticated',p.oid,'EXECUTE')
+        AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+        AND NOT has_function_privilege('service_role',p.oid,'EXECUTE')
+    ) OR NOT EXISTS (
+      SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang
+      WHERE p.oid=role_helper
+        AND pg_get_userbyid(p.proowner)='postgres' AND l.lanname='sql'
+        AND p.prosecdef AND p.provolatile='s' AND NOT p.proisstrict
+        AND NOT p.proleakproof AND p.proparallel='u' AND p.prokind='f'
+        AND p.prorettype='boolean'::regtype
+        AND p.proconfig=ARRAY['search_path=pg_catalog, public, pg_temp']
+        AND md5(p.prosrc)='bbb374438de2c3030603b083913d6431'
+        AND has_function_privilege('anon',p.oid,'EXECUTE')
+        AND has_function_privilege('authenticated',p.oid,'EXECUTE')
+        AND has_function_privilege('service_role',p.oid,'EXECUTE')
+    ) OR NOT EXISTS (
+      SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang
+      WHERE p.oid=email_helper
+        AND pg_get_userbyid(p.proowner)='postgres' AND l.lanname='sql'
+        AND p.prosecdef AND p.provolatile='s' AND NOT p.proisstrict
+        AND NOT p.proleakproof AND p.proparallel='u' AND p.prokind='f'
+        AND p.prorettype='text'::regtype
+        AND p.proconfig=ARRAY['search_path=pg_catalog, auth, pg_temp']
+        AND md5(p.prosrc)='f311bf74f0fb7d20bbb3943da2aee40d'
+        AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+        AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+        AND NOT has_function_privilege('service_role',p.oid,'EXECUTE')
+    ) OR NOT EXISTS (
+      SELECT 1 FROM pg_namespace
+      WHERE oid='app_private'::regnamespace
+        AND pg_get_userbyid(nspowner)='postgres'
+        AND NOT has_schema_privilege('anon',oid,'USAGE')
+        AND NOT has_schema_privilege('authenticated',oid,'USAGE')
+        AND NOT has_schema_privilege('service_role',oid,'USAGE')
+        AND NOT has_schema_privilege('anon',oid,'CREATE')
+        AND NOT has_schema_privilege('authenticated',oid,'CREATE')
+        AND NOT has_schema_privilege('service_role',oid,'CREATE')
+    ) OR NOT EXISTS (
+      SELECT 1 FROM pg_class
+      WHERE oid='public.partner_media_requests'::regclass
+        AND relkind='r' AND relpersistence='p'
+        AND pg_get_userbyid(relowner)='postgres'
+        AND relrowsecurity AND NOT relforcerowsecurity
+    ) OR NOT EXISTS (
+      SELECT 1 FROM pg_class
+      WHERE oid='public.partner_media_intake_evidence'::regclass
+        AND relkind='r' AND relpersistence='p'
+        AND pg_get_userbyid(relowner)='postgres'
+        AND relrowsecurity AND NOT relforcerowsecurity
+        AND has_table_privilege('authenticated',oid,'SELECT')
+        AND NOT has_table_privilege('authenticated',oid,'INSERT')
+        AND NOT has_table_privilege('authenticated',oid,'UPDATE')
+        AND NOT has_table_privilege('authenticated',oid,'DELETE')
+        AND NOT has_table_privilege('authenticated',oid,'TRUNCATE')
+        AND NOT has_table_privilege('authenticated',oid,'REFERENCES')
+        AND NOT has_table_privilege('authenticated',oid,'TRIGGER')
+        AND NOT has_table_privilege('anon',oid,'SELECT')
+        AND NOT has_table_privilege('anon',oid,'INSERT')
+        AND NOT has_table_privilege('anon',oid,'UPDATE')
+        AND NOT has_table_privilege('anon',oid,'DELETE')
+        AND NOT has_table_privilege('service_role',oid,'SELECT')
+        AND NOT has_table_privilege('service_role',oid,'INSERT')
+        AND NOT has_table_privilege('service_role',oid,'UPDATE')
+        AND NOT has_table_privilege('service_role',oid,'DELETE')
+    ) OR has_table_privilege('anon','public.partner_media_requests','SELECT')
+    OR has_table_privilege('anon','public.partner_media_requests','INSERT')
+    OR has_table_privilege('anon','public.partner_media_requests','UPDATE')
+    OR has_table_privilege('anon','public.partner_media_requests','DELETE')
+    OR NOT has_table_privilege('authenticated','public.partner_media_requests','SELECT')
+    OR NOT has_table_privilege('authenticated','public.partner_media_requests','INSERT')
+    OR NOT has_table_privilege('authenticated','public.partner_media_requests','UPDATE')
+    OR has_table_privilege('authenticated','public.partner_media_requests','DELETE')
+    OR has_table_privilege('authenticated','public.partner_media_requests','TRUNCATE')
+    OR has_table_privilege('authenticated','public.partner_media_requests','REFERENCES')
+    OR has_table_privilege('authenticated','public.partner_media_requests','TRIGGER')
+    OR NOT EXISTS (
+      SELECT 1 FROM pg_roles
+      WHERE rolname='authenticated' AND NOT rolsuper AND NOT rolbypassrls
+    ) OR pg_has_role('anon','authenticated','MEMBER')
+    OR pg_has_role('authenticated','service_role','MEMBER')
+    OR pg_has_role('authenticated','postgres','MEMBER')
+    OR (SELECT count(*) FROM pg_trigger
     WHERE tgrelid='public.partner_media_requests'::regclass AND NOT tgisinternal) <> 1
     OR NOT EXISTS (SELECT 1 FROM pg_trigger
       WHERE tgrelid='public.partner_media_requests'::regclass
         AND tgname='partner_media_request_guard' AND tgtype=23 AND tgenabled='O'
         AND tgqual IS NULL AND tgnargs=0 AND tgattr=''::int2vector
         AND tgfoid='app_private.guard_partner_media_request()'::regprocedure)
-    OR NOT (SELECT relrowsecurity FROM pg_class WHERE oid='public.partner_media_requests'::regclass)
-    OR NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id='partner-media-pending' AND public=false)
+    OR (SELECT count(*) FROM pg_policies
+        WHERE schemaname='storage' AND tablename='objects'
+          AND policyname IN (
+            'Owners can delete own pending partner media',
+            'Owners can upload own pending partner media',
+            'Owners can view own pending partner media'
+          ) AND permissive='PERMISSIVE' AND roles=ARRAY['authenticated']::name[]
+          AND coalesce(qual,with_check) LIKE '%storage.foldername(objects.name)%'
+          AND coalesce(qual,with_check) NOT LIKE '%storage.foldername(p.name)%') <> 3
+    OR NOT EXISTS (
+      SELECT 1 FROM storage.buckets
+      WHERE id='partner-media-pending' AND name='partner-media-pending'
+        AND public=false AND file_size_limit=8388608
+        AND allowed_mime_types=ARRAY['image/jpeg','image/png','image/webp']::text[]
+    )
   THEN
-    RAISE EXCEPTION 'Unexpected media boundary or bucket drift; stop for independent review.';
+    RAISE EXCEPTION 'Unexpected media function/table/helper/schema/role/ACL/trigger/policy/bucket drift; stop for independent review.';
   END IF;
   IF EXISTS (
     SELECT storage_path FROM public.partner_media_requests

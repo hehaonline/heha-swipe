@@ -23,11 +23,13 @@ on:
       - supabase/tests/partner_media_shared_boundary_proof.sql
       - scripts/partner_media_concurrency_proof.mjs
       - scripts/partner_media_migration_preflight.mjs
+      - scripts/partner_media_predecessor_proof.mjs
       - scripts/disposable_media_target.mjs
       - scripts/disposable_media_target.test.mjs
       - scripts/partner_media_sql.mjs
       - scripts/partner_media_target_proof.mjs
       - supabase/tests/fixtures/media_proof_identity.sql
+      - supabase/tests/fixtures/partner_media_hosted_guard_predecessor.sql
       - supabase/tests/partner_media_access_proof.sql
       - scripts/partner_media_api_proof.mjs
       - scripts/partner_journey_browser_proof.mjs
@@ -86,6 +88,10 @@ jobs:
   integration-proof:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        media_predecessor: [repository, hosted]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -130,6 +136,7 @@ jobs:
           bash -n scripts/hybrid_partner_concurrency_proof.sh
           node --check scripts/partner_media_concurrency_proof.mjs
           node --check scripts/partner_media_migration_preflight.mjs
+          node --check scripts/partner_media_predecessor_proof.mjs
           node --check scripts/partner_media_api_proof.mjs
           node --check scripts/partner_media_sql.mjs
           node --check scripts/partner_media_target_proof.mjs
@@ -348,10 +355,13 @@ jobs:
         shell: bash
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+          HEHA_MEDIA_PREDECESSOR: ${{ matrix.media_predecessor }}
         run: |
           set -euo pipefail
           node scripts/partner_media_target_proof.mjs \
             2>&1 | tee artifacts/partner-publication-integration-proof/media-target-proof.txt
+          node scripts/partner_media_predecessor_proof.mjs \
+            2>&1 | tee artifacts/partner-publication-integration-proof/media-predecessor-${HEHA_MEDIA_PREDECESSOR}.json
           node scripts/partner_media_sql.mjs supabase/migrations/20260914140000_partner_media_owner_path_repair.sql
           node scripts/partner_media_sql.mjs supabase/migrations/20260914140000_partner_media_owner_path_repair.sql
           node scripts/partner_media_sql.mjs supabase/migrations/20260914140100_partner_media_assisted_intake.sql
@@ -516,7 +526,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: partner-publication-integration-proof-${{ github.event.pull_request.head.sha || github.sha }}
+          name: partner-publication-integration-proof-${{ matrix.media_predecessor }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: artifacts/partner-publication-integration-proof
           retention-days: 14
 

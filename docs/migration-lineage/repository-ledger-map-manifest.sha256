@@ -1,7 +1,7 @@
 a54eff40247c2093035487cc59462061fef91d834aa15fc4e4daf60cb4ab61ee  docs/migration-lineage/README.md
 5defa1b3091d05434fef904c746c63b4b93af069ab3f9eabf5e0286485659638  docs/migration-lineage/live-ledger-compatibility-map-2026-08-24.csv
-060f87705b450439aa7ff04d0e3b99cdc52512f12ffdfaad9a96fb7e67091526  docs/migration-lineage/repository-migration-disposition-map-2026-08-24.csv
-868fe56450bda3cf6d047f0f261a08b6ab8e794e38b664ad1c19375f5fa1a128  docs/migration-lineage/repository-disposition-expectations-2026-08-24.csv
+e8254d92382b3c3ac54c8e3a2459ae711f7f53e06cfc24e5958d92d96c29b839  docs/migration-lineage/repository-migration-disposition-map-2026-08-24.csv
+d2f3e49eed4b979251e152d14c1625ebaeeeedb1193250993c5667497593b699  docs/migration-lineage/repository-disposition-expectations-2026-08-24.csv
 97e853b0d6b9fb570bd328388b729f87b09fc8d1dc9c7e175a0f3b58d1c83e4e  docs/migration-lineage/repository-ledger-compatibility-summary-2026-08-24.md
 e08cb0cba5a46709512015e197bb5c886951221b0f3de5cf423b15674f157a96  docs/migration-lineage/deep-metadata-capture-plan-2026-08-24.md
 c6327e81d0496ac1051375fe989df65d24fc035b5bff75a8d380929c38426ee4  docs/migration-lineage/historical-deep-capture-custody-2026-08-24.md
