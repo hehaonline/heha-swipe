@@ -6,7 +6,106 @@ SET LOCAL search_path = pg_catalog, public;
 SET LOCAL lock_timeout = '2s';
 
 -- Hold writers out while checking historical definitions and existing active rows.
-LOCK TABLE public.partner_media_requests IN ACCESS EXCLUSIVE MODE;
+-- Match intake: read Storage before touching the request/evidence queue.
+LOCK TABLE storage.objects, public.partner_media_requests, public.partner_media_intake_evidence
+  IN ACCESS EXCLUSIVE MODE;
+
+-- Compile the six trusted predecessor policy definitions in this server. Compare
+-- complete parsed expressions and metadata, not substrings or a native fixture
+-- manifest. The temp name 'objects' preserves correlated objects.name rendering.
+-- No IF NOT EXISTS: a pre-existing scratch object must fail, never be trusted.
+CREATE TEMP TABLE objects (LIKE storage.objects) ON COMMIT DROP;
+CREATE TEMP TABLE heha_expected_media_evidence
+  (LIKE public.partner_media_intake_evidence) ON COMMIT DROP;
+CREATE POLICY "Owners can view own pending partner media" ON pg_temp.objects
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (bucket_id = 'partner-media-pending'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+  AND EXISTS (SELECT 1 FROM public.partners p
+    WHERE p.owner_id = auth.uid()
+      AND p.id::text = (storage.foldername(objects.name))[2]));
+CREATE POLICY "Owners can upload own pending partner media" ON pg_temp.objects
+  AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'partner-media-pending'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+  AND EXISTS (SELECT 1 FROM public.partners p
+    WHERE p.owner_id = auth.uid()
+      AND p.id::text = (storage.foldername(objects.name))[2]));
+CREATE POLICY "Owners can delete own pending partner media" ON pg_temp.objects
+  AS PERMISSIVE FOR DELETE TO authenticated
+  USING (bucket_id = 'partner-media-pending'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+  AND EXISTS (SELECT 1 FROM public.partners p
+    WHERE p.owner_id = auth.uid()
+      AND p.id::text = (storage.foldername(objects.name))[2]));
+CREATE POLICY "Internal users can view pending partner media" ON pg_temp.objects
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (bucket_id = 'partner-media-pending' AND app_private.has_internal_role(ARRAY['super_admin','developer_admin','pm_admin']));
+CREATE POLICY "Internal users can manage pending partner media" ON pg_temp.objects
+  AS PERMISSIVE FOR ALL TO authenticated
+  USING (bucket_id = 'partner-media-pending' AND app_private.has_internal_role(ARRAY['super_admin','developer_admin','pm_admin']))
+  WITH CHECK (bucket_id = 'partner-media-pending' AND app_private.has_internal_role(ARRAY['super_admin','developer_admin','pm_admin']));
+CREATE POLICY "Internal staff can read media intake evidence"
+  ON pg_temp.heha_expected_media_evidence AS PERMISSIVE FOR SELECT TO authenticated
+  USING (app_private.has_internal_role(ARRAY['super_admin','developer_admin','pm_admin']));
+
+DO $policy_guard$
+BEGIN
+  IF EXISTS (
+    WITH expected AS (
+      SELECT CASE WHEN p.polrelid='pg_temp.objects'::regclass THEN 'storage' ELSE 'evidence' END AS target,
+        p.polname,p.polcmd,p.polroles,p.polpermissive,
+        pg_get_expr(p.polqual,p.polrelid,false) AS qual,
+        pg_get_expr(p.polwithcheck,p.polrelid,false) AS with_check
+      FROM pg_policy p
+      WHERE p.polrelid IN ('pg_temp.objects'::regclass,'pg_temp.heha_expected_media_evidence'::regclass)
+    ), actual AS (
+      SELECT CASE WHEN p.polrelid='storage.objects'::regclass THEN 'storage' ELSE 'evidence' END AS target,
+        p.polname,p.polcmd,p.polroles,p.polpermissive,
+        pg_get_expr(p.polqual,p.polrelid,false) AS qual,
+        pg_get_expr(p.polwithcheck,p.polrelid,false) AS with_check
+      FROM pg_policy p
+      WHERE p.polrelid='public.partner_media_intake_evidence'::regclass
+        OR (p.polrelid='storage.objects'::regclass AND p.polname IN (
+          SELECT polname FROM pg_policy WHERE polrelid='pg_temp.objects'::regclass))
+    )
+    (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+    UNION ALL
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected)
+  ) THEN
+    RAISE EXCEPTION 'Unexpected media policy definition or set drift; stop for independent review.';
+  END IF;
+
+  -- A differently named permissive policy can also expose pending media.
+  -- Only complete, simple equality predicates for an existing OTHER bucket are
+  -- provably disjoint here. Unknown expressions require explicit preflight review;
+  -- omitting the pending-bucket literal is never evidence of isolation.
+  -- Restrictive policies cannot widen access and remain unchanged.
+  IF EXISTS (
+    SELECT 1 FROM pg_policy p
+    WHERE p.polrelid='storage.objects'::regclass AND p.polpermissive
+      AND p.polname NOT IN (SELECT polname FROM pg_policy WHERE polrelid='pg_temp.objects'::regclass)
+      AND EXISTS (
+        SELECT 1 FROM unnest(p.polroles) allowed_role
+        WHERE CASE WHEN allowed_role=0 THEN true ELSE
+          pg_has_role('anon',allowed_role,'USAGE') OR pg_has_role('authenticated',allowed_role,'USAGE') END
+      )
+      AND NOT (
+        (p.polcmd='a' OR EXISTS (
+          SELECT 1 FROM storage.buckets b
+          WHERE b.id <> 'partner-media-pending'
+            AND pg_get_expr(p.polqual,p.polrelid,false)=format('(bucket_id = %L::text)',b.id)))
+        AND (p.polcmd IN ('r','d') OR EXISTS (
+          SELECT 1 FROM storage.buckets b
+          WHERE b.id <> 'partner-media-pending'
+            AND pg_get_expr(coalesce(p.polwithcheck,p.polqual),p.polrelid,false)=format('(bucket_id = %L::text)',b.id)))
+      )
+  ) THEN
+    RAISE EXCEPTION 'Unreviewed additional Storage policy may affect pending media; stop for independent review.';
+  END IF;
+END $policy_guard$;
+DROP TABLE pg_temp.objects, pg_temp.heha_expected_media_evidence;
+
 DO $guard$
 DECLARE
   guard_function oid := to_regprocedure('app_private.guard_partner_media_request()');
@@ -132,15 +231,6 @@ BEGIN
         AND tgname='partner_media_request_guard' AND tgtype=23 AND tgenabled='O'
         AND tgqual IS NULL AND tgnargs=0 AND tgattr=''::int2vector
         AND tgfoid='app_private.guard_partner_media_request()'::regprocedure)
-    OR (SELECT count(*) FROM pg_policies
-        WHERE schemaname='storage' AND tablename='objects'
-          AND policyname IN (
-            'Owners can delete own pending partner media',
-            'Owners can upload own pending partner media',
-            'Owners can view own pending partner media'
-          ) AND permissive='PERMISSIVE' AND roles=ARRAY['authenticated']::name[]
-          AND coalesce(qual,with_check) LIKE '%storage.foldername(objects.name)%'
-          AND coalesce(qual,with_check) NOT LIKE '%storage.foldername(p.name)%') <> 3
     OR NOT EXISTS (
       SELECT 1 FROM storage.buckets
       WHERE id='partner-media-pending' AND name='partner-media-pending'
