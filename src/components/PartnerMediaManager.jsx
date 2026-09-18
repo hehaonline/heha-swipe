@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { usePartnerDialogFocus } from "../lib/usePartnerDialogFocus";
 
 const BUCKET = "partner-media-pending";
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -34,6 +35,7 @@ function requestLabel(request) {
 }
 
 export default function PartnerMediaManager({ user, listing, onClose, onChanged }) {
+  const dialogRef = usePartnerDialogFocus(onClose);
   const fileInputRef = useRef(null);
   const uploadTargetRef = useRef(null);
   const [requests, setRequests] = useState([]);
@@ -187,6 +189,8 @@ export default function PartnerMediaManager({ user, listing, onClose, onChanged 
 
   return (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       className="preview-backdrop"
       role="dialog"
       aria-modal="true"
@@ -207,6 +211,7 @@ export default function PartnerMediaManager({ user, listing, onClose, onChanged 
             ref={fileInputRef}
             className="partner-media-file-input"
             type="file"
+            aria-label="Business media file"
             accept="image/jpeg,image/png,image/webp"
             onChange={uploadSelectedFile}
           />

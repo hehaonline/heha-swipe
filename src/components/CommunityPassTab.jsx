@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { fetchSelectedOwnedPartner, selectedOwnedPartner } from "../lib/selectedOwnedPartner";
 import { startSupporterCheckout } from "../lib/supporterCheckout";
 import { fetchActiveSupporterSubscription } from "../lib/supporterStatus";
 import PartnerListingPreview from "./PartnerListingPreview";
@@ -394,53 +395,54 @@ function PartnerHubTab({ user, listing, loading, error, isPartnerAccount, onRefr
   );
 }
 
-export default function CommunityPassTab({ user, profile, onListBusiness }) {
+export default function CommunityPassTab({ user, profile, listing = null, onListBusiness }) {
   const [ownerListing, setOwnerListing] = useState(null);
   const [listingLoading, setListingLoading] = useState(false);
   const [listingError, setListingError] = useState(null);
+  const listingRequest = useRef(0);
 
   const partnerByProfile = isPartnerProfile(profile);
 
   const fetchOwnerListing = useCallback(async () => {
-    if (!user?.id) {
+    const request = ++listingRequest.current;
+    if (!user?.id || !listing?.id) {
       setOwnerListing(null);
+      setListingLoading(false);
       return;
     }
 
     setListingLoading(true);
     setListingError(null);
     try {
-      const { data, error } = await supabase
-        .from("partners")
-        .select("id, name, category, status, created_at, updated_at, complete_pct, heha_partner, logo_url, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours, contact, business_type, phone, delivery_days, pricing_notes")
-        .eq("owner_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
-      setOwnerListing(data || null);
+      const data = await fetchSelectedOwnedPartner(supabase, user.id, listing.id,
+        "id, name, category, categories, status, created_at, updated_at, complete_pct, heha_partner, logo_url, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours, contact, business_type, phone, delivery_days, pricing_notes");
+      if (request === listingRequest.current) setOwnerListing(data);
     } catch (e) {
-      setOwnerListing(null);
-      setListingError(e);
+      if (request === listingRequest.current) {
+        setOwnerListing(null);
+        setListingError(e);
+      }
     } finally {
-      setListingLoading(false);
+      if (request === listingRequest.current) setListingLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, listing?.id, listing?.updated_at]);
 
   useEffect(() => {
     fetchOwnerListing();
+    return () => { listingRequest.current += 1; };
   }, [fetchOwnerListing]);
 
-  const ownsListing = !!ownerListing;
+  const activeListing = selectedOwnedPartner(ownerListing, user?.id, listing?.id);
+  const ownsListing = !!listing?.id;
   const showPartnerHub = partnerByProfile || ownsListing;
 
   return (
     <section className="community-pass-screen">
       {showPartnerHub ? (
         <PartnerHubTab
+          key={`${user?.id}:${listing?.id}`}
           user={user}
-          listing={ownerListing}
+          listing={activeListing}
           loading={listingLoading}
           error={listingError}
           isPartnerAccount={partnerByProfile}

@@ -1,0 +1,17 @@
+{
+  "scope": "actual React component; synthetic mocked API, not hosted auth",
+  "results": [
+    {
+      "viewport": "desktop",
+      "pendingProfileEdit": "review queue",
+      "duplicateButton": "disabled",
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": "mobile",
+      "pendingProfileEdit": "review queue",
+      "duplicateButton": "disabled",
+      "horizontalOverflow": false
+    }
+  ]
+}

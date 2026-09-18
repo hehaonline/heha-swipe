@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { usePartnerDialogFocus } from "../lib/usePartnerDialogFocus";
 
-const DIRECT_EDIT_STATUSES = ["draft", "submitted", "pending", "missing_info"];
 const CATEGORIES = [
   { value: "Restaurant", label: "Restaurants", emoji: "🥗" },
   { value: "Vendor", label: "Markets", emoji: "🛒" },
@@ -122,6 +122,7 @@ function formatStatus(value) {
 }
 
 export default function PartnerProfileEditor({ user, listing, onClose, onSaved }) {
+  const dialogRef = usePartnerDialogFocus(onClose);
   const [form, setForm] = useState(() => initialForm(listing));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -129,14 +130,12 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
   const [latestRequest, setLatestRequest] = useState(null);
   const [requestLoading, setRequestLoading] = useState(false);
 
-  const listingStatus = String(listing?.status || "pending").toLowerCase();
-  const directEdit = DIRECT_EDIT_STATUSES.includes(listingStatus);
   const changes = useMemo(() => buildChanges(form, listing), [form, listing]);
   const changeCount = Object.keys(changes).length;
-  const alreadyAwaitingReview = !directEdit && latestRequest?.status === "submitted";
+  const alreadyAwaitingReview = latestRequest?.status === "submitted";
 
   useEffect(() => {
-    if (directEdit || !user?.id || !listing?.id) return;
+    if (!user?.id || !listing?.id) return;
     let cancelled = false;
     setRequestLoading(true);
     supabase
@@ -158,7 +157,7 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
     return () => {
       cancelled = true;
     };
-  }, [directEdit, listing?.id, user?.id]);
+  }, [listing?.id, user?.id]);
 
   const set = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -193,20 +192,6 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
         return;
       }
 
-      if (directEdit) {
-        const { data, error: updateError } = await supabase
-          .from("partners")
-          .update(changes)
-          .eq("id", listing.id)
-          .eq("owner_id", user.id)
-          .select("id, name, category, categories, status, created_at, updated_at, complete_pct, heha_partner, image_url, gallery_urls, neighborhood, tagline, bio, tags, offerings, items, website, instagram, price_range, photo_emoji, color, location, hours, contact, business_type, phone, delivery_days, pricing_notes")
-          .single();
-
-        if (updateError) throw updateError;
-        await onSaved?.(data, "Business profile updated. Your listing remains in HEHA review.");
-        return;
-      }
-
       if (alreadyAwaitingReview) {
         setMessage("You already have profile changes waiting for HEHA review.");
         return;
@@ -234,6 +219,8 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
 
   return (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       className="preview-backdrop"
       role="dialog"
       aria-modal="true"
@@ -247,12 +234,10 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
           <p className="eyebrow">Business profile</p>
           <h2>Edit {listing?.name || "your business"}</h2>
           <p className="preview-tagline">
-            {directEdit
-              ? "Your listing is still in pre-approval review, so safe profile fields can be updated directly."
-              : "Your current listing stays unchanged while HEHA reviews submitted profile edits."}
+            Your current listing stays unchanged while HEHA reviews submitted profile edits.
           </p>
 
-          {!directEdit && latestRequest && (
+          {latestRequest && (
             <div className="partner-cert-note">
               Latest change request: <strong>{formatStatus(latestRequest.status)}</strong>
               {latestRequest.review_note ? ` — ${latestRequest.review_note}` : ""}
@@ -264,7 +249,7 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
               <input value={form.name} onChange={(event) => set("name", event.target.value)} />
             </Field>
 
-            <Field label="Categories" hint="choose one or more; first selected is primary">
+            <Field label="Categories" hint="choose one or more; first selected is primary" group>
               <div className="wizard-chip-grid">
                 {CATEGORIES.map((category) => (
                   <button
@@ -343,9 +328,7 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
           </div>
 
           <div className="partner-cert-note">
-            {directEdit
-              ? `${changeCount} profile field${changeCount === 1 ? "" : "s"} changed. HEHA-controlled status and certification cannot be edited here.`
-              : `${changeCount} profile field${changeCount === 1 ? "" : "s"} changed. Saving submits the edits for HEHA review; it does not change the live listing immediately.`}
+            {changeCount} profile fields changed. Saving submits edits for HEHA review; it does not change the live listing immediately.
           </div>
 
           {requestLoading && <div className="cp-billing-note">Checking your latest change request…</div>}
@@ -361,8 +344,6 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
             >
               {busy
                 ? "Saving…"
-                : directEdit
-                ? "Save business profile"
                 : alreadyAwaitingReview
                 ? "Changes already under review"
                 : "Submit changes for HEHA review"}
@@ -375,7 +356,13 @@ export default function PartnerProfileEditor({ user, listing, onClose, onSaved }
   );
 }
 
-function Field({ label, hint, children }) {
+function Field({ label, hint, children, group = false }) {
+  if (group) return (
+    <fieldset className="field-block partner-editor-categories">
+      <legend>{label}{hint ? ` · ${hint}` : ""}</legend>
+      {children}
+    </fieldset>
+  );
   return (
     <label className="field-block">
       <span>{label}{hint ? ` · ${hint}` : ""}</span>
