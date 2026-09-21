@@ -59,8 +59,10 @@ test("claim older A while owning newer B keeps profile/publication/editor/media 
   for (const component of ["PartnerProfileEditor", "PartnerMediaManager"]) {
     assert.match(hub, new RegExp(`<${component}[\\s\\S]*?listing=\\{listing\\}`));
   }
+  assert.match(editor, /const scope = useMemo\(\(\) => \(\{ user, ownerId: user\?\.id, partnerId: listing\?\.id \}\), \[user, user\?\.id, listing\?\.id\]\)/);
+  assert.match(editor, /\.eq\("partner_id", scope\.partnerId\)\s*\.eq\("owner_id", scope\.ownerId\)/);
+  assert.match(media, /\.eq\("partner_id", listing\.id\)\s*\.eq\("owner_id", user\.id\)/);
   for (const component of [editor, media]) {
-    assert.match(component, /\.eq\("partner_id", listing\.id\)\s*\.eq\("owner_id", user\.id\)/);
     assert.match(component, /partner_id: listing\.id,\s*owner_id: user\.id/);
   }
   assert.match(media, /\$\{user\.id\}\/\$\{listing\.id\}\//);
