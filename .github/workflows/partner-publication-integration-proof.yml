@@ -77,6 +77,7 @@ jobs:
           node --test test/browser/partner-journey-boundary.test.mjs
           env -i PATH="$PATH" HOME="$HOME" CI=1 node scripts/partner_journey_browser_proof.mjs
           env -i PATH="$PATH" HOME="$HOME" CI=1 node scripts/partner_journey_browser_proof.mjs --negative-control=missing-dialog-focus
+          env -i PATH="$PATH" HOME="$HOME" CI=1 node scripts/partner_journey_browser_proof.mjs --profile-request-readiness
       - name: Retain exact-head rendered receipt and screenshots
         if: always()
         uses: actions/upload-artifact@v4

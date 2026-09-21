@@ -12,7 +12,35 @@ const key = "heha-synthetic-rendered-proof";
 const initial = () => ({ partners: [newer, older], profileRequests: [], mediaRequests: [], uploads: [], calls: [], failNextUpload: true });
 let state = JSON.parse(sessionStorage.getItem(key) || "null") || initial();
 const save = () => sessionStorage.setItem(key, JSON.stringify(state));
-window.__syntheticProof = { snapshot: () => structuredClone(state) };
+let profileReadPlans = [];
+let profileInsertPlans = [];
+let nextProfileRead = 0;
+const pendingProfileReads = new Map();
+const pendingProfileInserts = new Map();
+window.__syntheticProof = {
+  snapshot: () => ({ ...structuredClone(state), pendingProfileReads: [...pendingProfileReads.keys()], pendingProfileInserts: [...pendingProfileInserts.keys()] }),
+  resetProfileProof() {
+    if (pendingProfileReads.size || pendingProfileInserts.size) throw new Error("Settle pending synthetic operations before resetting");
+    state = initial(); profileReadPlans = []; profileInsertPlans = []; save();
+  },
+  queueProfileRead(plan) { profileReadPlans.push(structuredClone(plan)); },
+  queueProfileInsert(plan) { profileInsertPlans.push(structuredClone(plan)); },
+  settleProfileInsert(id) {
+    const settle = pendingProfileInserts.get(id);
+    if (!settle) throw new Error("Unknown deferred synthetic insert");
+    pendingProfileInserts.delete(id); settle();
+  },
+  settleProfileRead(id) {
+    const settle = pendingProfileReads.get(id);
+    if (!settle) throw new Error("Unknown deferred synthetic read");
+    pendingProfileReads.delete(id); settle();
+  },
+  seedProfileRequest(partnerId = older.id) {
+    state.profileRequests.push({ id: "existing-submitted", partner_id: partnerId, owner_id: owner,
+      status: "submitted", submitted_at: "2026-09-20T12:00:00Z", proposed_changes: { name: "Earlier request" } });
+    save();
+  },
+};
 const record = (call) => { state.calls.push(call); save(); };
 const project = (row, projection) => !row ? null : Object.fromEntries(
   projection.split(",").map((column) => column.trim()).map((column) => [column, row[column] ?? null])
@@ -38,9 +66,14 @@ function query(table) {
           if (!["partner_profile_change_requests", "partner_media_requests"].includes(table)) throw new Error(`Unexpected write: ${table}`);
           if (payload.owner_id !== owner || !state.partners.some((row) => row.id === payload.partner_id && row.owner_id === owner)) throw new Error("Wrong synthetic owner");
           const row = { ...payload, id: `synthetic-${state.calls.length}`, status: "submitted", submitted_at: "2026-09-17T12:00:00Z" };
-          (table === "partner_profile_change_requests" ? state.profileRequests : state.mediaRequests).push(row);
-          save();
-          return { data: single ? project(row, call.projection) : null, error: null };
+          const commit = () => {
+            (table === "partner_profile_change_requests" ? state.profileRequests : state.mediaRequests).push(row);
+            save();
+            return { data: single ? project(row, call.projection) : null, error: null };
+          };
+          const plan = table === "partner_profile_change_requests" ? profileInsertPlans.shift() : null;
+          if (plan?.defer) return new Promise(resolveInsert => pendingProfileInserts.set(row.id, () => resolveInsert(commit())));
+          return commit();
         }
         const rows = table === "partners" ? state.partners
           : table === "partner_profile_change_requests" ? state.profileRequests
@@ -54,7 +87,21 @@ function query(table) {
         }
         found = found.slice(0, maximum);
         if (single && found.length > 1) throw new Error("Ambiguous synthetic single-row selection");
-        return { data: single ? project(found[0], call.projection) : found.map((row) => project(row, call.projection)), error: null };
+        const result = { data: single ? project(found[0], call.projection) : found.map((row) => project(row, call.projection)), error: null };
+        if (table === "partner_profile_change_requests" && profileReadPlans.length) {
+          const plan = profileReadPlans.shift();
+          const complete = () => {
+            if (plan.reject) throw new Error("Synthetic pending-request connection failure");
+            return plan.fail ? { data: null, error: { message: "Synthetic pending-request lookup failed" } } : result;
+          };
+          if (plan.defer) return new Promise((resolveRead, rejectRead) => {
+            pendingProfileReads.set(++nextProfileRead, () => {
+              try { resolveRead(complete()); } catch (error) { rejectRead(error); }
+            });
+          });
+          return complete();
+        }
+        return result;
       }).then(resolve, reject);
     },
   };

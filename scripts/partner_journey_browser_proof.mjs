@@ -15,8 +15,10 @@ import { keyEventPayloads } from "../test/browser/cdp-keyboard.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const negativeControl = process.argv[2] === "--negative-control=missing-dialog-focus";
-assert.ok(process.argv.length === 2 || (process.argv.length === 3 && negativeControl), "Unsupported browser-proof argument");
-const artifacts = resolve(root, "artifacts/partner-journey-browser-proof", negativeControl ? "negative-missing-dialog-focus" : "positive");
+const readinessBaseline = process.argv[2] === "--profile-request-readiness=baseline";
+const profileReadiness = readinessBaseline || process.argv[2] === "--profile-request-readiness";
+assert.ok(process.argv.length === 2 || (process.argv.length === 3 && (negativeControl || profileReadiness)), "Unsupported browser-proof argument");
+const artifacts = resolve(root, "artifacts/partner-journey-browser-proof", profileReadiness ? (readinessBaseline ? "profile-readiness-baseline" : "profile-readiness") : negativeControl ? "negative-missing-dialog-focus" : "positive");
 const temporary = await mkdtemp(resolve(tmpdir(), "heha-rendered-proof-"));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
@@ -26,6 +28,7 @@ const receipt = {
   sourceDirty: Boolean(git("status", "--porcelain", "--untracked-files=no")),
   node: process.version, browserInstalledOnly: true, viewports: [], screenshots: [], status: "running",
   negativeControl: negativeControl ? "missing-dialog-focus" : null,
+  profileReadiness, readinessBaseline,
   limitations: ["No full-app login/logout, verification email, hosted persistence, or real account", "No axe dependency or broad WCAG certification; semantic names, keyboard focus, modal containment and scoped focus-ring contrast only", "Mobile viewport emulation, not physical device or assistive-technology testing", "System fonts; remote font import removed by test-only transform"],
 };
 await mkdir(artifacts, { recursive: true });
@@ -106,6 +109,156 @@ class ChromePipe extends EventEmitter {
 const button = (text) => `[...document.querySelectorAll('button')].find(e => (e.getAttribute('aria-label') || e.textContent).trim() === ${JSON.stringify(text)})`;
 const input = (label) => `[...document.querySelectorAll('input,textarea')].find(e => [...e.labels || []].some(l => l.textContent.trim() === ${JSON.stringify(label)}))`;
 const dialog = "document.querySelector('[role=dialog]')";
+
+// Focused mode reuses the isolated renderer/transport; the old full journey is not rerun.
+const readinessFixture = `
+import { createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import PartnerProfileEditor from '../../src/components/PartnerProfileEditor';
+import './synthetic-supabase.js';
+import '../../src/index.css';
+import '../../src/community-pass.css';
+const root = createRoot(document.getElementById('root'));
+const users = new Map();
+window.__profileReadiness = {
+  saved: [],
+  render({ ownerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', cardId = '11111111-1111-4111-8111-111111111111', session = 'first' } = {}) {
+    const key = ownerId + ':' + session;
+    if (!users.has(key)) users.set(key, { id: ownerId, email: 'synthetic-owner@example.invalid' });
+    const listing = window.__syntheticProof.snapshot().partners.find(row => row.id === cardId);
+    root.render(createElement(PartnerProfileEditor, {
+      user: ownerId ? users.get(key) : null,
+      listing: listing ? { ...listing, owner_id: ownerId } : null,
+      onClose: () => root.render(null),
+      onSaved: (card, message) => window.__profileReadiness.saved.push({ id: card.id, message }),
+    }));
+  },
+  close() { root.render(null); },
+};
+`;
+
+async function runProfileReadiness(chrome, origin) {
+  const { browserContextId } = await chrome.send("Target.createBrowserContext", {}, undefined);
+  const { targetId } = await chrome.send("Target.createTarget", { url: "about:blank", browserContextId }, undefined);
+  const { sessionId } = await chrome.send("Target.attachToTarget", { targetId, flatten: true }, undefined);
+  chrome.session = sessionId;
+  await chrome.send("Page.enable"); await chrome.send("Runtime.enable"); await chrome.send("Network.enable");
+  await chrome.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await chrome.send("Page.navigate", { url: `${origin}/test/browser/partner-journey.html` });
+  await chrome.until("!!window.__profileReadiness", "focused editor fixture loaded");
+  const snapshot = () => chrome.evaluate("window.__syntheticProof.snapshot()");
+  const queue = (plan) => chrome.evaluate(`window.__syntheticProof.queueProfileRead(${JSON.stringify(plan)})`);
+  const render = async (scope = {}) => {
+    await chrome.evaluate(`window.__profileReadiness.render(${JSON.stringify(scope)})`);
+    await chrome.until(`!!${dialog}`, "editor mounted");
+  };
+  const edit = async (value) => {
+    await chrome.keyboardFocus(input("Business name"));
+    // insertText with native selection works on both installed macOS/Linux Chrome.
+    await chrome.evaluate(`${input("Business name")}.select()`);
+    await chrome.send("Input.insertText", { text: value });
+    assert.equal(await chrome.evaluate(`${input("Business name")}.value`), value);
+  };
+  const disabled = () => chrome.evaluate("document.querySelector('.preview-actions .primary-button')?.disabled");
+  const inserts = async () => (await snapshot()).calls.filter(call => call.table === "partner_profile_change_requests" && call.method === "insert");
+  const drain = () => chrome.evaluate("new Promise(resolve => setTimeout(resolve, 50))");
+  const reset = async () => {
+    await chrome.evaluate("window.__profileReadiness.close()"); await chrome.until(`!${dialog}`, "old editor unmounted");
+    await chrome.evaluate("window.__syntheticProof.resetProfileProof(); window.__profileReadiness.saved = []");
+  };
+  const deferred = async (count) => {
+    await chrome.until(`window.__syntheticProof.snapshot().pendingProfileReads.length === ${count}`, "expected deferred scoped reads");
+    return (await snapshot()).pendingProfileReads;
+  };
+  const settle = async (id) => { await chrome.evaluate(`window.__syntheticProof.settleProfileRead(${id})`); await drain(); };
+  const check = (name, details = {}) => { (receipt.profileChecks ??= []).push({ name, ...details }); };
+
+  await chrome.evaluate("window.__syntheticProof.seedProfileRequest()");
+  await queue({ fail: true }); await render();
+  await chrome.until("!!document.querySelector('.error-banner')", "initial lookup error shown");
+  await edit("Draft kept after failed pending lookup");
+  await chrome.evaluate(`${button("Submit changes for HEHA review")}.click()`); await drain();
+  receipt.failedLookup = { inserts: (await inserts()).length, requests: (await snapshot()).profileRequests.length };
+  assert.equal(receipt.failedLookup.inserts, 0, "failed pending lookup must not insert");
+  assert.equal(await disabled(), true);
+  assert.equal(await chrome.evaluate("document.querySelector('.error-banner').textContent.includes('check')"), true, "editing must not erase the lookup gate");
+  check("failed initial lookup blocks insert despite an existing pending request");
+  await chrome.activate(button("Retry request check"));
+  await chrome.until(`${button("Changes already under review")}?.disabled`, "retry finds pending request and stays locked");
+  assert.equal(await chrome.evaluate(`${input("Business name")}.value`), "Draft kept after failed pending lookup");
+  assert.equal((await inserts()).length, 0); assert.equal((await snapshot()).profileRequests.length, 1);
+  check("retry preserves draft and existing pending request locks submission");
+
+  await reset(); await queue({ reject: true }); await render();
+  await chrome.until("!!document.querySelector('.error-banner')", "rejected lookup is handled");
+  await edit("Retained through repeated lookup errors"); await queue({ fail: true });
+  await chrome.activate(button("Retry request check"));
+  await chrome.until(`${button("Retry request check")} && !!document.querySelector('.error-banner')`, "second lookup failure allows a truthful retry");
+  assert.equal(await disabled(), true); assert.equal((await inserts()).length, 0);
+  assert.equal(await chrome.evaluate(`${input("Business name")}.value`), "Retained through repeated lookup errors");
+  check("rejected and repeated failed lookups preserve draft and never insert");
+  await chrome.activate(button("Retry request check"));
+  await chrome.until(`${button("Submit changes for HEHA review")}?.disabled === false`, "successful empty read unlocks submit");
+  await chrome.evaluate(`{ const submit = ${button("Submit changes for HEHA review")}; submit.click(); submit.click(); }`);
+  await chrome.until("window.__profileReadiness.saved.length === 1", "one verified submission receipt");
+  await chrome.until(`${button("Changes already under review")}?.disabled`, "acknowledged submission has rendered its pending lock");
+  assert.equal((await inserts()).length, 1); assert.equal((await snapshot()).profileRequests.length, 1);
+  assert.equal((await inserts())[0].payload.proposed_changes.name, "Retained through repeated lookup errors");
+  assert.equal(await disabled(), true); check("verified empty lookup permits exactly one submission, including duplicate clicks");
+
+  for (const [name, nextScope] of [
+    ["card", { cardId: "22222222-2222-4222-8222-222222222222" }],
+    ["owner", { ownerId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }],
+    ["session", { session: "replacement" }],
+  ]) {
+    await reset(); await queue({ defer: true }); await render(); const [old] = await deferred(1);
+    await edit("Context-scoped unsaved draft");
+    await queue({ defer: true, fail: true }); await render(nextScope);
+    const ids = await deferred(2); const current = ids.find(id => id !== old);
+    assert.equal(await disabled(), true, `${name} change invalidates previous readiness immediately`);
+    const expectedName = name === "session" ? "Context-scoped unsaved draft" : name === "card" ? "Newer B" : "Canonical A";
+    assert.equal(await chrome.evaluate(`${input("Business name")}.value`), expectedName);
+    await settle(old); assert.equal(await disabled(), true, `stale ${name} result cannot unlock current editor`);
+    await settle(current); assert.equal(await disabled(), true);
+    assert.equal((await inserts()).length, 0);
+    const reads = (await snapshot()).calls.filter(call => call.table === "partner_profile_change_requests");
+    assert.equal(reads.length, 2);
+    assert.deepEqual(reads[1].filters, [["partner_id", nextScope.cardId || "11111111-1111-4111-8111-111111111111"], ["owner_id", nextScope.ownerId || "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]]);
+    check(`stale ${name} completion ignored; current failure stays locked; draft isolation respected`);
+  }
+  await reset(); await render();
+  await chrome.until(`${button("Submit changes for HEHA review")}?.disabled === false`, "initial empty check for deferred insert");
+  await edit("Draft submitted before session replacement");
+  await chrome.evaluate("window.__syntheticProof.queueProfileInsert({ defer: true })");
+  await chrome.activate(button("Submit changes for HEHA review"));
+  await chrome.until("window.__syntheticProof.snapshot().pendingProfileInserts.length === 1", "first insert remains uncommitted");
+  const insertId = (await snapshot()).pendingProfileInserts[0];
+  await render({ session: "replacement-during-insert" });
+  await chrome.until("window.__syntheticProof.snapshot().calls.filter(call => call.table === 'partner_profile_change_requests' && call.method === 'select').length === 2", "replacement session reads before first insert commits");
+  await drain(); assert.equal((await snapshot()).profileRequests.length, 0);
+  await chrome.evaluate("document.querySelector('.preview-actions .primary-button').click()"); await drain();
+  const attemptedInserts = (await inserts()).length;
+  receipt.sessionReplacementInsert = { attemptedInsertsBeforeFirstSettles: attemptedInserts };
+  await queue({ defer: true });
+  await chrome.evaluate(`window.__syntheticProof.settleProfileInsert(${JSON.stringify(insertId)})`);
+  assert.equal(attemptedInserts, 1, "session replacement must preserve the unsettled insert lock");
+  const [reconciliation] = await deferred(1);
+  assert.equal(await disabled(), true, "settled insert still requires a fresh reconciliation");
+  await settle(reconciliation);
+  await chrome.until(`${button("Changes already under review")}?.disabled`, "fresh reconciliation finds committed pending request");
+  assert.equal((await inserts()).length, 1); assert.equal((await snapshot()).profileRequests.length, 1);
+  assert.equal(await chrome.evaluate("window.__profileReadiness.saved.length"), 0, "old-session completion cannot deliver a success callback to replacement session");
+  assert.equal(await chrome.evaluate(`${input("Business name")}.value`), "Draft submitted before session replacement");
+  check("in-flight insert remains locked through session replacement and fresh post-settlement reconciliation");
+  await reset(); await render({ ownerId: null }); await drain();
+  assert.equal(await disabled(), true); assert.equal((await snapshot()).calls.length, 0);
+  check("missing identity cannot check or submit");
+  const { data } = await chrome.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+  const bytes = Buffer.from(data, "base64"); await writeFile(resolve(artifacts, "profile-readiness.png"), bytes);
+  receipt.screenshots.push({ path: "profile-readiness.png", sha256: sha256(bytes), syntheticOnly: true });
+  await reset();
+  chrome.session = undefined; await chrome.send("Target.disposeBrowserContext", { browserContextId });
+}
 let chrome;
 let server;
 const network = [];
@@ -113,7 +266,7 @@ const runtimeErrors = [];
 try {
   // Fixed known locations only: no environment-selected binary or downloaded cache.
   let executable;
-  for (const candidate of ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/opt/google/chrome/chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"]) {
+  for (const candidate of ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/opt/google/chrome/chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]) {
     try { await access(candidate, constants.X_OK); executable = candidate; break; } catch { /* not installed */ }
   }
   if (!executable) throw new Error("NOT RUN: no already-installed supported Chrome found; no download or install is permitted");
@@ -129,6 +282,11 @@ try {
           if (target === resolve(root, "src/lib/supabase")) return resolve(root, "test/browser/synthetic-supabase.js");
         },
         transform(code, id) {
+          if (profileReadiness && id === resolve(root, "test/browser/partner-journey.jsx")) return readinessFixture;
+          if (readinessBaseline && id === resolve(root, "src/components/PartnerProfileEditor.jsx")) {
+            assert.equal(receipt.checkedOutSha, "449c5762c9fe874d16088d44066680e167705dad", "baseline must use the reviewed source");
+            return git("show", "HEAD:src/components/PartnerProfileEditor.jsx");
+          }
           if (id === resolve(root, "src/index.css")) return code.replace(/^@import url\('https:\/\/fonts\.googleapis\.com[^\n]+\n/, "");
           if (negativeControl && id === resolve(root, "src/components/PartnerProfileEditor.jsx")) {
             assert.ok(code.includes("ref={dialogRef}"), "negative control must remove the real editor focus binding");
@@ -150,7 +308,8 @@ try {
   receipt.browserVersion = await chrome.send("Browser.getVersion");
   chrome.on("Network.requestWillBeSent", ({ request }) => network.push(request.url));
   chrome.on("Runtime.exceptionThrown", ({ exceptionDetails }) => runtimeErrors.push(exceptionDetails.text));
-  for (const viewport of [{ name: "desktop", width: 1280, height: 900, mobile: false }, { name: "mobile", width: 390, height: 844, mobile: true }]) {
+  if (profileReadiness) await runProfileReadiness(chrome, origin);
+  for (const viewport of profileReadiness ? [] : [{ name: "desktop", width: 1280, height: 900, mobile: false }, { name: "mobile", width: 390, height: 844, mobile: true }]) {
     const { browserContextId } = await chrome.send("Target.createBrowserContext", {}, undefined);
     const { targetId } = await chrome.send("Target.createTarget", { url: "about:blank", browserContextId }, undefined);
     const { sessionId } = await chrome.send("Target.attachToTarget", { targetId, flatten: true }, undefined);
@@ -285,9 +444,11 @@ try {
   assert.equal(network.some(url => url.includes("/src/lib/supabase.js")), false, "real backend client never loaded");
   receipt.network = { requests: network.length, externalRequests: 0, realBackendClientLoaded: false };
   assert.equal(negativeControl, false, "missing-focus negative control unexpectedly passed");
+  assert.equal(readinessBaseline, false, "old-source lookup-failure control unexpectedly passed");
   receipt.status = "pass";
 } catch (error) {
-  const expectedFailure = negativeControl && error.message === "Rendered assertion timed out: editor takes keyboard focus";
+  const expectedFailure = (negativeControl && error.message === "Rendered assertion timed out: editor takes keyboard focus") ||
+    (readinessBaseline && error.message.startsWith("failed pending lookup must not insert") && receipt.failedLookup?.inserts === 1 && receipt.failedLookup?.requests === 2);
   receipt.status = expectedFailure ? "expected-negative-failure" : "fail";
   receipt.error = error.message;
   receipt.runtimeErrors = runtimeErrors;
@@ -301,13 +462,24 @@ try {
   }
   if (!expectedFailure) process.exitCode = 1;
 } finally {
+  receipt.cleanup = { browserExited: !chrome, serverClosed: !server, temporaryRemoved: false };
   if (chrome) {
     chrome.session = undefined;
     try { await chrome.send("Browser.close"); } catch { /* closed transport */ }
-    if (chrome.process.exitCode === null) chrome.process.kill("SIGTERM");
+    const exited = () => chrome.process.exitCode !== null || chrome.process.signalCode !== null;
+    const waitForExit = async (milliseconds) => {
+      const deadline = Date.now() + milliseconds;
+      while (!exited() && Date.now() < deadline) await new Promise(done => setTimeout(done, 25));
+    };
+    if (!exited()) { chrome.process.kill("SIGTERM"); await waitForExit(1500); }
+    if (!exited()) { chrome.process.kill("SIGKILL"); await waitForExit(1500); }
+    receipt.cleanup.browserExited = exited();
+    for (const stream of chrome.process.stdio) stream?.destroy();
   }
-  if (server) await server.close();
+  if (server) { await server.close(); receipt.cleanup.serverClosed = !server.httpServer?.listening; }
   await rm(temporary, { recursive: true, force: true });
+  receipt.cleanup.temporaryRemoved = true;
+  if (!Object.values(receipt.cleanup).every(Boolean)) { receipt.status = "fail"; process.exitCode = 1; }
   await writeFile(resolve(artifacts, "receipt.json"), JSON.stringify(receipt, null, 2) + "\n");
   console.log(JSON.stringify(receipt, null, 2));
 }
