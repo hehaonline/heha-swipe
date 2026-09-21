@@ -2,6 +2,23 @@
   max-width: 680px;
 }
 
+.partner-editor-categories {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.partner-editor-categories legend {
+  margin-bottom: 6px;
+}
+
+.partner-editor-sheet :focus-visible,
+.partner-media-sheet :focus-visible {
+  outline: 3px solid #254f37 !important;
+  outline-offset: 3px;
+}
+
 .partner-media-body {
   padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
 }

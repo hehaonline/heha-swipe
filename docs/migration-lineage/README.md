@@ -33,7 +33,7 @@ This directory is evidence and planning. Unless a file is explicitly approved la
    - All 45 public tables report RLS enabled; zero report FORCE RLS.
    - This is structural evidence, not a BOLA or full-schema proof.
 
-4. The committed `supabase/migrations` tree contains 46 files using 42 unique versions and is corrective rather than a complete zero-build chain.
+4. The committed `supabase/migrations` tree contains 48 files using 44 unique versions and is corrective rather than a complete zero-build chain.
    - Draft PR #140 extends this packet for 11 review-only successor migrations using exact bytes from `b8bb0f09583fa833851f69fdbc220fa6c305996d`, composed from `main@1ab63290fda9a967a36831cef50ef01b68a8c0a4` on 2026-09-03 ET. All 11 are `RP/BC` with no live-ledger candidate edge; this records repository evidence only and does not prove live equivalence or zero-build safety.
 
 5. A founder-approved ordinary Supabase branch inherited no HEHA application schema or application migration ledger.
@@ -57,7 +57,7 @@ Do not reconstruct history by renaming, reordering, or blindly replaying incompl
 ## Current packet
 
 - `live-ledger-compatibility-map-2026-08-24.csv` — disposition for all 96 live-ledger rows.
-- `repository-migration-disposition-map-2026-08-24.csv` — disposition for all 46 current executable migration files.
+- `repository-migration-disposition-map-2026-08-24.csv` — disposition for all 48 current executable migration files.
 - `repository-disposition-expectations-2026-08-24.csv` — independently reviewed, hash-bound repository class, full candidate-edge, and migration-byte SHA-256 expectations.
 - `repository-ledger-compatibility-summary-2026-08-24.md` — conclusions and evidence limits.
 - `deep-metadata-capture-plan-2026-08-24.md` — staged next-evidence plan.
@@ -69,7 +69,7 @@ Do not reconstruct history by renaming, reordering, or blindly replaying incompl
 
 ## Historical and supporting evidence
 
-- `repository-inventory.csv` — 46-file repository inventory.
+- `repository-inventory.csv` — 48-file repository inventory.
 - `live-ledger-2026-07-19.csv` — preserved historical 92-row snapshot.
 - `live-ledger-2026-08-19.csv` — current 96-row ledger evidence.
 - `live-ledger-refresh-2026-08-19.md` — read-only refresh receipt.
@@ -115,3 +115,7 @@ Do not:
 The HEHA Business Model 2026 slides are historical context only. Newest explicit founder decisions, current operating economics, exact technical/provider evidence, current partner terms, and current legal/accounting/insurance decisions control whenever they differ.
 
 Production impact: **NONE**.
+
+## September 14 media repair extension
+
+PR #141 adds two repository-proven forward candidates (RP/BC), with no live-ledger candidate edges. The 48-file/44-version inventory preserves all historical ledger evidence. The two new hash-bound expectation rows record proposed bytes and classification only; their independent security review and separate hosted release approval remain pending. Prior independently reviewed entries retain their evidence status. No live ledger or Production schema was changed.

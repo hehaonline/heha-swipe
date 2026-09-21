@@ -75,3 +75,32 @@ publication projection and all three public partner views.
   plus the matching acceptance predicate and evidence contract. This is a hard
   release blocker; draft placeholders or generic profile permission do not
   satisfy it.
+
+
+### Media policy guard follow-up — September 18, 2026
+
+The pending `20260916120000_partner_media_shared_boundary.sql` now compares the complete
+six predecessor policy definitions: evidence-table staff SELECT, three repaired Storage
+owner policies and two Storage staff policies. It compiles trusted source expressions on
+transaction-local temporary tables, then compares name, command, role set, permissiveness,
+USING and WITH CHECK in the same PostgreSQL server. It does not normalize arbitrary text
+or copy a whole native fixture manifest. An extra evidence policy also stops the migration.
+
+Additional permissive Storage policies reachable by anon/authenticated/PUBLIC must use
+complete simple equality predicates to an existing bucket other than `partner-media-pending`.
+For UPDATE/ALL both USING and the effective WITH CHECK must exclude pending media. Unknown
+predicates require independent preflight review; absence of the bucket name is not proof
+of isolation. Additional restrictive policies remain unchanged. The migration never drops
+or rewrites other-bucket policies to make its preflight pass.
+
+Storage is locked before the media request/evidence tables, matching intake's acquisition
+order. The existing disposable preflight now includes the three reported widened-policy
+regressions, related policy metadata/clause cases, preservation controls and an observed
+real intake/migration lock overlap. Failed attempts compare both indexes, capacity function,
+trigger definitions, policies, queue/evidence/partner rows and bucket state with the original
+snapshot. All setup and successful preservation/overlap probes roll back.
+
+This source change is not hosted prerequisite parity, a migration application or store
+acceptance. Keep both exact predecessor variants, independent exact-head review and the
+existing hosted, device, signing and release gates. The earlier local supplemental proof
+remains separate evidence and must not be described as execution of this canonical change.
